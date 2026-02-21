@@ -10,6 +10,7 @@ import fansirsqi.xposed.sesame.util.Log
 import fansirsqi.xposed.sesame.util.NetworkUtils
 import fansirsqi.xposed.sesame.util.Notify
 import fansirsqi.xposed.sesame.util.TimeUtil
+import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -18,9 +19,31 @@ import java.util.concurrent.atomic.AtomicInteger
 object RequestManager {
 
     private const val TAG = "RequestManager"
+    private const val OFFLINE_RECOVERY_COOLDOWN_MS = 15_000L
 
     // 连续失败计数器
     private val errorCount = AtomicInteger(0)
+
+    @Volatile
+    private var lastOfflineRecoveryTime = 0L
+
+    private fun buildFallbackJson(reason: String, method: String?): String {
+        val message = "$reason，请稍后再试"
+        return try {
+            JSONObject().apply {
+                put("success", false)
+                put("memo", message)
+                put("resultDesc", message)
+                put("desc", message)
+                put("resultCode", "I07")
+                if (!method.isNullOrBlank()) {
+                    put("rpcMethod", method)
+                }
+            }.toString()
+        } catch (_: Throwable) {
+            """{"success":false,"memo":"$message","resultDesc":"$message","desc":"$message","resultCode":"I07"}"""
+        }
+    }
 
     /**
      * 核心执行函数 (内联优化)
@@ -31,7 +54,7 @@ object RequestManager {
         if (ApplicationHook.offline) {
             Log.record(TAG, "当前处于离线状态，拦截请求: $methodLog")
             handleOfflineRecovery()
-            return ""
+            return buildFallbackJson("离线模式", methodLog)
         }
 
         // 2. 获取 Bridge (包含网络检查)
@@ -39,7 +62,7 @@ object RequestManager {
         val bridge = getRpcBridge()
         if (bridge == null) {
             handleFailure("Network/Bridge Unavailable", "网络或Bridge不可用")
-            return ""
+            return buildFallbackJson("网络或Bridge不可用", methodLog)
         }
 
         // 3. 执行请求
@@ -54,7 +77,7 @@ object RequestManager {
         if (result.isNullOrBlank()) {
             // 失败：增加计数，检查兜底
             handleFailure(methodLog ?: "Unknown", "返回数据为空")
-            return ""
+            return buildFallbackJson("返回数据为空", methodLog)
         } else {
             // 成功：重置计数器
             if (errorCount.get() > 0) {
@@ -95,8 +118,13 @@ object RequestManager {
      * 可以是发送广播、拉起 App 等
      */
     private fun handleOfflineRecovery() {
-        // 防止短时间内频繁触发恢复逻辑 (可选)
-        // 这里简单实现：尝试拉起支付宝或发送重登录广播
+        val now = System.currentTimeMillis()
+        val elapsed = now - lastOfflineRecoveryTime
+        if (elapsed in 0 until OFFLINE_RECOVERY_COOLDOWN_MS) {
+            Log.record(TAG, "离线恢复冷却中，跳过恢复（${elapsed}ms < ${OFFLINE_RECOVERY_COOLDOWN_MS}ms）")
+            return
+        }
+        lastOfflineRecoveryTime = now
 
         Log.record(TAG, "正在尝试执行离线恢复策略...")
         // 策略 A: 重新拉起 App (推荐)

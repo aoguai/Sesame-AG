@@ -128,7 +128,7 @@ public class ResChecker {
      * @return true 如果成功
      */
     public static boolean checkRes(String TAG, String jsonStr) throws JSONException {
-        JSONObject jo = new JSONObject(jsonStr);
+        JSONObject jo = JsonUtil.parseJSONObject(jsonStr);
         return checkRes(TAG, jo);
     }
 }

@@ -8,7 +8,6 @@ import fansirsqi.xposed.sesame.SesameApplication.Companion.PREFERENCES_KEY
 import fansirsqi.xposed.sesame.entity.UserEntity
 import fansirsqi.xposed.sesame.service.ConnectionState
 import fansirsqi.xposed.sesame.service.LsposedServiceManager
-import fansirsqi.xposed.sesame.util.AssetUtil
 import fansirsqi.xposed.sesame.util.CommandUtil
 import fansirsqi.xposed.sesame.util.DataStore
 import fansirsqi.xposed.sesame.util.DirectoryWatcher
@@ -87,7 +86,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch(Dispatchers.IO) {
             initEnvironment()
-            copyAssets()
 
             // 加载初始数据
             refreshUserConfigs()
@@ -195,15 +193,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             DataStore.init(Files.CONFIG_DIR)
         } catch (e: Exception) {
             Log.e(TAG, "Environment init failed", e)
-        }
-    }
-
-    private fun copyAssets() {
-        try {
-            val ctx = getApplication<Application>()
-            AssetUtil.copySoFileToStorage(ctx, AssetUtil.dexkitDestFile)
-        } catch (e: Exception) {
-            Log.e(TAG, "Asset copy error", e)
         }
     }
 

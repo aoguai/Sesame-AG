@@ -60,8 +60,6 @@ import fansirsqi.xposed.sesame.task.antForest.AntForest
 import fansirsqi.xposed.sesame.task.customTasks.CustomTask
 import fansirsqi.xposed.sesame.task.customTasks.ManualTask
 import fansirsqi.xposed.sesame.task.customTasks.ManualTaskModel
-import fansirsqi.xposed.sesame.util.AssetUtil.copyStorageSoFileToPrivateDir
-import fansirsqi.xposed.sesame.util.AssetUtil.dexkitDestFile
 import fansirsqi.xposed.sesame.util.DataStore.init
 import fansirsqi.xposed.sesame.util.Files
 import fansirsqi.xposed.sesame.util.GlobalThreadPools.execute
@@ -82,7 +80,6 @@ import fansirsqi.xposed.sesame.util.maps.UserMap
 import fansirsqi.xposed.sesame.util.maps.UserMap.currentUid
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
-import org.luckypray.dexkit.DexKitBridge
 import java.io.File
 import java.lang.AutoCloseable
 import java.lang.reflect.InvocationTargetException
@@ -230,7 +227,6 @@ class ApplicationHook {
                         AuthCodeHelper.getAuthCode("2021005114632037" )
 
                         initVersionInfo(packageName)
-                        loadLibs()
                         // 特殊版本处理
                         if (VersionHook.hasVersion() && alipayVersion.compareTo(AlipayVersion("10.7.26.8100")) == 0) {
                             HookUtil.bypassAccountLimit(classLoader!!)
@@ -289,9 +285,6 @@ class ApplicationHook {
                     appContext = appService.applicationContext
                     ensureScheduler()
 
-                    DexKitBridge.create(apkPath).use { _ ->
-                        record(TAG, "Hook DexKit successfully")
-                    }
                     mainTask = newInstance("主任务") { runMainTaskLogic() }
                     dayCalendar = Calendar.getInstance()
                     if (initHandler()) {
@@ -326,25 +319,6 @@ class ApplicationHook {
             } catch (_: Exception) {
                 alipayVersion = AlipayVersion("")
             }
-        }
-    }
-
-    private fun loadLibs() {
-        loadNativeLibs(appContext!!, dexkitDestFile)
-    }
-
-    @SuppressLint("UnsafeDynamicallyLoadedCode")
-    private fun loadNativeLibs(context: Context, soFile: File) {
-        try {
-            val finalSoFile = copyStorageSoFileToPrivateDir(context, soFile)
-            if (finalSoFile != null) {
-                System.load(finalSoFile.absolutePath)
-            } else {
-                val libraryName = soFile.name.removeSuffix(".so").removePrefix("lib")
-                System.loadLibrary(libraryName)
-            }
-        } catch (t: Throwable) {
-            Log.printStackTrace(TAG, "载入so库失败: " + soFile.name, t)
         }
     }
 
