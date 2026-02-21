@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import fansirsqi.xposed.sesame.BuildConfig
+import fansirsqi.xposed.sesame.data.General
 import fansirsqi.xposed.sesame.ui.screen.components.HtmlText
 import fansirsqi.xposed.sesame.ui.viewmodel.MainViewModel
 
@@ -95,7 +96,7 @@ fun ModuleStatusCard(
                     Text(text = "故障排查指南", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
                     HtmlText(
-                        html = "查看帮助 <a href=\"https://github.com/Fansirsqi/Sesame-TK/wiki/%E6%97%A0Root\">免Root食用指南</a>"
+                        html = "查看帮助 <a href=\"${General.PROJECT_HOMEPAGE_URL}\">项目仓库主页</a>"
                     )
                     Text(text = "Lspatch/Npatch/FPA/Opatch 请忽略此状态", style = MaterialTheme.typography.titleSmall)
                 }

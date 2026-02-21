@@ -13,7 +13,6 @@ import fansirsqi.xposed.sesame.BuildConfig
 import fansirsqi.xposed.sesame.R
 import fansirsqi.xposed.sesame.model.CustomSettings
 import fansirsqi.xposed.sesame.util.DataStore
-import fansirsqi.xposed.sesame.util.Detector
 import fansirsqi.xposed.sesame.util.FansirsqiUtil
 import fansirsqi.xposed.sesame.util.Log
 import fansirsqi.xposed.sesame.util.ToastUtil
@@ -97,12 +96,6 @@ class ExtendViewModel : ViewModel() {
                 }
             })
 
-            menuItems.add(MenuItem("获取BaseUrl") {
-                currentDialog = ExtendDialog.InputDialog("请输入Key") { input ->
-                    handleGetBaseUrl(context, input)
-                }
-            })
-
             menuItems.add(MenuItem("TestShow") {
                 ToastUtil.showToast(context, "shizuku:"+isShizukuReady().toString())
             })
@@ -142,17 +135,6 @@ class ExtendViewModel : ViewModel() {
             DataStore.getOrCreate(key, object : TypeReference<String>() {})
         }
         ToastUtil.showToast(context, "$value \n输入内容: $key")
-        dismissDialog()
-    }
-
-    private fun handleGetBaseUrl(context: Context, input: String) {
-        val key = input.toIntOrNull(16)
-        if (key != null) {
-            val output = Detector.getApiUrl(key)
-            ToastUtil.showToast(context, "$output \n输入内容: $input")
-        } else {
-            ToastUtil.showToast(context, "输入内容: $input , 请输入正确的十六进制数字")
-        }
         dismissDialog()
     }
 

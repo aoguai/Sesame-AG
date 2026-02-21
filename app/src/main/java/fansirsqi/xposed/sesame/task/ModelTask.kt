@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * 基于协程的抽象任务模型类
  *
- * 这是Sesame-TK框架中的核心任务执行类，提供了以下功能：
+ * 这是 Sesame-AG 框架中的核心任务执行类，提供了以下功能：
  * 1. 基于Kotlin协程的任务生命周期管理（启动、停止、暂停）
  * 2. 协程子任务管理（添加、移除、执行）
  * 3. 任务执行统计和监控
@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * 使用方式：
  * 继承此类并实现抽象方法：getName(), getFields(), check(), run()
  *
- * @author Sesame-TK Team
+ * @author Sesame-AG
  */
 abstract class ModelTask : Model() {
     /** 任务协程作用域 */

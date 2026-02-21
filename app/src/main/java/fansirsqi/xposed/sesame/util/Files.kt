@@ -17,7 +17,7 @@ import java.util.Date
 object Files {
     private val TAG = Files::class.java.simpleName
 
-    const val CONFIG_DIR_NAME = "sesame-TK"
+    const val CONFIG_DIR_NAME = "sesame-AG"
 
     @JvmField
     val MAIN_DIR: File = getMainDir()
@@ -437,7 +437,7 @@ object Files {
     @JvmStatic
     fun delFile(file: File): Boolean {
         if (!file.exists()) {
-            ToastUtil.showToast("${file.absoluteFile}不存在！别勾把删了")
+            ToastUtil.showToast("${file.absoluteFile}不存在，无需删除")
             Log.record(TAG, "delFile: ${file.absoluteFile}不存在！,无须删除")
             return false
         }

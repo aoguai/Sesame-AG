@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Sesame-TK</string>
+    <string name="app_name">Sesame-AG</string>
     <string name="start_check_energy">Start check energy</string>
     <string name="start_message"><![CDATA[
 This APP is developed for learning and research,

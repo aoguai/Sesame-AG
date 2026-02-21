@@ -189,7 +189,7 @@ object HookUtil {
      * 突破目标应用最大可登录账号数量限制
      * @param classLoader 类加载器
      */
-    fun fuckAccounLimit(classLoader: ClassLoader) {
+    fun bypassAccountLimit(classLoader: ClassLoader) {
         Log.record(TAG, "Hook AccountManagerListAdapter#getCount")
         XposedHelpers.findAndHookMethod(
             "com.alipay.mobile.security.accountmanager.data.AccountManagerListAdapter",  // target class
@@ -203,7 +203,7 @@ object HookUtil {
                             param.result = list.size  // 设置返回值为真实数量
                             val now = System.currentTimeMillis()
                             if (now - lastToastTime > 1000 * 60) { // 每N秒最多显示一次
-                                Toast.show("🎉 TK已尝试为您突破限制")
+                                Toast.show("🎉 已尝试为你突破限制")
                                 lastToastTime = now
                             }
                         }

@@ -7,7 +7,7 @@ on:
   #  pull_request:
   #    branches: [ "main" ]
   release:
-    types: [ published ]
+    types: [published]
 #  workflow_dispatch:
 
 jobs:
@@ -215,16 +215,14 @@ jobs:
           make_latest: true
           generate_release_notes: false
           body: |
-            
+
             > [!Important]
             >
             > ## 模块的蓬勃生机离不开社区与群组,感谢各位的贡献🎉
-  
+
             > [!NOTE]
-            > 你可以尝试点击下方图标加入我们的组织
-  
-            [![Telegram-Channel](https://img.shields.io/badge/Sesame--TK-nul?&logo=Telegram&label=Telegram-Channel&labelColor=fff&link=https%3A%2F%2Ft.me%2FSesame_TK_Channel)](https://t.me/Sesame_TK_Channel)   [![Telegram-Group](https://img.shields.io/badge/Sesame--TK-nul?&logo=Telegram&label=Telegram-Group&labelColor=fff&link=https%3A%2F%2Ft.me%2Ffansirsqi_xposed_sesame)](https://t.me/fansirsqi_xposed_sesame)   [![Static Badge](https://img.shields.io/badge/QQ--Channel-nul?style=flat&logo=qq&labelColor=%23fff&logoSize=12&label=%E8%85%BE%E8%AE%AF%E9%A2%91%E9%81%93&link=https%3A%2F%2Fpd.qq.com%2Fs%2Fhdvws4vuf)](https://pd.qq.com/s/hdvws4vuf)   [![Static Badge](https://img.shields.io/badge/QQ--Group-nul?style=flat&logo=qq&logoSize=12&label=QQ%E7%BE%A4%E8%81%8A&labelColor=%23fff&link=https%3A%2F%2Fqm.qq.com%2Fq%2FAj0Xby6AGQ)](https://qm.qq.com/q/Aj0Xby6AGQ)
-  
+            > 项目仓库：https://github.com/${{ github.repository }}
+
             > ## 下载说明
             <b>- arm64-v8a:</b> 适用于64位ARM设备 (主流新手机)
             <b>- armeabi-v7a:</b> 适用于32位ARM设备 (旧款手机)
@@ -254,10 +252,10 @@ jobs:
           draft: false
           make_latest: true
           body: |
-            📦 内容同步自源仓库 [Sesame-TK](https://github.com/${{ github.repository }})
-            
+            📦 内容同步自源仓库 [Sesame-AG](https://github.com/${{ github.repository }})
+
             ${{ github.event.release.body }}
-            
+
             > ## 下载说明
             <b>- arm64-v8a:</b> 适用于64位ARM设备 (主流新手机)
             <b>- armeabi-v7a:</b> 适用于32位ARM设备 (旧款手机)

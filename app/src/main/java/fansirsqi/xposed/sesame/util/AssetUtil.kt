@@ -13,10 +13,8 @@ import java.security.MessageDigest
  */
 object AssetUtil {
     private val TAG: String = AssetUtil::class.java.simpleName
-    const val CHEKCE_SO = "libchecker.so"
     const val DEXKIT_OS = "libdexkit.so"
     private var destDir: String = Files.MAIN_DIR.absolutePath + File.separator + "lib"
-    var checkerDestFile: File = File(destDir, CHEKCE_SO)
     var dexkitDestFile: File = File(destDir, DEXKIT_OS)
 
     private fun compareMD5(file1: String, file2: String): Boolean {
@@ -83,7 +81,7 @@ object AssetUtil {
                     fos.flush()
                     Log.record(
                         TAG,
-                        "Copied ${destFile.name} from $sourceDir ${checkerDestFile.absolutePath}"
+                        "Copied ${destFile.name} from $sourceDir to ${destFile.absolutePath}"
                     )
                     setExecutablePermissions(destFile)
                     return true

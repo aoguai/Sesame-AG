@@ -19,7 +19,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,10 +52,6 @@ fun MainScreen(
 ) {
     val context = LocalContext.current
 
-    LaunchedEffect(Unit) {
-        viewModel.refreshDeviceInfo(context)
-    }
-
     var currentScreen by remember { mutableStateOf<BottomNavItem>(BottomNavItem.Home) } // 默认显示主页
 
 
@@ -67,10 +62,6 @@ fun MainScreen(
     var isIconHidden by remember { mutableStateOf(prefs.getBoolean("is_icon_hidden", false)) }
     var showMenu by remember { mutableStateOf(false) }
 //    var showUserDialog by remember { mutableStateOf(false) }
-
-    val deviceInfoMap by viewModel.deviceInfo.collectAsStateWithLifecycle()
-
-
 
     Scaffold(
         topBar = {
@@ -139,7 +130,6 @@ fun MainScreen(
                 BottomNavItem.Home -> HomeContent(
                     moduleStatus = moduleStatus,
                     serviceStatus = serviceStatus,
-                    deviceInfoMap = deviceInfoMap,
                     oneWord = oneWord,
                     isOneWordLoading = isOneWordLoading,
                     onOneWordClick = { onEvent(MainActivity.MainUiEvent.RefreshOneWord) },

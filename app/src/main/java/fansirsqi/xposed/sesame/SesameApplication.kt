@@ -17,7 +17,7 @@ class SesameApplication : Application() {
 
     companion object {
         private const val TAG = "SesameApplication"
-        public const val PREFERENCES_KEY = "sesame-tk"
+        public const val PREFERENCES_KEY = "sesame-ag"
         var hasPermissions: Boolean = false
 
     }

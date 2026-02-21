@@ -55,7 +55,7 @@ MODELS_META = {
     ),
     "Reserve": json.loads('[{"code":"enable","configValue":"false","name":"开启保护地","type":"BOOLEAN"},{"code":"reserveList","configValue":"{ }","name":"保护地列表","type":"SELECT_AND_COUNT"}]'),
     "AnswerAI": json.loads(
-        '[{"code":"enable","configValue":"false","name":"开启AI答题","type":"BOOLEAN"},{"code":"useGeminiAI","configValue":"0","expandKey":["通义千问","Gemini","DeepSeek","自定义"],"name":"AI类型","type":"CHOICE"},{"code":"getTongyiAIToken","configValue":"https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key","name":"通义千问 | 获取令牌","type":"URL_TEXT"},{"code":"tongYiToken","configValue":"","name":"qwen-turbo | 设置令牌","type":"STRING"},{"code":"getGeminiAIToken","configValue":"https://aistudio.google.com/app/apikey","name":"Gemini | 获取令牌","type":"URL_TEXT"},{"code":"GeminiAIToken","configValue":"","name":"gemini-1.5-flash | 设置令牌","type":"STRING"},{"code":"getDeepSeekToken","configValue":"https://platform.deepseek.com/usage","name":"DeepSeek | 获取令牌","type":"URL_TEXT"},{"code":"DeepSeekToken","configValue":"","name":"DeepSeek-R1 | 设置令牌","type":"STRING"},{"code":"getCustomServiceToken","configValue":"下面这个不用动可以白嫖到3月10号让我们感谢讯飞大善人🙏","name":"粉丝福利😍","type":"READ_TEXT"},{"code":"CustomServiceToken","configValue":"sk-pQF9jek0CTTh3boKDcA9DdD7340a4e929eD00a13F681Cd8e","name":"自定义服务 | 设置令牌","type":"STRING"},{"code":"CustomServiceBaseUrl","configValue":"https://maas-api.cn-huabei-1.xf-yun.com/v1","name":"自定义服务 | 设置BaseUrl","type":"STRING"},{"code":"CustomServiceModel","configValue":"xdeepseekr1","name":"自定义服务 | 设置模型","type":"STRING"}]'
+        '[{"code":"enable","configValue":"false","name":"开启AI答题","type":"BOOLEAN"},{"code":"useGeminiAI","configValue":"0","expandKey":["通义千问","Gemini","DeepSeek","自定义"],"name":"AI类型","type":"CHOICE"},{"code":"getTongyiAIToken","configValue":"https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key","name":"通义千问 | 获取令牌","type":"URL_TEXT"},{"code":"tongYiToken","configValue":"","name":"qwen-turbo | 设置令牌","type":"STRING"},{"code":"getGeminiAIToken","configValue":"https://aistudio.google.com/app/apikey","name":"Gemini | 获取令牌","type":"URL_TEXT"},{"code":"GeminiAIToken","configValue":"","name":"gemini-1.5-flash | 设置令牌","type":"STRING"},{"code":"getDeepSeekToken","configValue":"https://platform.deepseek.com/usage","name":"DeepSeek | 获取令牌","type":"URL_TEXT"},{"code":"DeepSeekToken","configValue":"","name":"DeepSeek-R1 | 设置令牌","type":"STRING"},{"code":"getCustomServiceToken","configValue":"请自行填写 Token/Key（不要提交到仓库）","name":"Token 提示","type":"READ_TEXT"},{"code":"CustomServiceToken","configValue":"","name":"自定义服务 | 设置令牌","type":"STRING"},{"code":"CustomServiceBaseUrl","configValue":"https://maas-api.cn-huabei-1.xf-yun.com/v1","name":"自定义服务 | 设置BaseUrl","type":"STRING"},{"code":"CustomServiceModel","configValue":"xdeepseekr1","name":"自定义服务 | 设置模型","type":"STRING"}]'
     ),
 }
 
@@ -91,13 +91,11 @@ def get_merged_models():
 
 
 def get_friend_list():
-    """读取 friend.json，优先使用 fullName（包含账号信息）"""
+    """读取 friend.json，优先使用 showName/nickName（避免携带账号/手机号等信息）"""
     friends_map = load_json(FRIEND_FILE)
     friend_list = []
     for user_id, user_info in friends_map.items():
-        # 优先使用 fullName (格式如：超|程超(159******79))
-        # 其次使用 showName
-        name = user_info.get("fullName") or user_info.get("showName") or user_info.get("nickName") or user_id
+        name = user_info.get("showName") or user_info.get("nickName") or user_id
         friend_list.append({"id": user_id, "name": name})
     return friend_list
 
@@ -127,7 +125,7 @@ def get_injection_script():
             }},
             
             getBuildInfo: function() {{
-                return "Sesame-TK:Byseven-Offical-Debug";
+                return "Sesame-AG:Local-Debug";
             }},
             
             isNightMode: function() {{

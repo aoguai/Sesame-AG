@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import fansirsqi.xposed.sesame.SesameApplication.Companion.PREFERENCES_KEY
 import fansirsqi.xposed.sesame.SesameApplication.Companion.hasPermissions
+import fansirsqi.xposed.sesame.data.General
 import fansirsqi.xposed.sesame.ui.extension.openUrl
 import fansirsqi.xposed.sesame.ui.extension.performNavigationToSettings
 import fansirsqi.xposed.sesame.ui.screen.MainScreen
@@ -23,13 +24,10 @@ import fansirsqi.xposed.sesame.ui.theme.AppTheme
 import fansirsqi.xposed.sesame.ui.theme.ThemeManager
 import fansirsqi.xposed.sesame.ui.viewmodel.MainViewModel
 import fansirsqi.xposed.sesame.util.CommandUtil
-import fansirsqi.xposed.sesame.util.Detector
 import fansirsqi.xposed.sesame.util.Files
 import fansirsqi.xposed.sesame.util.IconManager
-import fansirsqi.xposed.sesame.util.Log
 import fansirsqi.xposed.sesame.util.PermissionUtil
 import fansirsqi.xposed.sesame.util.ToastUtil
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuProvider
@@ -48,8 +46,6 @@ class MainActivity : ComponentActivity() {
                 // 关键修改：
                 lifecycleScope.launch {
                     CommandUtil.executeCommand(this@MainActivity, "echo init_shizuku")
-                    delay(200)
-                    viewModel.refreshDeviceInfo(this@MainActivity)
                 }
             } else {
                 ToastUtil.showToast(this, "Shizuku 授权被拒绝")
@@ -65,7 +61,6 @@ class MainActivity : ComponentActivity() {
         hasPermissions = PermissionUtil.checkOrRequestFilePermissions(this)
         if (hasPermissions) {
             viewModel.initAppLogic()
-            initNativeDetector()
         }
 
         // 3. 初始化 Shizuku
@@ -110,17 +105,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // 在 Activity 中执行 Native 检测
-    private fun initNativeDetector() {
-        try {
-            if (Detector.loadLibrary("checker")) {
-                Detector.initDetector(this)
-            }
-        } catch (e: Exception) {
-            Log.error("MainActivity", "Native detector init failed: ${e.message}")
-        }
-    }
-
     /**
      * 定义 UI 事件
      */
@@ -148,7 +132,7 @@ class MainActivity : ComponentActivity() {
             MainUiEvent.OpenForestLog -> openLogFile(Files.getForestLogFile())
             MainUiEvent.OpenFarmLog -> openLogFile(Files.getFarmLogFile())
             MainUiEvent.OpenOtherLog -> openLogFile(Files.getOtherLogFile())
-            MainUiEvent.OpenGithub -> openUrl("https://github.com/Fansirsqi/Sesame-TK")
+            MainUiEvent.OpenGithub -> openUrl(General.PROJECT_HOMEPAGE_URL)
             MainUiEvent.OpenErrorLog -> openLogFile(Files.getErrorLogFile())
             MainUiEvent.OpenAllLog -> openLogFile(Files.getRecordLogFile())
             MainUiEvent.OpenDebugLog -> openLogFile(Files.getDebugLogFile())
@@ -178,8 +162,19 @@ class MainActivity : ComponentActivity() {
 
     private fun setupShizuku() {
         Shizuku.addRequestPermissionResultListener(shizukuListener)
-        if (Shizuku.pingBinder() && checkSelfPermission(ShizukuProvider.PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+        if (!Shizuku.pingBinder()) return
+
+        val granted = checkSelfPermission(ShizukuProvider.PERMISSION) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
             Shizuku.requestPermission(1234)
+            return
+        }
+
+        // 已授权时也主动触发一次轻量命令，刷新 ShellManager 选择状态，避免 UI 长期停留在 no_executor。
+        if (hasPermissions) {
+            lifecycleScope.launch {
+                CommandUtil.executeCommand(this@MainActivity, "echo init_shizuku")
+            }
         }
     }
 

@@ -130,7 +130,7 @@ android {
         variant.outputs.all {
             val output = this
             val abiName = output.filters.find { it.filterType == "ABI" }?.identifier ?: "universal"
-            val fileName = "Sesame-TK-${abiName}-${variant.versionName}.apk"
+            val fileName = "Sesame-AG-${abiName}-${variant.versionName}.apk"
             (output as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName = fileName
         }
     }

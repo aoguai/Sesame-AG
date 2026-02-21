@@ -112,7 +112,7 @@ class SmartRetryStrategy {
  * 3. 不提前收取：避免无效请求
  * 4. 精确时机：确保在正确的时间点执行收取
  *
- * @author Sesame-TK Team
+ * @author Sesame-AG
  */
 object EnergyWaitingManager {
     private const val TAG = "EnergyWaitingManager"

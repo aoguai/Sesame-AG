@@ -1,14 +1,12 @@
 package fansirsqi.xposed.sesame.ui.screen.content
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,7 +21,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import fansirsqi.xposed.sesame.ui.MainActivity
-import fansirsqi.xposed.sesame.ui.screen.DeviceInfoCard
 import fansirsqi.xposed.sesame.ui.screen.card.ModuleStatusCard
 import fansirsqi.xposed.sesame.ui.screen.card.OneWordCard
 import fansirsqi.xposed.sesame.ui.screen.card.ServicesStatusCard
@@ -35,7 +32,6 @@ import fansirsqi.xposed.sesame.util.ToastUtil
 fun HomeContent(
     moduleStatus: MainViewModel.ModuleStatus,
     serviceStatus: ServiceStatus,
-    deviceInfoMap: Map<String, String>?,
     oneWord: String,
     isOneWordLoading: Boolean,
     onOneWordClick: () -> Unit,
@@ -92,18 +88,7 @@ fun HomeContent(
             )
         }
 
-        // 3. 设备信息
-        item {
-            if (deviceInfoMap != null) {
-                DeviceInfoCard(deviceInfoMap)
-            } else {
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            }
-        }
-
-        // 4. 一言
+        // 3. 一言
         item {
             OneWordCard( // 提取出的一言卡片组件
                 oneWord = oneWord,

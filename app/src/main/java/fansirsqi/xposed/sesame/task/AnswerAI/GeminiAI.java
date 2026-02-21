@@ -23,7 +23,7 @@ import okhttp3.Response;
  */
 public class GeminiAI implements AnswerAIInterface {
     private static final String TAG = GeminiAI.class.getSimpleName();
-    private static final String BASE_URL = "https://api.genai.gd.edu.kg/google";
+    private static final String BASE_URL = "https://generativelanguage.googleapis.com";
     private static final String CONTENT_TYPE = "application/json";
     private static final String JSON_PATH = "candidates.[0].content.parts.[0].text";
     private static final String PREFIX = "只回答答案 ";

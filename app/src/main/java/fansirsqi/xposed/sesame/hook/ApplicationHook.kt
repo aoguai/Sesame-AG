@@ -60,12 +60,9 @@ import fansirsqi.xposed.sesame.task.antForest.AntForest
 import fansirsqi.xposed.sesame.task.customTasks.CustomTask
 import fansirsqi.xposed.sesame.task.customTasks.ManualTask
 import fansirsqi.xposed.sesame.task.customTasks.ManualTaskModel
-import fansirsqi.xposed.sesame.util.AssetUtil.checkerDestFile
 import fansirsqi.xposed.sesame.util.AssetUtil.copyStorageSoFileToPrivateDir
 import fansirsqi.xposed.sesame.util.AssetUtil.dexkitDestFile
 import fansirsqi.xposed.sesame.util.DataStore.init
-import fansirsqi.xposed.sesame.util.Detector
-import fansirsqi.xposed.sesame.util.Detector.loadLibrary
 import fansirsqi.xposed.sesame.util.Files
 import fansirsqi.xposed.sesame.util.GlobalThreadPools.execute
 import fansirsqi.xposed.sesame.util.GlobalThreadPools.shutdownAndRestart
@@ -236,7 +233,7 @@ class ApplicationHook {
                         loadLibs()
                         // 特殊版本处理
                         if (VersionHook.hasVersion() && alipayVersion.compareTo(AlipayVersion("10.7.26.8100")) == 0) {
-                            HookUtil.fuckAccounLimit(classLoader!!)
+                            HookUtil.bypassAccountLimit(classLoader!!)
                         }
                     }
                 })
@@ -292,11 +289,6 @@ class ApplicationHook {
                     appContext = appService.applicationContext
                     ensureScheduler()
 
-                    if (Detector.isLegitimateEnvironment(appContext!!)) {
-                        Detector.dangerous(appContext!!)
-                        return
-                    }
-
                     DexKitBridge.create(apkPath).use { _ ->
                         record(TAG, "Hook DexKit successfully")
                     }
@@ -338,7 +330,6 @@ class ApplicationHook {
     }
 
     private fun loadLibs() {
-        loadNativeLibs(appContext!!, checkerDestFile)
         loadNativeLibs(appContext!!, dexkitDestFile)
     }
 
@@ -349,10 +340,11 @@ class ApplicationHook {
             if (finalSoFile != null) {
                 System.load(finalSoFile.absolutePath)
             } else {
-                loadLibrary(soFile.getName().replace(".so", "").replace("lib", ""))
+                val libraryName = soFile.name.removeSuffix(".so").removePrefix("lib")
+                System.loadLibrary(libraryName)
             }
-        } catch (e: Exception) {
-            Log.printStackTrace(TAG, "载入so库失败: " + soFile.getName(), e)
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "载入so库失败: " + soFile.name, t)
         }
     }
 
@@ -632,7 +624,7 @@ class ApplicationHook {
                 }
 
                 HookUtil.hookUser(classLoader!!)
-                record(TAG, "芝麻粒-TK 开始初始化...")
+                record(TAG, "芝麻粒-AG 开始初始化...")
 
                 Config.load(userId)
                 if (!Config.isLoaded()) return false

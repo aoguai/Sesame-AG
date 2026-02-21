@@ -8,7 +8,6 @@ import fansirsqi.xposed.sesame.SesameApplication.Companion.PREFERENCES_KEY
 import fansirsqi.xposed.sesame.entity.UserEntity
 import fansirsqi.xposed.sesame.service.ConnectionState
 import fansirsqi.xposed.sesame.service.LsposedServiceManager
-import fansirsqi.xposed.sesame.ui.screen.DeviceInfoUtil
 import fansirsqi.xposed.sesame.util.AssetUtil
 import fansirsqi.xposed.sesame.util.CommandUtil
 import fansirsqi.xposed.sesame.util.DataStore
@@ -52,7 +51,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         const val TAG = "MainViewModel"
-        var verifuids = FansirsqiUtil.getFolderList(Files.CONFIG_DIR.absolutePath)
     }
 
     // 1. 定义状态
@@ -72,9 +70,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _userList = MutableStateFlow<List<UserEntity>>(emptyList())
     val userList: StateFlow<List<UserEntity>> = _userList.asStateFlow()
-
-    private val _deviceInfo = MutableStateFlow<Map<String, String>?>(null)
-    val deviceInfo = _deviceInfo.asStateFlow()
 
     // --- 监听器 ---
 
@@ -194,13 +189,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
-    fun refreshDeviceInfo(context: Context) {
-        viewModelScope.launch {
-            val info = DeviceInfoUtil.showInfo(context)
-            _deviceInfo.value = info
-        }
-    }
-
     private fun initEnvironment() {
         try {
             LsposedServiceManager.init()
@@ -213,7 +201,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun copyAssets() {
         try {
             val ctx = getApplication<Application>()
-            AssetUtil.copySoFileToStorage(ctx, AssetUtil.checkerDestFile)
             AssetUtil.copySoFileToStorage(ctx, AssetUtil.dexkitDestFile)
         } catch (e: Exception) {
             Log.e(TAG, "Asset copy error", e)

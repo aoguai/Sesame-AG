@@ -56,9 +56,13 @@ public class AnswerAI extends Model {
     private final StringModelField GeminiToken = new StringModelField("GeminiAIToken", "gemini-1.5-flash | 设置令牌", "");
     private final TextModelField.UrlTextModelField getDeepSeekToken = new TextModelField.UrlTextModelField("getDeepSeekToken", "DeepSeek | 获取令牌", "https://platform.deepseek.com/usage");
     private final StringModelField DeepSeekToken = new StringModelField("DeepSeekToken", "DeepSeek-R1 | 设置令牌", "");
-    private final TextModelField.ReadOnlyTextModelField getCustomServiceToken = new TextModelField.ReadOnlyTextModelField("getCustomServiceToken", "粉丝福利😍", "感谢 Summer 提供公益 API");
+    private final TextModelField.ReadOnlyTextModelField getCustomServiceToken = new TextModelField.ReadOnlyTextModelField(
+            "getCustomServiceToken",
+            "提示",
+            "请自行填写 Token/Key（不要提交到仓库）"
+    );
 
-    private final StringModelField CustomServiceToken = new StringModelField("CustomServiceToken", "自定义服务 | 设置令牌", "sk-bklfjplvrjvlufyzkdciaiyjwjulekawrlkmrmhsxxosswnu");
+    private final StringModelField CustomServiceToken = new StringModelField("CustomServiceToken", "自定义服务 | 设置令牌", "");
     private final StringModelField CustomServiceUrl = new StringModelField("CustomServiceBaseUrl", "自定义服务 | 设置BaseUrl", "https://api.siliconflow.cn/v1");
     private final StringModelField CustomServiceModel = new StringModelField("CustomServiceModel", "自定义服务 | 设置模型", "deepseek-ai/DeepSeek-V3");
 
