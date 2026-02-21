@@ -753,7 +753,6 @@ class ApplicationHook {
                     val intent = Intent(Intent.ACTION_VIEW)
                     intent.setClassName(General.PACKAGE_NAME, General.CURRENT_USING_ACTIVITY)
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    offline = true
                     if (appContext != null) appContext!!.startActivity(intent)
                 } catch (e: Exception) {
                     error(TAG, "重启Activity失败: " + e.message)

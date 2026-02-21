@@ -3591,13 +3591,18 @@ class AntFarm : ModelTask() {
             // 前置检查：是否配置了雇佣好友列表
             val hireAnimalSet = hireAnimalList!!.value
             if (hireAnimalSet.isEmpty()) {
-                Log.record(TAG, "❌ 雇佣失败：未配置雇佣好友列表")
-                Toast.show(
-                    "⚠️ 雇佣小鸡配置错误\n" +
-                            "已开启「雇佣小鸡」但未配置好友列表\n" +
-                            "请在「雇佣小鸡 | 好友列表」中勾选好友"
-                )
-                return
+                if (hireAnimalType!!.value == HireAnimalType.HIRE) {
+                    Log.record(TAG, "❌ 雇佣失败：未配置雇佣好友列表")
+                    Toast.show(
+                        "⚠️ 雇佣小鸡配置错误\n" +
+                                "已开启「雇佣小鸡」但未配置好友列表\n" +
+                                "请在「雇佣小鸡 | 好友列表」中勾选好友"
+                    )
+                    return
+                } else {
+                    // 选中不雇佣：空列表表示“不排除任何好友”，即默认雇佣全部好友
+                    Log.record(TAG, "雇佣小鸡👷[好友列表未勾选任何人，按「选中不雇佣」模式将默认尝试雇佣全部好友]")
+                }
             }
 
             var hasNext: Boolean
