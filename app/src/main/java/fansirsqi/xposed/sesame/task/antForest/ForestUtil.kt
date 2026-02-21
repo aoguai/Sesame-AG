@@ -41,7 +41,7 @@ object ForestUtil {
         if (currentTime < info.cooldownUntil) {
             val remainingMinutes = (info.cooldownUntil - currentTime) / 60000
             val remainingSeconds = ((info.cooldownUntil - currentTime) % 60000) / 1000
-            Log.debug(TAG, "[${UserMap.getMaskName(userId)}] 手速太快冷却中，还需等待 ${remainingMinutes}分${remainingSeconds}秒")
+            Log.record(TAG, "[${UserMap.getMaskName(userId)}] 手速太快冷却中，还需等待 ${remainingMinutes}分${remainingSeconds}秒")
             return true
         }
         // 冷却期结束，清除记录

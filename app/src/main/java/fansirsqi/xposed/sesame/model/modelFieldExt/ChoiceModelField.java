@@ -11,7 +11,7 @@ import androidx.core.content.ContextCompat;
 
 import fansirsqi.xposed.sesame.R;
 import fansirsqi.xposed.sesame.model.ModelField;
-import fansirsqi.xposed.sesame.ui.ChoiceDialog;
+import fansirsqi.xposed.sesame.ui.widget.ChoiceDialog;
 public class ChoiceModelField extends ModelField<Integer> {
     private String[] choiceArray;
 

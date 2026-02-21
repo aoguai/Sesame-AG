@@ -55,16 +55,22 @@ public class AntDodoRpcCall {
 
     //使用道具
     public static String consumeProp(String propId, String propType, String animalId) {
+        // 基础参数
+        StringBuilder params = new StringBuilder("[{");
 
-        String params = "[{" +
-                "\"extendInfo\":{" +
-                "\"animalId\":\"" + animalId + "\"" +
-                "}," +
-                "\"propId\":\"" + propId + "\"," +
-                "\"propType\":\"" + propType + "\"" +
-                "}]";
+        // 如果 animalId 不为空，则构建 extendInfo 字段
+        if (animalId != null && !animalId.isEmpty()) {
+            params.append("\"extendInfo\":{")
+                    .append("\"animalId\":\"").append(animalId).append("\"")
+                    .append("},");
+        }
 
-        return RequestManager.requestString("alipay.antdodo.rpc.h5.consumeProp", params);
+        // 拼接 propId 和 propType
+        params.append("\"propId\":\"").append(propId).append("\",")
+                .append("\"propType\":\"").append(propType).append("\"")
+                .append("}]");
+
+        return RequestManager.requestString("alipay.antdodo.rpc.h5.consumeProp", params.toString());
     }
 
     /**

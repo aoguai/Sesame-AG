@@ -30,7 +30,8 @@ import fansirsqi.xposed.sesame.model.modelFieldExt.SelectAndCountModelField;
 import fansirsqi.xposed.sesame.model.modelFieldExt.SelectAndCountOneModelField;
 import fansirsqi.xposed.sesame.model.modelFieldExt.SelectModelField;
 import fansirsqi.xposed.sesame.model.modelFieldExt.SelectOneModelField;
-import fansirsqi.xposed.sesame.ui.OptionsAdapter;
+import fansirsqi.xposed.sesame.ui.adapter.ListAdapter;
+import fansirsqi.xposed.sesame.ui.adapter.OptionsAdapter;
 import fansirsqi.xposed.sesame.util.maps.CooperateMap;
 
 public class ListDialog {

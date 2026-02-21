@@ -233,4 +233,26 @@ public class AntOceanRpcCall {
         }
         return null;
     }
+
+    /**
+     * 限时挑战
+     */
+    public static String createSeaAreaExtraCollect() {
+        try {
+            JSONObject param = new JSONObject();
+            param.put("source", "chInfo_ch_appcenter__chsub_9patch");
+            param.put("uniqueId", getUniqueId());
+
+            JSONArray params = new JSONArray();
+            params.put(param);
+
+            return RequestManager.requestString(
+                    "alipay.antocean.ocean.h5.createSeaAreaExtraCollect",
+                    params.toString()
+            );
+        } catch (Exception e) {
+            Log.printStackTrace("AntOceanRpcCall", e);
+            return "{}";
+        }
+    }
 }

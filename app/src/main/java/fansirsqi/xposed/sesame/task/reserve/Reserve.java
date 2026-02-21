@@ -50,18 +50,6 @@ public class Reserve extends ModelTask {
         return modelFields;
     }
 
-    public Boolean check() {
-        if (TaskCommon.IS_ENERGY_TIME) {
-            Log.record(TAG, "⏸ 当前为只收能量时间【" + BaseModel.Companion.getEnergyTime().getValue() + "】，停止执行" + getName() + "任务！");
-            return false;
-        } else if (TaskCommon.IS_MODULE_SLEEP_TIME) {
-            Log.record(TAG, "💤 模块休眠时间【" + BaseModel.Companion.getModelSleepTime().getValue() + "】停止执行" + getName() + "任务！");
-            return false;
-        } else {
-            return true;
-        }
-    }
-
     protected void runJava() {
         try {
             Log.record(TAG, "开始保护地任务");
@@ -99,7 +87,7 @@ public class Reserve extends ModelTask {
                             IdMapManager.getInstance(ReserveaMap.class).add(itemId, itemName + "(" + energy + "g)");
                         }
                     }
-                    Log.runtime(TAG, "初始化保护地任务成功。");
+                    Log.record(TAG, "初始化保护地任务成功。");
                 }
                 // 将筛选结果保存到 ReserveIdMapUtil
                 IdMapManager.getInstance(ReserveaMap.class).save();
@@ -154,7 +142,7 @@ public class Reserve extends ModelTask {
                     }
                 }
             } else {
-                Log.runtime(TAG, jo.getString("resultDesc"));
+                Log.record(TAG, jo.getString("resultDesc"));
             }
         } catch (Throwable t) {
             Log.printStackTrace(TAG, "animalReserve err:",t);
@@ -184,7 +172,7 @@ public class Reserve extends ModelTask {
                 }
             } else {
                 Log.record(jo.getString("resultDesc"));
-                Log.runtime(s);
+                Log.record(s);
             }
         } catch (Throwable t) {
             Log.printStackTrace(TAG, "queryTreeForExchange err:",t);

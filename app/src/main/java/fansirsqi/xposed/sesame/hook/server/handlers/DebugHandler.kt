@@ -1,40 +1,40 @@
 package fansirsqi.xposed.sesame.hook.server.handlers
 
-import com.fasterxml.jackson.databind.JsonNode
 import fansirsqi.xposed.sesame.hook.RequestManager
+import fansirsqi.xposed.sesame.hook.server.ServerCommon.MIME_JSON
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoHTTPD.IHTTPSession
 import fi.iki.elonen.NanoHTTPD.Response
 
 class DebugHandler(secretToken: String) : BaseHandler(secretToken) {
 
-    override fun onGet(session: IHTTPSession): Response {
-        return ok(mapOf("status" to "success", "method" to "GET", "message" to "Not implemented"))
-    }
-
     override fun onPost(session: IHTTPSession, body: String?): Response {
-        val jsonNode: JsonNode = try {
-            mapper.readTree(body ?: return badRequest("Empty body"))
+        if (body.isNullOrBlank()) {
+            return badRequest("Empty body")
+        }
+
+        val request: RpcRequest = try {
+            mapper.readValue(body, RpcRequest::class.java)
         } catch (e: Exception) {
             return badRequest("Invalid JSON: ${e.message}")
         }
 
-        val methodName = jsonNode.get("methodName")?.asText() ?: return badRequest("Missing methodName")
-        val requestDataNode = jsonNode.get("requestData") ?: return badRequest("Missing requestData")
+        val dataStr = request.getRequestDataString(mapper)
 
-        val requestData = when {
-            requestDataNode.isTextual -> requestDataNode.asText()
-            requestDataNode.isArray || requestDataNode.isObject -> mapper.writeValueAsString(requestDataNode)
-            else -> null
-        } ?: return badRequest("Invalid requestData format")
-
-        val result = try {
-            RequestManager.requestString(methodName, requestData)
-        } catch (e: Exception) {
-            return badRequest("RPC call failed: ${e.message}")
+        if (request.methodName.isBlank() || dataStr.isBlank()) {
+            return badRequest("Fields cannot be empty")
         }
 
-        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, MIME_JSON, result)
-    }
+        return try {
+            val result = RequestManager.requestString(request.methodName, dataStr)
 
+            if (result.isBlank()) {
+                json(Response.Status.OK, mapOf("status" to "empty"))
+            } else {
+                NanoHTTPD.newFixedLengthResponse(Response.Status.OK, MIME_JSON, result)
+            }
+        } catch (e: Exception) {
+            badRequest("RPC Error: ${e.message}")
+        }
+    }
 }

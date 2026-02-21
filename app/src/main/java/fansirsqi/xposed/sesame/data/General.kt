@@ -6,7 +6,7 @@ package fansirsqi.xposed.sesame.data
  */
 object General {
     /**
-     * 支付宝客户端的包名。
+     * 目标应用客户端的包名。
      */
     const val PACKAGE_NAME: String = "com.eg.android.AlipayGphone"
 

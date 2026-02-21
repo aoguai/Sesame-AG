@@ -45,11 +45,11 @@ public class TaskCommon {
      */
     private static boolean checkTimeRangeConfig(List<String> timeConfig, String label, long currentTime) {
         if (isConfigDisabled(timeConfig)) {
-            Log.runtime(label + " 配置已关闭");
+            Log.record(label + " 配置已关闭");
             return false;
         }
 
-        Log.runtime("获取 " + label + " 配置: " + timeConfig);
+        Log.record("获取 " + label + " 配置: " + timeConfig);
         return TimeUtil.checkInTimeRange(currentTime, timeConfig);
     }
 

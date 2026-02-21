@@ -1,19 +1,28 @@
 package fansirsqi.xposed.sesame.util
 
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 
 /**
  * 协程工具类
- * 
+ *
  * 提供协程相关的通用功能，用于替代传统的线程操作
  */
 object CoroutineUtils {
-    
+
     /**
      * 协程安全的延迟方法
-     * 
+     *
      * 在协程环境中使用 delay()，在非协程环境中降级到 Thread.sleep()
-     * 
+     *
      * @param millis 延迟毫秒数
      */
     @JvmStatic
@@ -26,12 +35,12 @@ object CoroutineUtils {
             Thread.sleep(millis)
         }
     }
-    
+
     /**
      * 兼容性延迟方法（同步版本）
-     * 
+     *
      * 在当前线程中执行延迟，自动处理协程和非协程环境
-     * 
+     *
      * @param millis 延迟毫秒数
      */
     @JvmStatic
@@ -42,15 +51,16 @@ object CoroutineUtils {
             }
         } catch (e: Exception) {
             // 降级到传统的 Thread.sleep()
+            Log.printStackTrace("协程延迟异常,已尝试降级到 Thread.sleep()", e)
             try {
                 Thread.sleep(millis)
             } catch (ie: InterruptedException) {
                 Thread.currentThread().interrupt()
-                Log.runtime("CoroutineUtils", "延迟被中断: ${ie.message}")
+                Log.record("CoroutineUtils", "延迟被中断: ${ie.message}")
             }
         }
     }
-    
+
     /**
      * 在指定调度器上运行协程
      */
@@ -67,7 +77,7 @@ object CoroutineUtils {
             }
         }
     }
-    
+
     /**
      * 在IO调度器上运行协程
      */
@@ -75,7 +85,7 @@ object CoroutineUtils {
     fun runOnIO(block: suspend CoroutineScope.() -> Unit): Job {
         return runOnDispatcher(Dispatchers.IO, block)
     }
-    
+
     /**
      * 在计算调度器上运行协程
      */
@@ -83,10 +93,10 @@ object CoroutineUtils {
     fun runOnComputation(block: suspend CoroutineScope.() -> Unit): Job {
         return runOnDispatcher(Dispatchers.Default, block)
     }
-    
+
     /**
      * 同步执行协程代码块
-     * 
+     *
      * 警告：此方法会阻塞当前线程，仅在必要时使用
      */
     @JvmStatic

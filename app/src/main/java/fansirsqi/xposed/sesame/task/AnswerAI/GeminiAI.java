@@ -31,7 +31,7 @@ public class GeminiAI implements AnswerAIInterface {
 
     @Setter
     @Getter
-    private String modelName = "gemini-1.5-flash";
+    private String modelName = "gemini-2.5-flash";
     private final String token;
 
     public GeminiAI(String token) {
@@ -103,7 +103,7 @@ public class GeminiAI implements AnswerAIInterface {
                 String json = response.body().string();
                 if (!response.isSuccessful()) {
                     Log.other("Gemini请求失败");
-                    Log.runtime(TAG, "Gemini接口异常：" + json);
+                    Log.record(TAG, "Gemini接口异常：" + json);
                     return result;
                 }
                 JSONObject jsonObject = new JSONObject(json);

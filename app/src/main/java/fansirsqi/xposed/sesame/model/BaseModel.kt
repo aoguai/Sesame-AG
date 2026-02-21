@@ -1,7 +1,6 @@
 package fansirsqi.xposed.sesame.model
 
 import fansirsqi.xposed.sesame.BuildConfig
-import fansirsqi.xposed.sesame.hook.CaptchaHook.updateHooks
 import fansirsqi.xposed.sesame.model.modelFieldExt.BooleanModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.ChoiceModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.IntegerModelField
@@ -13,7 +12,6 @@ import fansirsqi.xposed.sesame.util.Log
 import fansirsqi.xposed.sesame.util.maps.BeachMap
 import fansirsqi.xposed.sesame.util.maps.IdMapManager
 import lombok.Getter
-
 
 /**
  * 基础配置模块
@@ -33,18 +31,6 @@ class BaseModel : Model() {
 
     override fun getEnableFieldName(): String {
         return "启用模块"
-    }
-
-    override fun boot(classLoader: ClassLoader?) {
-        // 配置已加载，更新验证码Hook状态
-        try {
-            updateHooks(
-                enableCaptchaUIHook.value
-            )
-            Log.record(TAG, "✅ 验证码Hook配置已同步")
-        } catch (t: Throwable) {
-            Log.printStackTrace(TAG, "❌ 验证码Hook配置同步失败", t)
-        }
     }
 
     override fun getFields(): ModelFields {
@@ -70,8 +56,7 @@ class BaseModel : Model() {
             modelFields.addField(sendHookDataUrl) //Hook数据转发地址
         }
 
-        modelFields.addField(batteryPerm) //是否申请支付宝的后台运行权限
-        modelFields.addField(enableCaptchaUIHook) //验证码UI层拦截
+        modelFields.addField(batteryPerm) //是否申请目标应用的后台运行权限
         modelFields.addField(recordLog) //是否记录record日志
         modelFields.addField(runtimeLog) //是否记录runtime日志
         modelFields.addField(showToast) //是否显示气泡提示
@@ -81,7 +66,6 @@ class BaseModel : Model() {
         modelFields.addField(toastPerfix)//气泡提示的前缀
         return modelFields
     }
-
 
     interface TimedTaskModel {
         companion object {
@@ -104,7 +88,7 @@ class BaseModel : Model() {
          * //手动触发是否自动安排下次执行
          */
         @Getter
-        val manualTriggerAutoSchedule: BooleanModelField = BooleanModelField("manualTriggerAutoSchedule", "手动触发支付宝运行", false)
+        val manualTriggerAutoSchedule: BooleanModelField = BooleanModelField("manualTriggerAutoSchedule", "手动触发目标应用运行", false) //一般人不开这个
 
         /**
          * 执行间隔时间（分钟）
@@ -116,7 +100,7 @@ class BaseModel : Model() {
          * 任务执行轮数配置
          */
         @Getter
-        val taskExecutionRounds: IntegerModelField = IntegerModelField("taskExecutionRounds", "任务执行轮数", 2, 1, 99)
+        val taskExecutionRounds: IntegerModelField = IntegerModelField("taskExecutionRounds", "任务执行轮数", 1, 1, 99) //1轮就好，没必要2轮
 
         /**
          * 定时执行的时间点列表
@@ -127,7 +111,6 @@ class BaseModel : Model() {
                 "0010", "0030", "0100", "0700", "0730", "1200", "1230", "1700", "1730", "2000", "2030", "2359"
             )
         )
-
 
         /**
          * 定时唤醒的时间点列表
@@ -192,16 +175,10 @@ class BaseModel : Model() {
         val debugMode: BooleanModelField = BooleanModelField("debugMode", "开启抓包(基于新接口)", false)
 
         /**
-         * 是否申请支付宝的后台运行权限
+         * 是否申请目标应用的后台运行权限
          */
         @Getter
-        val batteryPerm: BooleanModelField = BooleanModelField("batteryPerm", "为支付宝申请后台运行权限", true)
-
-        /**
-         * 验证码UI层拦截（阻止对话框显示）
-         */
-        @Getter
-        val enableCaptchaUIHook: BooleanModelField = BooleanModelField("enableCaptchaUIHook", "🛡️拒绝访问VPN弹窗拦截", false)
+        val batteryPerm: BooleanModelField = BooleanModelField("batteryPerm", "为目标应用申请后台运行权限", true)
 
 
         /**
@@ -255,7 +232,7 @@ class BaseModel : Model() {
         @JvmStatic
         fun destroyData() {
             try {
-                Log.runtime(TAG, "🧹清理所有数据")
+                Log.record(TAG, "🧹清理所有数据")
                 IdMapManager.getInstance(BeachMap::class.java).clear()
                 //            IdMapManager.getInstance(ReserveaMap.class).clear();
 //            IdMapManager.getInstance(CooperateMap.class).clear();

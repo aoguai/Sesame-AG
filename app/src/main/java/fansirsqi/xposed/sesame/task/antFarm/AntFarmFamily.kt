@@ -6,6 +6,7 @@ import fansirsqi.xposed.sesame.extensions.JSONExtensions.toJSONArray
 import fansirsqi.xposed.sesame.model.modelFieldExt.SelectModelField
 import fansirsqi.xposed.sesame.task.antFarm.AntFarm.AnimalFeedStatus
 import fansirsqi.xposed.sesame.task.antFarm.AntFarm.AnimalInteractStatus
+import fansirsqi.xposed.sesame.util.GlobalThreadPools
 import fansirsqi.xposed.sesame.util.Log
 import fansirsqi.xposed.sesame.util.RandomUtil
 import fansirsqi.xposed.sesame.util.ResChecker
@@ -54,7 +55,7 @@ data object AntFarmFamily {
         try {
             enterFamily(familyOptions, notInviteList)
         } catch (e: Exception) {
-            Log.printStackTrace(TAG, e.message, e)
+            Log.printStackTrace(TAG, e)
         }
     }
 
@@ -117,9 +118,12 @@ data object AntFarmFamily {
                 if (familyOptions.value.contains("shareToFriends")) {
                     familyShareToFriends(familyUserIds, notInviteList)
                 }
+                if (familyOptions.value.contains("ExchangeFamilyDecoration")) {
+                    autoExchangeFamilyDecoration()
+                }
             }
         } catch (e: Exception) {
-            Log.printStackTrace(TAG, e.message, e)
+            Log.printStackTrace(TAG,  e)
         }
     }
 
@@ -134,7 +138,7 @@ data object AntFarmFamily {
                 Log.farm("家庭任务🏡每日签到")
             }
         } catch (e: Exception) {
-            Log.printStackTrace(TAG, e.message, e)
+            Log.printStackTrace(TAG,  e)
         }
     }
 
@@ -224,7 +228,7 @@ data object AntFarmFamily {
 
                 // 如果该用户已经记录今日上限 → 跳过
                 if (Status.hasFlagToday(flagKey)) {
-                    Log.runtime("[$userId] 今日喂鸡次数已达上限（已记录）🥣，跳过")
+                    Log.record("[$userId] 今日喂鸡次数已达上限（已记录）🥣，跳过")
                     continue
                 }
 
@@ -238,7 +242,7 @@ data object AntFarmFamily {
                     if (code == "391") {
                         // 记录该用户今日不能再喂
                         Status.setFlagToday(flagKey)
-                        Log.runtime("[$userId] 今日帮喂次数已达上限🥣，已记录为当日限制")
+                        Log.record("[$userId] 今日帮喂次数已达上限🥣，已记录为当日限制")
                     } else {
                         Log.error(TAG, "喂食失败 user=$userId code=$code msg=${jo.optString("memo")}")
                     }
@@ -571,7 +575,7 @@ data object AntFarmFamily {
                 return
             }
 
-            Log.runtime(TAG, "inviteList: $inviteList")
+            Log.record(TAG, "inviteList: $inviteList")
 
             val jo = JSONObject(AntFarmRpcCall.inviteFriendVisitFamily(inviteList))
             if (ResChecker.checkRes(TAG, jo)) {
@@ -582,6 +586,97 @@ data object AntFarmFamily {
             Log.printStackTrace(TAG, "familyShareToFriends err:", t)
         }
     }
+
+
+    /**
+     * 自动购买家具
+     */
+    fun autoExchangeFamilyDecoration() {
+        Log.record(TAG, "[家庭装扮] 启动分类购买任务...")
+        try {
+            // 获取活动 ID
+            val familyRes = AntFarmRpcCall.enterFamily()
+            val familyJo = JSONObject(familyRes)
+            if (!ResChecker.checkRes(TAG, familyJo)) return
+
+            val activityId = familyJo.optString("decorationCoinActivityId", "20250808")
+            Log.record(TAG, "[家庭装扮] 当前活动 ID: $activityId")
+
+            // 分类列表
+            val labelTypes = listOf(
+                "", "recentlyAdded", "sofa", "seat2", "seat4", "seat5", "seat3",
+                "curtain", "table", "carpet", "mattress", "bed3", "bed4",
+                "bed5", "ceiling", "windowView", "firstFloor", "firstWall", "secondFloor",
+                "secondWall", "leftWallDecoration", "rightWallDecoration", "treadmill", "slide"
+            )
+
+            var currentBalance = 0
+
+            for (label in labelTypes) {
+                var startIndex = 0
+                var hasMore = true
+                Log.record(TAG, "[家庭装扮] 正在检查分类: ${if (label.isEmpty()) "新品" else label}")
+
+                while (hasMore) {
+                    val itemListRes = AntFarmRpcCall.getFitmentItemList(activityId, 10, label, startIndex)
+                    val itemJo = JSONObject(itemListRes)
+                    if (!ResChecker.checkRes(TAG, itemJo)) break
+
+                    // 解析实时装修金余额
+                    val accountInfo = itemJo.optJSONObject("mallAccountInfoVO")
+                    currentBalance = accountInfo?.optJSONObject("holdingCount")?.optInt("cent") ?: 0
+
+                    val items = itemJo.optJSONArray("itemInfoVOList")
+                    if (items == null || items.length() == 0) break
+
+                    for (j in 0 until items.length()) {
+                        val item = items.getJSONObject(j)
+                        val spuId = item.getString("spuId")
+                        val spuName = item.getString("spuName")
+                        val price = item.optJSONObject("minPrice")?.optInt("cent") ?: 9999999
+
+                        val itemStatusList = item.optJSONArray("itemStatusList")
+                        val canBuy = itemStatusList == null || itemStatusList.length() == 0
+
+                        if (canBuy && currentBalance >= price) {
+                            val skuList = item.optJSONArray("skuModelList")
+                            if (skuList != null && skuList.length() > 0) {
+                                val skuId = skuList.getJSONObject(0).getString("skuId")
+                                Log.record(TAG, "[家庭装扮] 发现未拥有家具: $spuName")
+
+                                val exchangeRes = AntFarmRpcCall.exchangeBenefit(spuId, skuId, activityId)
+                                val exchangeJo = JSONObject(exchangeRes)
+
+                                if (ResChecker.checkRes(TAG, exchangeJo)) {
+                                    Log.farm("家庭装扮💸#成功购买[$spuName]#消耗[${price/100}装修金]")
+                                    currentBalance -= price
+                                }
+                                GlobalThreadPools.sleepCompat(2000)
+                            }
+                        }
+                    }
+
+                    val nextIndex = itemJo.optInt("nextStartIndex", 0)
+                    val hasMoreField = itemJo.optBoolean("hasMore", false)
+                    if (hasMoreField && nextIndex > startIndex) {
+                        startIndex = nextIndex
+                    } else {
+                        hasMore = false
+                    }
+                }
+
+                // 当处理完 seat3 分类后，如果装修金 < 49，终止后续更贵的分类的遍历
+                if (currentBalance < 4900 && label == "seat3") {
+                    Log.record(TAG, "[家庭装扮] 装修金不足 49 且已完成 seat3 遍历，终止任务")
+                    break
+                }
+            }
+            Log.record(TAG, "[家庭装扮] 全量检查任务执行完毕")
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "autoExchangeFamilyDecoration 失败", t)
+        }
+    }
+
 
     /**
      * 通用时间差格式化（自动区分过去/未来）

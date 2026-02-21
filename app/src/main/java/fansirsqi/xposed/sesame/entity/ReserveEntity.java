@@ -8,7 +8,7 @@ import java.util.Set;
 import fansirsqi.xposed.sesame.util.maps.IdMapManager;
 import fansirsqi.xposed.sesame.util.maps.ReserveaMap;
 /**
- * 表示支付宝保留项的实体类，包含 ID 和名称。
+ * 表示目标应用保留项的实体类，包含 ID 和名称。
  */
 public class ReserveEntity extends MapperEntity {
     // 使用 volatile 关键字确保多线程环境下的可见性

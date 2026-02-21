@@ -148,7 +148,7 @@ public class RuntimeInfo {
             joAll.put(userId, joCurrent);
         } catch (JSONException e) {
             // 错误日志
-            Log.runtime(TAG, "put err:");
+            Log.record(TAG, "put err:");
             Log.printStackTrace(TAG, e);
         }
         // 保存数据到文件

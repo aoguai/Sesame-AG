@@ -2,11 +2,11 @@ package fansirsqi.xposed.sesame.util.maps
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
 import fansirsqi.xposed.sesame.util.Files
 import fansirsqi.xposed.sesame.util.JsonUtil
 import fansirsqi.xposed.sesame.util.Log
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 抽象通用映射工具类，支持任意类型的Key和Value。
@@ -65,7 +65,7 @@ abstract class IdMaps private constructor() {
     @Synchronized
     fun load(userId: String? = null) {
         if (userId.isNullOrEmpty()) {
-            Log.runtime(TAG, "Skip loading map for empty userId")
+            Log.record(TAG, "Skip loading map for empty userId")
             doLoadGlobal()
         } else {
             idMap.clear()
@@ -101,7 +101,7 @@ abstract class IdMaps private constructor() {
         return try {
             val json = JsonUtil.formatJson(idMap)
             val file = Files.getTargetFileofUser(userId, thisFileName())
-            Files.write2File(json, file)
+            Files.write2File(json, file!!)
         } catch (e: Exception) {
             Log.printStackTrace(e)
             false

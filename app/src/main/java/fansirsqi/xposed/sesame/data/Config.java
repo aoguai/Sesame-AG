@@ -153,7 +153,7 @@ public class Config {
             }
         } catch (Exception e) {
             Log.printStackTrace(TAG, e);
-            Log.runtime(TAG, "保存用户配置失败，格式化 JSON 时出错");
+            Log.record(TAG, "保存用户配置失败，格式化 JSON 时出错");
             return false;
         }
         boolean success;
@@ -174,10 +174,10 @@ public class Config {
                 UserEntity userEntity = UserMap.get(userId);
                 userName = userEntity != null ? userEntity.getShowName() : "默认";
             }
-            Log.runtime(TAG, "保存 [" + userName + "] 配置");
+            Log.record(TAG, "保存 [" + userName + "] 配置");
         } catch (Exception e) {
             Log.printStackTrace(TAG, e);
-            Log.runtime(TAG, "保存用户配置失败");
+            Log.record(TAG, "保存用户配置失败");
             return false;
         }
         return true;
@@ -218,7 +218,7 @@ public class Config {
 
             if (configV2FileExists) {
                 String json = Files.readFromFile(configV2File);
-                Log.runtime(TAG, "读取配置文件成功: " + configV2File.getPath());
+//                Log.record(TAG, "读取配置文件成功: " + configV2File.getPath());
                 try {
                     JsonUtil.copyMapper().readerForUpdating(INSTANCE).readValue(json);
                 } catch (UnrecognizedPropertyException e) {
@@ -239,10 +239,9 @@ public class Config {
                         throw innerEx; // 抛出内部异常，触发重置逻辑
                     }
                 }
-                Log.record(TAG, "格式化配置成功:"+configV2File);
+//                Log.record(TAG, "格式化配置成功:"+configV2File);
                 String formatted = toSaveStr();
                 if (formatted != null && !formatted.equals(json)) {
-                    Log.record(TAG, "格式化配置: " + userName);
                     Files.write2File(formatted, configV2File);
                 }
             } else if (defaultConfigV2FileExists) {
@@ -252,12 +251,10 @@ public class Config {
                 Files.write2File(json, configV2File);
             } else {
                 unload();
-                Log.record(TAG, "初始新配置: " + userName);
                 Files.write2File(toSaveStr(), configV2File);
             }
         } catch (Throwable t) {
-            Log.error(TAG, "重置配置失败"+ t);
-            Log.error(TAG, "重置配置: " + userName);
+            Log.printStackTrace(TAG, "重置配置失败", t);
             try {
                 unload();
                 if (configV2File != null) {

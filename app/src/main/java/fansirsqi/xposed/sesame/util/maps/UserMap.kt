@@ -2,7 +2,7 @@ package fansirsqi.xposed.sesame.util.maps
 
 import com.fasterxml.jackson.core.type.TypeReference
 import fansirsqi.xposed.sesame.entity.UserEntity
-import fansirsqi.xposed.sesame.newutil.DataStore
+import fansirsqi.xposed.sesame.util.DataStore
 import fansirsqi.xposed.sesame.util.Files
 import fansirsqi.xposed.sesame.util.JsonUtil
 import fansirsqi.xposed.sesame.util.Log
@@ -49,7 +49,6 @@ object UserMap {
     @JvmStatic
     @Synchronized
     fun setCurrentUserId(userId: String?) {
-        Log.runtime(TAG, "setCurrentUserId: $userId")
         currentUid = if (userId.isNullOrEmpty()) null else userId
     }
 
@@ -69,7 +68,7 @@ object UserMap {
     @JvmStatic
     fun getMaskName(userId: String?): String? {
         if (userId == null) {
-            Log.runtime(TAG, "getMaskName: userId is null")
+            Log.record(TAG, "getMaskName: userId is null")
             return null
         } // 关键修复：防止 userMap.get(null) 崩溃
         return userMap[userId]?.maskName
@@ -163,7 +162,7 @@ object UserMap {
     @Synchronized
     fun save(userId: String?): Boolean {
         if (userId.isNullOrEmpty()) return false
-        return Files.write2File(JsonUtil.formatJson(userMap), Files.getFriendIdMapFile(userId))
+        return Files.write2File(JsonUtil.formatJson(userMap), Files.getFriendIdMapFile(userId)!!)
     }
 
     /**
@@ -176,7 +175,7 @@ object UserMap {
         if (userId.isNullOrEmpty()) return
 
         try {
-            val body = Files.readFromFile(Files.getSelfIdFile(userId))
+            val body = Files.readFromFile(Files.getSelfIdFile(userId)!!)
             if (body.isNotEmpty()) {
                 val dto: UserEntity.UserDto? = JsonUtil.parseObject(
                     body,
@@ -202,13 +201,12 @@ object UserMap {
     @JvmStatic
     @Synchronized
     fun saveSelf(userEntity: UserEntity?) {
-        Log.runtime(TAG, "saveSelf: $userEntity")
         if (userEntity != null) {
             // 2. 直接存入对象！DataStore 会自动转 JSON 并写入文件
             DataStore.put("activedUser", userEntity)
-            Log.runtime(TAG, "已更新当前用户信息到 DataStore")
+            Log.record(TAG, "update now active user: $userEntity")
         }
         val body = JsonUtil.formatJson(userEntity)
-        Files.write2File(body, Files.getSelfIdFile(userEntity?.userId))
+        Files.write2File(body, Files.getSelfIdFile(userEntity?.userId)!!)
     }
 }

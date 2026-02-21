@@ -137,7 +137,7 @@
     <string name="double_count_limit">双击卡次数限制</string>
     <string name="ins_blue_bean_exchange">安心豆兑换时光加速器</string>
     <string name="enable_on_going">开启状态栏禁删</string>
-    <string name="battery_perm">为支付宝申请后台运行权限</string>
+    <string name="battery_perm">为目标应用申请后台运行权限</string>
     <string name="new_rpc">使用新接口(最低支持v10.3.96.8100)</string>
     <string name="debug_mode">开启抓包(基于新接口)</string>
     <string name="language_simplified_chinese">界面始终使用中文</string>
@@ -180,7 +180,7 @@
     <string name="close">关闭</string>
     <string name="ant_book_read">读书听书</string>
     <string name="omegakoi_town">支小镇</string>
-    <string name="consume_gold">支付宝消费金</string>
+    <string name="consume_gold">目标应用消费金</string>
     <string name="use_special_food">使用特殊食品</string>
     <string name="file_exported">文件已导出到: </string>
     <string name="file_cleared">文件已清空</string>
@@ -202,6 +202,6 @@
     <string name="clear_photo">清空光盘行动图片💿</string>
     <string name="all_log_file">全部日志</string>
     <string name="error_log_file">异常日志</string>
-    <string name="xposed_description">今夜月明人尽望，不知秋思落谁家。</string>
+    <string name="xposed_description">大鹏一日同风起，扶摇直上九万里。</string>
 
 </resources>

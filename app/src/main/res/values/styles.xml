@@ -8,8 +8,12 @@
         <item name="titleTextColor">@color/active_text</item>
         <item name="subtitleTextColor">@color/active_text</item>
         <item name="android:navigationBarColor">@color/colorPrimary</item>
+        <!-- 核心修改 1: 设置状态栏颜色为透明 -->
         <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:windowTranslucentStatus">true</item>
+        <!-- <item name="android:windowTranslucentStatus">true</item>-->
+        <item name="android:windowTranslucentStatus">false</item>
+        <!-- 推荐新增：让导航栏也变透明 (可选) -->
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="windowNoTitle">true</item>
         <!-- 设置actionOverflowMenuStyle以自定义菜单的背景 -->
         <item name="actionOverflowMenuStyle">@style/MenuTheme</item>

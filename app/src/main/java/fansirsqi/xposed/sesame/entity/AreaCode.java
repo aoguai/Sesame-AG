@@ -58,7 +58,7 @@ public class AreaCode extends MapperEntity {
             return new JSONArray(cityCode);
         } catch (JSONException e) {
             // 解析失败，使用默认城市代码
-            Log.runtime(TAG, "parseCityCode failed with error message: " + e.getMessage()+"\n Now use default cities.");
+            Log.record(TAG, "parseCityCode failed with error message: " + e.getMessage()+"\n Now use default cities.");
             JSONArray defaultCities = new JSONArray();
             defaultCities.put(new JSONObject().put("cityCode", "350100").put("cityName", "福州市"));
             defaultCities.put(new JSONObject().put("cityCode", "440100").put("cityName", "广州市"));

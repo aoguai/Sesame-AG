@@ -90,6 +90,7 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            color: var(--semi-color-text-0);
         }
 
         .list-count-input {
@@ -160,7 +161,7 @@
             const applyTheme = () => {
                 let isDark = false;
                 if (window.HOOK && window.HOOK.isNightMode) {
-                    try { isDark = window.HOOK.isNightMode(); } catch (e) {}
+                    try { isDark = window.HOOK.isNightMode(); } catch (e) { }
                 } else {
                     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) isDark = true;
                 }
@@ -220,7 +221,7 @@
 
                 // 1. 先获取原始数据
                 let listData = getFieldData(modelCode, code);
-                
+
                 // 2. 解析当前已选中的 ID，用于排序
                 const newSelectedIds = new Set();
                 const newSelectedCounts = {};
@@ -456,8 +457,8 @@
                         visible={sheetVisible}
                         onCancel={() => setSheetVisible(false)}
                         width="100%"
-                        placement="right" 
-                        bodyStyle={{ padding: 10 }} 
+                        placement="right"
+                        bodyStyle={{ padding: 10 }}
                     >
                         <Text>{sheetConfig.desc}</Text>
                         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--semi-color-border)' }}>

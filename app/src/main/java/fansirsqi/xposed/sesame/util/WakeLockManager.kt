@@ -3,7 +3,6 @@ package fansirsqi.xposed.sesame.util
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.PowerManager
-import fansirsqi.xposed.sesame.util.Log
 
 /**
  * 唤醒锁管理器
@@ -25,7 +24,7 @@ object WakeLockManager {
     @Synchronized
     fun acquire(context: Context, timeout: Long = 600_000L) {
         if (wakeLock?.isHeld == true) {
-            Log.debug(TAG, "唤醒锁已被持有，无需重复获取")
+             Log.record(TAG, "唤醒锁已被持有，无需重复获取")
             return
         }
         try {
@@ -50,7 +49,7 @@ object WakeLockManager {
                 wakeLock?.release()
                 Log.record(TAG, "🔑 唤醒锁已释放")
             } else {
-                Log.debug(TAG, "唤醒锁未被持有，无需释放")
+                 Log.record(TAG, "唤醒锁未被持有，无需释放")
             }
             wakeLock = null
         } catch (e: Exception) {

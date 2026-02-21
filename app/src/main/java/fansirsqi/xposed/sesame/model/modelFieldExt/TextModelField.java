@@ -1,8 +1,8 @@
 package fansirsqi.xposed.sesame.model.modelFieldExt;
 
+import static fansirsqi.xposed.sesame.ui.extension.UiExtensionsKt.openUrl;
+
 import android.content.Context;
-import android.content.Intent;
-import android.net.Uri;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -15,8 +15,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import fansirsqi.xposed.sesame.R;
 import fansirsqi.xposed.sesame.model.ModelField;
-import fansirsqi.xposed.sesame.ui.HtmlViewerActivity;
-import fansirsqi.xposed.sesame.ui.StringDialog;
+import fansirsqi.xposed.sesame.ui.widget.StringDialog;
 
 public class TextModelField extends ModelField<String> {
     public TextModelField(String code, String name, String value) {
@@ -79,9 +78,8 @@ public class TextModelField extends ModelField<String> {
             btn.setAllCaps(false);
             btn.setOnClickListener(v -> {
                 Context innerContext = v.getContext();
-                Intent it = new Intent(innerContext, HtmlViewerActivity.class);
-                it.setData(Uri.parse(getConfigValue()));
-                innerContext.startActivity(it);
+                String url = getConfigValue();
+                openUrl(innerContext, url);
             });
             return btn;
         }

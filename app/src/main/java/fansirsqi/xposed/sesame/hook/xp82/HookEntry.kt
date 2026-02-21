@@ -19,7 +19,9 @@ class HookEntry : IXposedHookLoadPackage {
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         try {
             // 只在目标应用执行
-            if (lpparam.packageName != General.PACKAGE_NAME) return
+            if (lpparam.packageName != General.PACKAGE_NAME) {
+                return
+            }
             // 只在主进程执行（防止子进程重复初始化）
             XposedEnv.classLoader = lpparam.classLoader
             XposedEnv.appInfo = lpparam.appInfo
@@ -37,4 +39,5 @@ class HookEntry : IXposedHookLoadPackage {
             XposedBridge.log(e)
         }
     }
+
 }

@@ -67,7 +67,7 @@ object Detector {
             return false
         }
         val isEmbedded = isEmbeddedNative(context)
-        Log.runtime(TAG, "isEmbedded: $isEmbedded")
+        Log.record(TAG, "isEmbedded: $isEmbedded")
         return isEmbedded
     }
 
@@ -84,10 +84,10 @@ object Detector {
         try {
             val pm = context.packageManager
             val appInfo = pm.getApplicationInfo(packageName, 0)
-            Log.runtime(TAG, "appInfo.sourceDir: " + appInfo.sourceDir)
+            Log.record(TAG, "appInfo.sourceDir: " + appInfo.sourceDir)
             return appInfo.sourceDir
         } catch (_: PackageManager.NameNotFoundException) {
-            Log.runtime(TAG, "Package not found: $packageName")
+            Log.record(TAG, "Package not found: $packageName")
             return null
         }
     }

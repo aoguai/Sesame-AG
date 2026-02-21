@@ -6,7 +6,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 /**
- * 表示支付宝海滩的实体类，包含 ID 和名称。
+ * 表示目标应用海滩的实体类，包含 ID 和名称。
  */
 public class AlipayBeach extends MapperEntity {
     // 使用 volatile 关键字确保多线程环境下的可见性

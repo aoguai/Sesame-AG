@@ -70,7 +70,7 @@ public class FriendWatch extends MapperEntity {
             }
             joSingle.put("weekGet", joSingle.optInt("weekGet", 0) + collectedEnergy);
         } catch (Throwable th) {
-            Log.runtime(getTAG(), "friendWatch err:");
+            Log.record(getTAG(), "friendWatch err:");
             Log.printStackTrace(getTAG(), th);
         }
     }
@@ -79,7 +79,7 @@ public class FriendWatch extends MapperEntity {
         try {
             if (getJoFriendWatch() == null) {
                 setJoFriendWatch(new JSONObject());
-                Log.runtime(getTAG(), "初始化joFriendWatch对象");
+                Log.record(getTAG(), "初始化joFriendWatch对象");
             }
             String notformat = getJoFriendWatch().toString();
             String formattedJson = JsonUtil.formatJson(getJoFriendWatch());
@@ -89,7 +89,7 @@ public class FriendWatch extends MapperEntity {
                 Files.write2File(notformat, Files.getFriendWatchFile(userId));
             }
         } catch (Exception e) {
-            Log.runtime(getTAG(), "friendWatch save err:");
+            Log.record(getTAG(), "friendWatch save err:");
             Log.printStackTrace(getTAG(), e);
         }
     }
@@ -115,7 +115,7 @@ public class FriendWatch extends MapperEntity {
             }
             Files.write2File(getJoFriendWatch().toString(), Files.getFriendWatchFile(userId));
         } catch (Throwable th) {
-            Log.runtime(getTAG(), "friendWatchNewWeek err:");
+            Log.record(getTAG(), "friendWatchNewWeek err:");
             Log.printStackTrace(getTAG(), th);
         }
     }
@@ -183,7 +183,7 @@ public class FriendWatch extends MapperEntity {
                 list.add(friendWatch);
             }
         } catch (Throwable t) {
-            Log.runtime(getTAG(), "FriendWatch getList: ");
+            Log.record(getTAG(), "FriendWatch getList: ");
             Log.printStackTrace(getTAG(), t);
             try {
                 Files.write2File(new JSONObject().toString(), Files.getFriendWatchFile(userId));

@@ -96,7 +96,7 @@ public abstract class IdMapManager {
      */
     public synchronized void load(String userId) {
         if (userId == null || userId.isEmpty()) {
-            Log.runtime(TAG, "Skip loading map for empty userId");
+            Log.record(TAG, "Skip loading map for empty userId");
             load();
         } else {
             idMap.clear();
@@ -137,7 +137,7 @@ public abstract class IdMapManager {
             }
             // 2. 新文件不存在，检查旧文件是否存在
             if (oldFile.exists()) {
-                Log.runtime(TAG, "Old configuration file found, migrating to new path...");
+                Log.record(TAG, "Old configuration file found, migrating to new path...");
 
                 try {
                     String body = Files.readFromFile(oldFile);
@@ -159,7 +159,7 @@ public abstract class IdMapManager {
 
             // 3. 新旧文件都不存在，初始化默认配置
             if (!newFile.exists()) {
-                Log.runtime(TAG, "Configuration file not found, initializing an empty configuration file...");
+                Log.record(TAG, "Configuration file not found, initializing an empty configuration file...");
                 String json = JsonUtil.formatJson(idMap);
                 if (json != null && !json.isEmpty()) {
                     Files.write2File(json, newFile);

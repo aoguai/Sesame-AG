@@ -1,5 +1,0 @@
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <!-- 半透明黑色，透明度可调节，颜色深浅决定“毛玻璃”的暗淡度 -->
-    <solid android:color="#20FFFFFF" />  <!-- 80%黑色透明 -->
-    <corners android:radius="12dp" />
-</shape>

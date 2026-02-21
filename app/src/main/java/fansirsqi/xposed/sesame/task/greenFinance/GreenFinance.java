@@ -64,25 +64,13 @@ public class GreenFinance extends ModelTask {
         return modelFields;
     }
     @Override
-    public Boolean check() {
-        if (TaskCommon.IS_ENERGY_TIME){
-            Log.record(TAG,"⏸ 当前为只收能量时间【"+ BaseModel.Companion.getEnergyTime().getValue() +"】，停止执行" + getName() + "任务！");
-            return false;
-        }else if (TaskCommon.IS_MODULE_SLEEP_TIME) {
-            Log.record(TAG,"💤 模块休眠时间【"+ BaseModel.Companion.getModelSleepTime().getValue() +"】停止执行" + getName() + "任务！");
-            return false;
-        } else {
-            return true;
-        }
-    }
-    @Override
     protected void runJava() {
         try {
             Log.record(TAG,"执行开始-" + getName());
             String s = GreenFinanceRpcCall.greenFinanceIndex();
             JSONObject jo = new JSONObject(s);
             if (!jo.optBoolean("success")) {
-                Log.runtime(TAG, jo.optString("resultDesc"));
+                Log.record(TAG, jo.optString("resultDesc"));
                 return;
             }
             JSONObject result = jo.getJSONObject("result");
@@ -141,7 +129,7 @@ public class GreenFinance extends ModelTask {
             String s = taskQuery(appletId);
             JSONObject jo = new JSONObject(s);
             if (!jo.optBoolean("success")) {
-                Log.runtime(tag + ".doTask.taskQuery", jo.optString("resultDesc"));
+                Log.record(tag + ".doTask.taskQuery", jo.optString("resultDesc"));
                 return;
             }
             JSONObject result = jo.getJSONObject("result");
@@ -160,7 +148,7 @@ public class GreenFinance extends ModelTask {
                     s = taskTrigger(taskId, "receive", appletId);
                     jo = new JSONObject(s);
                     if (!jo.optBoolean("success")) {
-                        Log.runtime(tag + ".doTask.receive", jo.optString("resultDesc"));
+                        Log.record(tag + ".doTask.receive", jo.optString("resultDesc"));
                         continue;
                     }
                 } else if ("NONE_SIGNUP".equals(status)) {
@@ -168,7 +156,7 @@ public class GreenFinance extends ModelTask {
                     s = taskTrigger(taskId, "signup", appletId);
                     jo = new JSONObject(s);
                     if (!jo.optBoolean("success")) {
-                        Log.runtime(tag + ".doTask.signup", jo.optString("resultDesc"));
+                        Log.record(tag + ".doTask.signup", jo.optString("resultDesc"));
                         continue;
                     }
                 }
@@ -177,7 +165,7 @@ public class GreenFinance extends ModelTask {
                     s = taskTrigger(taskId, "send", appletId);
                     jo = new JSONObject(s);
                     if (!jo.optBoolean("success")) {
-                        Log.runtime(tag + ".doTask.send", jo.optString("resultDesc"));
+                        Log.record(tag + ".doTask.send", jo.optString("resultDesc"));
                         continue;
                     }
                 } else if (!"TO_RECEIVE".equals(status)) {
@@ -204,7 +192,7 @@ public class GreenFinance extends ModelTask {
                 int totalCollectPoint = joSelfCollect.getJSONObject("result").getInt("totalCollectPoint");
                 Log.other("绿色经营📊收集获得" + totalCollectPoint);
             } else {
-                Log.runtime(TAG + ".batchSelfCollect", joSelfCollect.optString("resultDesc"));
+                Log.record(TAG + ".batchSelfCollect", joSelfCollect.optString("resultDesc"));
             }
         } catch (Throwable th) {
             Log.printStackTrace(TAG, "batchSelfCollect err:",th);
@@ -221,7 +209,7 @@ public class GreenFinance extends ModelTask {
             String s = GreenFinanceRpcCall.signInQuery(sceneId);
             JSONObject jo = new JSONObject(s);
             if (!jo.optBoolean("success")) {
-                Log.runtime(TAG + ".signIn.signInQuery", jo.optString("resultDesc"));
+                Log.record(TAG + ".signIn.signInQuery", jo.optString("resultDesc"));
                 return;
             }
             JSONObject result = jo.getJSONObject("result");
@@ -234,7 +222,7 @@ public class GreenFinance extends ModelTask {
             if (jo.optBoolean("success")) {
                 Log.other("绿色经营📊签到成功");
             } else {
-                Log.runtime(TAG + ".signIn.signInTrigger", jo.optString("resultDesc"));
+                Log.record(TAG + ".signIn.signInTrigger", jo.optString("resultDesc"));
             }
         } catch (Throwable th) {
             Log.printStackTrace(TAG, "signIn err:",th);
@@ -277,7 +265,7 @@ public class GreenFinance extends ModelTask {
             String str = GreenFinanceRpcCall.queryUserTickItem(type);
             JSONObject jsonObject = new JSONObject(str);
             if (!jsonObject.optBoolean("success")) {
-                Log.runtime(TAG + ".doTick.queryUserTickItem", jsonObject.optString("resultDesc"));
+                Log.record(TAG + ".doTick.queryUserTickItem", jsonObject.optString("resultDesc"));
                 return;
             }
             JSONArray jsonArray = jsonObject.getJSONArray("result");
@@ -314,7 +302,7 @@ public class GreenFinance extends ModelTask {
             GlobalThreadPools.sleepCompat(300);
             JSONObject jsonObject = new JSONObject(str);
             if (!jsonObject.optBoolean("success")) {
-                Log.runtime(TAG + ".donation.queryExpireMcaPoint", jsonObject.optString("resultDesc"));
+                Log.record(TAG + ".donation.queryExpireMcaPoint", jsonObject.optString("resultDesc"));
                 return;
             }
             String strAmount = JsonUtil.getValueByPath(jsonObject, "result.expirePoint.amount");
@@ -331,7 +319,7 @@ public class GreenFinance extends ModelTask {
             GlobalThreadPools.sleepCompat(300);
             jsonObject = new JSONObject(str);
             if (!jsonObject.optBoolean("success")) {
-                Log.runtime(TAG + ".donation.queryAllDonationProjectNew", jsonObject.optString("resultDesc"));
+                Log.record(TAG + ".donation.queryAllDonationProjectNew", jsonObject.optString("resultDesc"));
                 return;
             }
             JSONArray result = jsonObject.getJSONArray("result");
@@ -360,7 +348,7 @@ public class GreenFinance extends ModelTask {
                 GlobalThreadPools.sleepCompat(1000);
                 jsonObject = new JSONObject(str);
                 if (!jsonObject.optBoolean("success")) {
-                    Log.runtime(TAG + ".donation." + id, jsonObject.optString("resultDesc"));
+                    Log.record(TAG + ".donation." + id, jsonObject.optString("resultDesc"));
                     return;
                 }
                 Log.other("绿色经营📊成功捐助[" + name + "]" + am + "金币");
@@ -382,7 +370,7 @@ public class GreenFinance extends ModelTask {
         String str = GreenFinanceRpcCall.queryPrizes(campId);
         JSONObject jsonObject = new JSONObject(str);
         if (!jsonObject.optBoolean("success")) {
-            Log.runtime(TAG + ".prizes.queryPrizes", jsonObject.optString("resultDesc"));
+            Log.record(TAG + ".prizes.queryPrizes", jsonObject.optString("resultDesc"));
             return;
         }
         JSONArray prizes = (JSONArray) JsonUtil.getValueByPathObject(jsonObject, "result.prizes");
@@ -401,7 +389,7 @@ public class GreenFinance extends ModelTask {
         str = GreenFinanceRpcCall.campTrigger(campId);
         jsonObject = new JSONObject(str);
         if (!jsonObject.optBoolean("success")) {
-            Log.runtime(TAG + ".prizes.campTrigger", jsonObject.optString("resultDesc"));
+            Log.record(TAG + ".prizes.campTrigger", jsonObject.optString("resultDesc"));
             return;
         }
         JSONObject object = (JSONObject) JsonUtil.getValueByPathObject(jsonObject, "result.prizes.[0]");
@@ -453,7 +441,7 @@ public class GreenFinance extends ModelTask {
                         GlobalThreadPools.sleepCompat(1000);
                         jsonObject = new JSONObject(str);
                         if (!jsonObject.optBoolean("success")) {
-                            Log.runtime(TAG + ".batchStealFriend.queryGuestIndexPoints", jsonObject.optString("resultDesc"));
+                            Log.record(TAG + ".batchStealFriend.queryGuestIndexPoints", jsonObject.optString("resultDesc"));
                             continue;
                         }
                         JSONArray points = (JSONArray) JsonUtil.getValueByPathObject(jsonObject, "result.pointDetailList");
@@ -474,7 +462,7 @@ public class GreenFinance extends ModelTask {
                         GlobalThreadPools.sleepCompat(1000);
                         jsonObject = new JSONObject(str);
                         if (!jsonObject.optBoolean("success")) {
-                            Log.runtime(TAG + ".batchStealFriend.batchSteal", jsonObject.optString("resultDesc"));
+                            Log.record(TAG + ".batchStealFriend.batchSteal", jsonObject.optString("resultDesc"));
                             continue;
                         }
                         Log.other("绿色经营🤩收[" + object.optString("nickName") + "]" +

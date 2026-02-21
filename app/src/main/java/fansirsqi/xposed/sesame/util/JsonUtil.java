@@ -1,11 +1,8 @@
 package fansirsqi.xposed.sesame.util;
 
-import android.content.Context;
-
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JavaType;
@@ -17,8 +14,6 @@ import com.fasterxml.jackson.databind.type.TypeFactory;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -58,7 +53,7 @@ public class JsonUtil {
             }
             return execute(() -> MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(object));
         } catch (Exception e) {
-            Log.runtime(TAG,"formatJson err:");
+            Log.record(TAG,"formatJson err:");
             Log.printStackTrace(e);
             return execute(() -> MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(object));
         }
@@ -86,7 +81,7 @@ public class JsonUtil {
                 return execute(() -> MAPPER.writeValueAsString(object));
             }
         } catch (Exception e) {
-            Log.runtime(TAG,"formatJson err:");
+            Log.record(TAG,"formatJson err:");
             Log.printStackTrace(e);
             return execute(() -> MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(object));
         }
@@ -402,13 +397,13 @@ public class JsonUtil {
         try {
             // 检查字符串是否为空或null
             if (jsonStr == null || jsonStr.trim().isEmpty()) {
-                Log.runtime(TAG, "收到空响应，可能是网络异常或服务端错误");
+                Log.record(TAG, "收到空响应，可能是网络异常或服务端错误");
                 return new JSONObject(); // 返回空的JSONObject
             }
             return new JSONObject(jsonStr);
         } catch (Exception e) {
-            Log.runtime(TAG, "JSON解析失败: " + e.getMessage());
-            Log.runtime(TAG, "原始响应: " + (jsonStr.length() > 200 ? jsonStr.substring(0, 200) + "..." : jsonStr));
+            Log.record(TAG, "JSON解析失败: " + e.getMessage());
+            Log.record(TAG, "原始响应: " + (jsonStr.length() > 200 ? jsonStr.substring(0, 200) + "..." : jsonStr));
             return new JSONObject(); // 返回空的JSONObject
         }
     }
@@ -423,12 +418,12 @@ public class JsonUtil {
         try {
             // 检查字符串是否为空或null
             if (jsonStr == null || jsonStr.trim().isEmpty()) {
-                Log.runtime(TAG, "收到空响应，可能是网络异常或服务端错误");
+                Log.record(TAG, "收到空响应，可能是网络异常或服务端错误");
                 return new JSONArray(); // 返回空的JSONArray
             }
             return new JSONArray(jsonStr);
         } catch (Exception e) {
-            Log.runtime(TAG, "JSON数组解析失败: " + e.getMessage());
+            Log.record(TAG, "JSON数组解析失败: " + e.getMessage());
             return new JSONArray(); // 返回空的JSONArray
         }
     }

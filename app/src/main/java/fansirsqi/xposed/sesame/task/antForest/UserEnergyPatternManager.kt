@@ -68,7 +68,7 @@ object UserEnergyPatternManager {
         )
 
         userPatterns[userId] = updatedPattern
-        Log.debug(TAG, "更新用户[${userId}]模式：成功率[${String.format("%.2f", newSuccessRate)}] 响应时间[${newAvgResponseTime}ms] 活跃[${isActive}]")
+         Log.record(TAG, "更新用户[${userId}]模式：成功率[${String.format("%.2f", newSuccessRate)}] 响应时间[${newAvgResponseTime}ms] 活跃[${isActive}]")
     }
 
     /**
@@ -87,7 +87,7 @@ object UserEnergyPatternManager {
         }
 
         if (expiredUsers.isNotEmpty()) {
-            Log.debug(TAG, "清理过期用户模式数据：${expiredUsers.size}个用户")
+             Log.record(TAG, "清理过期用户模式数据：${expiredUsers.size}个用户")
         }
     }
 }

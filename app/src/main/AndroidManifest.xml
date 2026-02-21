@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- applist -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="PackageVisibilityPolicy,QueryAllPackagesPermission" />
     <uses-permission
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="AllFilesAccessPolicy,ScopedStorage" />
@@ -15,11 +18,17 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <!-- 添加唤醒锁权限（用于定期唤醒设备） -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 添加前台服务权限 -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        tools:ignore="ForegroundServicesPolicy" />
+    <!-- 添加特殊用途前台服务权限 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".SesameApplication"
         android:description="@string/xposed_description"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
@@ -49,16 +58,29 @@
         </activity>
 
         <!-- 其他 Activity 保持不变 -->
-        <activity android:name="fansirsqi.xposed.sesame.ui.ExtendActivity" />
-        <activity android:name="fansirsqi.xposed.sesame.ui.WebSettingsActivity" />
-        <activity android:name="fansirsqi.xposed.sesame.ui.SettingActivity" />
-        <activity android:name="fansirsqi.xposed.sesame.ui.HtmlViewerActivity" />
+        <activity
+            android:name=".ui.ExtendActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.WebSettingsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.SettingActivity"
+            android:exported="false" />
+        <!-- RPC 调试 Activity -->
+        <activity
+            android:name=".ui.RpcDebugActivity"
+            android:exported="false" />
         <!-- 高性能日志查看器 (Compose) -->
         <!-- theme 必须设置为 NoActionBar，因为 Compose 自带了 TopAppBar -->
         <activity
-            android:name=".ui.log.LogViewerComposeActivity"
+            android:name=".ui.LogViewerActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.ManualTaskActivity"
             android:exported="false"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
+            android:label="手动任务" />
 
 
         <!-- for-hide-icon -->
@@ -86,6 +108,29 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
+
+        <!-- CommandService 用于执行 root/Shizuku 命令 -->
+        <!-- exported=true 允许跨进程绑定 -->
+        <!-- process=":command" 运行在独立进程中 -->
+        <service
+            android:name="fansirsqi.xposed.sesame.service.CommandService"
+            android:enabled="true"
+            android:exported="true"
+            android:foregroundServiceType="specialUse">
+            <intent-filter>
+                <action android:name="fansirsqi.xposed.sesame.action.BIND_COMMAND_SERVICE" />
+            </intent-filter>
+        </service>
+
+        <!-- 手动声明 Shizuku Provider，解决 provider is null 报错 -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
 
     </application>
 </manifest>

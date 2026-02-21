@@ -10,7 +10,7 @@ import fansirsqi.xposed.sesame.util.Log;
 import lombok.Getter;
 import fansirsqi.xposed.sesame.R;
 import fansirsqi.xposed.sesame.model.ModelField;
-import fansirsqi.xposed.sesame.ui.StringDialog;
+import fansirsqi.xposed.sesame.ui.widget.StringDialog;
 /**
  * Integer 类型字段类，继承自 ModelField<Integer>
  * 该类用于表示具有最小值和最大值限制的整数字段。

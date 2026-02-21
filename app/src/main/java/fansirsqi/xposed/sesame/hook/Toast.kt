@@ -19,7 +19,7 @@ object Toast {
      */
     @JvmOverloads
     fun show(message: String?, force: Boolean = false) {
-        val context = ApplicationHook.getAppContext()
+        val context = ApplicationHook.appContext
         if (context == null) {
             Log.error(TAG, "Context is null, cannot show toast $message")
             return

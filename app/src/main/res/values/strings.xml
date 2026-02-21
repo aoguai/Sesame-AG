@@ -195,15 +195,15 @@ If you purchased it, please contact the seller for a refund or report the seller
     <string name="build_version_1_0_0">Build Version: </string>
     <string name="bulid_target">Build Target: </string>
     <string name="text_api">…</string>
-    <string name="search_for_unlocked_items">search_for_unlocked_items</string>
-    <string name="search_for_unlocked_regions">search_for_unlocked_regions</string>
-    <string name="search_for_new_items_on_saplings">search_for_new_items_on_saplings</string>
-    <string name="query_the_remaining_amount_of_saplings">query the_remaining_amount_of_saplings</string>
+    <string name="search_for_unlocked_items">search for unlocked items</string>
+    <string name="search_for_unlocked_regions">search for unlocked regions</string>
+    <string name="search_for_new_items_on_saplings">search for new items on saplings</string>
+    <string name="query_the_remaining_amount_of_saplings">query the remaining amount of saplings</string>
     <string name="extended_func">扩展功能</string>
     <string name="debug_tips">Please check the results in the debug log!</string>
     <string name="clear_photo">清空光盘行动图片💿</string>
     <string name="all_log_file">全部日志</string>
     <string name="error_log_file">异常日志</string>
-    <string name="xposed_description">今夜月明人尽望，不知秋思落谁家。</string>
+    <string name="xposed_description">大鹏一日同风起，扶摇直上九万里。</string>
 
 </resources>

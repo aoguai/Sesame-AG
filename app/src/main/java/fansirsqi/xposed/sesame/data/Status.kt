@@ -421,13 +421,13 @@ class Status {
         @JvmStatic
         fun load(currentUid: String?): Status {
             if (StringUtil.isEmpty(currentUid)) {
-                Log.runtime(TAG, "用户为空，状态加载失败")
+                Log.record(TAG, "用户为空，状态加载失败")
                 throw RuntimeException("用户为空，状态加载失败")
             }
             try {
                 val statusFile = Files.getStatusFile(currentUid)
-                if (statusFile.exists()) {
-                    Log.runtime(TAG, "加载 status.json")
+                if (statusFile!!.exists()) {
+                    Log.record(TAG, "加载 status.json")
                     val json = Files.readFromFile(statusFile)
                     if (!json.trim().isEmpty()) {
                         // 使用 Jackson 更新现有对象
@@ -435,20 +435,20 @@ class Status {
                         // 格式化检查
                         val formatted = JsonUtil.formatJson(INSTANCE)
                         if (formatted != null && formatted != json) {
-                            Log.runtime(TAG, "重新格式化 status.json")
+                            Log.record(TAG, "重新格式化 status.json")
                             Files.write2File(formatted, statusFile)
                         }
                     } else {
-                        Log.runtime(TAG, "配置文件为空，初始化默认配置")
+                        Log.record(TAG, "配置文件为空，初始化默认配置")
                         initializeDefaultConfig(statusFile)
                     }
                 } else {
-                    Log.runtime(TAG, "配置文件不存在，初始化默认配置")
+                    Log.record(TAG, "配置文件不存在，初始化默认配置")
                     initializeDefaultConfig(statusFile)
                 }
             } catch (t: Throwable) {
                 Log.printStackTrace(TAG, t)
-                Log.runtime(TAG, "状态文件格式有误，已重置")
+                Log.record(TAG, "状态文件格式有误，已重置")
                 resetAndSaveConfig()
             }
 
@@ -463,7 +463,7 @@ class Status {
         private fun initializeDefaultConfig(statusFile: java.io.File) {
             try {
                 JsonUtil.copyMapper().updateValue(INSTANCE, Status())
-                Log.runtime(TAG, "初始化 status.json")
+                Log.record(TAG, "初始化 status.json")
                 Files.write2File(JsonUtil.formatJson(INSTANCE), statusFile)
             } catch (e: JsonMappingException) {
                 Log.printStackTrace(TAG, e)
@@ -474,7 +474,7 @@ class Status {
         private fun resetAndSaveConfig() {
             try {
                 JsonUtil.copyMapper().updateValue(INSTANCE, Status())
-                Files.write2File(JsonUtil.formatJson(INSTANCE), Files.getStatusFile(UserMap.currentUid))
+                Files.write2File(JsonUtil.formatJson(INSTANCE), Files.getStatusFile(UserMap.currentUid)!!)
             } catch (e: JsonMappingException) {
                 Log.printStackTrace(TAG, e)
                 throw RuntimeException("重置配置失败", e)
@@ -504,14 +504,14 @@ class Status {
                 throw RuntimeException("用户为空，状态保存失败")
             }
             if (updateDay(nowCalendar)) {
-                Log.runtime(TAG, "重置 statistics.json")
+                Log.record(TAG, "重置 statistics.json")
             } else {
-                Log.runtime(TAG, "保存 status.json")
+                Log.record(TAG, "保存 status.json")
             }
             val lastSaveTime = INSTANCE.saveTime
             try {
                 INSTANCE.saveTime = System.currentTimeMillis()
-                Files.write2File(JsonUtil.formatJson(INSTANCE), Files.getStatusFile(currentUid))
+                Files.write2File(JsonUtil.formatJson(INSTANCE), Files.getStatusFile(currentUid)!!)
             } catch (e: Exception) {
                 INSTANCE.saveTime = lastSaveTime
                 throw e
@@ -553,6 +553,10 @@ class Status {
             }
         }
 
+        /**
+         * ## 设置今日已运行状态
+         * @param flag tagName::done
+         */
         @JvmStatic
         fun hasFlagToday(flag: String): Boolean {
             return INSTANCE.flagList.contains(flag)

@@ -71,7 +71,6 @@ object AssetUtil {
             val sourceDir = appInfo.nativeLibraryDir + File.separator + destFile.name
 //            Log.error(TAG, "Copying SO file from $sourceDir to ${destFile.absolutePath}")
             if (destFile.exists() && compareMD5(sourceDir, destFile.absolutePath)) {
-                Log.runtime(TAG, "SO file already exists: " + destFile.absolutePath)
                 return true
             }
             FileInputStream(sourceDir).use { fis ->
@@ -82,7 +81,7 @@ object AssetUtil {
                         fos.write(buffer, 0, length)
                     }
                     fos.flush()
-                    Log.runtime(
+                    Log.record(
                         TAG,
                         "Copied ${destFile.name} from $sourceDir ${checkerDestFile.absolutePath}"
                     )
@@ -115,7 +114,6 @@ object AssetUtil {
                     targetFile.absolutePath
                 )
             ) {
-                Log.runtime(TAG, "SO file already exists: " + targetFile.absolutePath)
                 return targetFile
             }
             FileInputStream(sourceFile).use { fis ->
@@ -126,10 +124,7 @@ object AssetUtil {
                         fos.write(buffer, 0, length)
                     }
                     fos.flush()
-                    Log.runtime(
-                        TAG,
-                        "Copied ${sourceFile.name} from ${sourceFile.absolutePath} to ${targetFile.absolutePath}"
-                    )
+                    Log.record(TAG, "Copied ${sourceFile.name} from ${sourceFile.absolutePath} to ${targetFile.absolutePath}")
                     setExecutablePermissions(targetFile)
                     return targetFile
                 }

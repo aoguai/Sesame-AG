@@ -44,16 +44,19 @@ class EcoProtection : ModelTask() {
         return modelFields
     }
 
-    public override fun check(): Boolean? {
-        if (!TaskCommon.IS_ENERGY_TIME && TaskCommon.IS_AFTER_8AM) {
-            if (!ancientTreeOnlyWeek!!.value) {
-                return true
-            }
+    override fun check(): Boolean {
+        if (!super.check()) return false
+
+        if (!TaskCommon.IS_AFTER_8AM) {
+            return false
+        }
+
+        if (ancientTreeOnlyWeek?.value == true) {
             val sdfWeek = SimpleDateFormat("EEEE", Locale.getDefault())
             val week = sdfWeek.format(Date())
             return "星期一" == week || "星期三" == week || "星期五" == week
         }
-        return false
+        return true
     }
 
     override suspend fun runSuspend() {
@@ -150,12 +153,12 @@ class EcoProtection : ModelTask() {
                                     )
                                 } else {
                                     Log.record(jo.getString("resultDesc"))
-                                    Log.runtime(jo.toString())
+                                    Log.record(jo.toString())
                                 }
                             }
                         } else {
                             Log.record(jo.getString("resultDesc"))
-                            Log.runtime(ancientTreeDetail.toString())
+                            Log.record(ancientTreeDetail.toString())
                         }
                         sleepCompat(500L)
                     }

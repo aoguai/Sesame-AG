@@ -3,6 +3,14 @@
 -keep class io.github.libxposed.service.** { *; }
 -dontwarn io.github.libxposed.service.**
 
+# ---------- Shizuku ----------
+-keep class dev.rikka.shizuku.** { *; }
+-dontwarn dev.rikka.shizuku.**
+
+# ---------- cmd-android ----------
+-keep class com.niki.** { *; }
+-dontwarn com.niki.**
+
 
 # ---------- 日志 ----------
 -keep class ch.qos.logback.** { *; }

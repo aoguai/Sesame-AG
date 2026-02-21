@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 /**
- * 表示支付宝用户的实体类，包含 ID 和名称。
+ * 表示目标应用用户的实体类，包含 ID 和名称。
  */
 public class AlipayUser extends MapperEntity {
     /**

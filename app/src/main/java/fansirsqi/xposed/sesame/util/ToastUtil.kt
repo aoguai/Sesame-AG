@@ -42,7 +42,7 @@ object ToastUtil {
             finalMessage = "$prefix:$message"
         }
 
-        Log.runtime(TAG, "showToast::$shouldShow::$finalMessage")
+        Log.record(TAG, "showToast::$shouldShow::$finalMessage")
 
         if (shouldShow) {
             val toast = Toast.makeText(context, finalMessage, Toast.LENGTH_SHORT)

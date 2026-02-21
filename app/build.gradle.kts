@@ -48,14 +48,8 @@ android {
             timeZone = TimeZone.getTimeZone("GMT+8")
         }.format(Date())
 
-        val buildTargetCode = try {
-            buildDate.replace("-", ".") + "." + buildTime.replace(":", ".")
-        } catch (_: Exception) {
-            "0000"
-        }
-
         versionCode = gitCommitCount
-        versionName = "0.4.4"
+        versionName = "0.9.9"
 
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
         buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
@@ -78,6 +72,7 @@ android {
         viewBinding = true
         buildConfig = true
         compose = true
+        aidl = true
     }
 
     compileOptions {
@@ -146,7 +141,11 @@ dependencies {
     implementation(libs.rikka.shizuku.api)        // Shizuku API
     implementation(libs.rikka.shizuku.provider)   // Shizuku 提供者
     implementation(libs.rikka.refine)             // Rikka 反射工具
-    implementation(libs.ui.tooling.preview.android)
+//    implementation(libs.rikka.hidden.stub)
+    // implementation(libs.ui.tooling.preview.android)
+    implementation(libs.cmd.android)
+    implementation(libs.androidx.ui.text.google.fonts)
+    implementation(libs.material3) // 用于通过 Shizuku 执行命令
 
     // Compose 相关依赖 - 现代化 UI 框架
     val composeBom = platform("androidx.compose:compose-bom:2025.12.00")  // Compose BOM 版本管理

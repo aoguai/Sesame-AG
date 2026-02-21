@@ -24,7 +24,7 @@ class AntCooperate : ModelTask() {
      *
      * @return 合种任务名称
      */
-    override fun getName(): String? {
+    override fun getName(): String {
         return "蚂蚁森林合种" //保留这个全称
     }
 
@@ -80,23 +80,6 @@ class AntCooperate : ModelTask() {
     }
 
     /**
-     * 检查任务是否可以执行
-     *
-     * @return 是否可以执行合种任务
-     */
-    override fun check(): Boolean? {
-        if (TaskCommon.IS_ENERGY_TIME) {
-            Log.record(TAG, "⏸ 当前为只收能量时间【" + BaseModel.energyTime.value + "】，停止执行" + name + "任务！")
-            return false
-        } else if (TaskCommon.IS_MODULE_SLEEP_TIME) {
-            Log.record(TAG, "💤 模块休眠时间【" + BaseModel.modelSleepTime.value + "】停止执行" + name + "任务！")
-            return false
-        } else {
-            return true
-        }
-    }
-
-    /**
      * 执行合种任务的主要逻辑
      */
     override suspend fun runSuspend() {
@@ -120,7 +103,7 @@ class AntCooperate : ModelTask() {
                     // 1. 获取当前能量，设为 var，因为浇水后本地需要扣减，否则下一个合种会误判能量充足
                     var userCurrentEnergy = queryUserCooperatePlantList.getInt("userCurrentEnergy")
                     val cooperatePlants = queryUserCooperatePlantList.getJSONArray("cooperatePlants")
-                    Log.runtime(TAG, "获取合种列表成功: ${cooperatePlants.length()} 颗合种")
+                    Log.record(TAG, "获取合种列表成功: ${cooperatePlants.length()} 颗合种")
                     for (i in 0 until cooperatePlants.length()) {
                         var plant = cooperatePlants.getJSONObject(i)
                         val cooperationId = plant.getString("cooperationId")
@@ -151,14 +134,14 @@ class AntCooperate : ModelTask() {
                         val waterDayLimit = plant.getInt("waterDayLimit") // 今日剩余可浇水量
                         val waterLimit = plant.getJSONObject("cooperateTemplate").getInt("waterLimit") // 每日总上限
                         // val watered = waterLimit - waterDayLimit
-                        Log.runtime(TAG, "获取合种[$name] 浇水信息: 剩余可浇 $waterDayLimit g / 总限制 $waterLimit g")
+                        Log.record(TAG, "获取合种[$name] 浇水信息: 剩余可浇 $waterDayLimit g / 总限制 $waterLimit g")
 
                         // 5. 获取配置
                         val configPerRound = cooperateWaterList.value[cooperationId] // 本轮配置浇水量
                         val configTotalLimit = cooperateWaterTotalLimitList.value[cooperationId] // 配置的总浇水上限(累计)
 
                         if (configPerRound == null) {
-                            Log.runtime(TAG, "浇水列表中没有为[$name]配置，跳过")
+                            Log.record(TAG, "浇水列表中没有为[$name]配置，跳过")
                             continue
                         }
 
@@ -167,27 +150,23 @@ class AntCooperate : ModelTask() {
 
                         if (configTotalLimit == null) {
                             // 逻辑保持原意：如果没有配置总限制，则直接把今日剩余额度拉满
-                            Log.runtime(TAG, "未配置 $name 限制总浇水，目标为填满今日额度")
+                            Log.record(TAG, "未配置 $name 限制总浇水，目标为填满今日可浇水量（服务端或本地限制）")
                             planToWater = waterDayLimit
                         } else {
-                            Log.runtime(TAG, "载入配置 $name 限制总浇水[$configTotalLimit]g")
+                            Log.record(TAG, "载入配置 $name 限制总浇水[$configTotalLimit]g")
                             val totalWatered = getTotalWatering(cooperationId) // 获取已累计浇水
 
                             if (totalWatered < 0) {
-                                Log.runtime(TAG, "无法获取用户[${UserMap.currentUid}]的累计浇水数据，跳过 $name")
+                                Log.record(TAG, "无法获取用户[${UserMap.currentUid}]的累计浇水数据，跳过 $name")
                                 continue
                             }
 
                             val remainingQuota = configTotalLimit - totalWatered
                             if (remainingQuota <= 0) {
-                                Log.forest(TAG, "$name 累计浇水已达标($totalWatered/$configTotalLimit)，跳过")
+                                Log.forest("$name 累计浇水已达标($totalWatered/$configTotalLimit)，跳过")
                                 continue
                             }
 
-                            // 目标水量 = 剩余额度 (注意：这里原逻辑是覆盖了 configPerRound，如果需要结合每轮限制，应取最小值)
-                            // 这里优化为：取 (剩余总额度) 和 (本轮配置) 之间的较小值？
-                            // 原代码逻辑是：有总限制时，直接浇剩余的量。这里保持原逻辑，但为了安全，不能超过本轮配置
-                            // 如果你想保持原意“只要没到总限制，就按总限制差额浇”，则如下：
                             planToWater = remainingQuota
                         }
 
@@ -196,9 +175,10 @@ class AntCooperate : ModelTask() {
                         var actualWater = planToWater
 
                         if (actualWater > waterDayLimit) actualWater = waterDayLimit
+                        if (actualWater > configPerRound) actualWater = configPerRound
                         if (actualWater > userCurrentEnergy) actualWater = userCurrentEnergy
 
-                        Log.runtime(TAG, "[$name] 结算: 计划 $planToWater, 剩余限额 $waterDayLimit, 背包 $userCurrentEnergy -> 实际: $actualWater")
+                        Log.record(TAG, "[$name] 结算: 计划 $planToWater, 剩余限额 $waterDayLimit, 背包 $userCurrentEnergy -> 实际: $actualWater")
 
                         // 8. 执行浇水
                         if (actualWater > 0) {
@@ -206,7 +186,7 @@ class AntCooperate : ModelTask() {
                             // !!! 关键修正：本地扣除能量，供下一次循环判断使用 !!!
                             userCurrentEnergy -= actualWater
                         } else {
-                            Log.runtime(TAG, "浇水列表中没有为[$name]配置")
+                            Log.record(TAG, "浇水列表中没有为[$name]配置")
                         }
                     }
                 }
@@ -222,50 +202,76 @@ class AntCooperate : ModelTask() {
     // 真爱合种逻辑
     private fun loveCooperateWater() {
         try {
-            var myWatered: Int?
+            // 1. 本地状态检查 (快速失败)
             if (Status.hasFlagToday("love::teamWater")) {
                 Log.record(TAG, "真爱合种今日已浇过水")
                 return
             }
-            val queryLoveHome = JSONObject(AntCooperateRpcCall.queryLoveHome())
-            if (!ResChecker.checkRes(TAG, queryLoveHome)) {
-                Log.error(TAG, "查询真爱合种首页失败")
+
+            // 2. 查询首页数据
+            val queryResult = AntCooperateRpcCall.queryLoveHome()
+            val queryLoveHome = try {
+                JSONObject(queryResult)
+            } catch (e: Exception) {
+                Log.printStackTrace(TAG, "真爱合种响应JSON解析失败", e)
                 return
-            } else {
-                val teamInfo = queryLoveHome.optJSONObject("teamInfo")
-                if (teamInfo == null) {
-                    Log.error(TAG, "未解析到真爱合种队伍信息，可能是结构变更")
-                    return
-                }
-                val teamId = teamInfo.optString("teamId")
-                val teamStatus = teamInfo.optString("teamStatus")
-                // 通过 waterInfo -> todayWaterMap 查看当前用户今日是否已浇水
-                val waterInfo = teamInfo.optJSONObject("waterInfo")
-                val todayWaterMap = waterInfo?.optJSONObject("todayWaterMap")
-                val currentUid = UserMap.currentUid
-                myWatered = todayWaterMap?.optInt(currentUid, 0)
-                if (myWatered != null) {
-                    if (myWatered > 0) {
-                        Log.forest(TAG, "真爱合种今日已浇水(" + myWatered + "g)")
-                    }
-                } else {
-                    Log.error(TAG, "真爱合不知道什么勾八错误")
-                }
-                if ("ACTIVATED" == teamStatus && !teamId.isEmpty()) {
-                    val waterNum = loveCooperateWaterNum.value
-                    val waterJo = JSONObject(AntCooperateRpcCall.loveTeamWater(teamId, waterNum))
-                    if (!ResChecker.checkRes(TAG, waterJo)) {
-                        Log.error(TAG, "真爱合种浇水失败: " + waterJo.optString("resultDesc"))
-                    } else {
-                        Log.forest("真爱合种💖[浇水成功]#" + waterNum + "g")
-                        Status.setFlagToday("love::teamWater")
-                    }
-                } else {
-                    Log.error(TAG, "真爱合种队伍状态不可用或ID为空: $teamStatus")
-                }
             }
+
+            if (!ResChecker.checkRes(TAG, queryLoveHome)) {
+                // ResChecker 内部通常已经打印了错误日志
+                return
+            }
+
+            // 3. 解析队伍信息
+            val teamInfo = queryLoveHome.optJSONObject("teamInfo")
+            if (teamInfo == null) {
+                Log.error(TAG, "未找到真爱合种队伍信息，可能是未开启或结构变更")
+                // 如果确认是未开启，可以考虑自动关闭开关
+                // loveCooperateWater.value = false
+                return
+            }
+
+            val teamId = teamInfo.optString("teamId")
+            val teamStatus = teamInfo.optString("teamStatus")
+
+            // 4. 检查服务端记录的今日浇水状态
+            // 结构通常是: waterInfo -> todayWaterMap -> {"uid": waterAmount}
+            val myWateredAmount = teamInfo.optJSONObject("waterInfo")
+                ?.optJSONObject("todayWaterMap")
+                ?.optInt(UserMap.currentUid, 0) ?: 0
+
+            if (myWateredAmount > 0) {
+                Log.forest("真爱合种今日已浇水(${myWateredAmount}g)")
+                // 既然服务端说浇过了，更新本地状态并退出
+                Status.setFlagToday("love::teamWater")
+                return
+            }
+
+            // 5. 校验队伍状态是否允许浇水
+            if (teamId.isEmpty() || "ACTIVATED" != teamStatus) {
+                Log.record(TAG, "真爱合种队伍不可用 (状态: $teamStatus, ID: $teamId)")
+                return
+            }
+
+            // 6. 执行浇水
+            val waterAmount = loveCooperateWaterNum.value ?: 0 // 防止空指针
+            if (waterAmount <= 0) {
+                Log.error(TAG, "配置的浇水数值无效: $waterAmount")
+                return
+            }
+
+            val waterResult = AntCooperateRpcCall.loveTeamWater(teamId, waterAmount)
+            val waterJo = JSONObject(waterResult)
+
+            if (ResChecker.checkRes(TAG, waterJo)) {
+                Log.forest("真爱合种💖[浇水成功]#${waterAmount}g")
+                Status.setFlagToday("love::teamWater")
+            } else {
+                Log.error(TAG, "真爱合种浇水失败: " + waterJo.optString("resultDesc"))
+            }
+
         } catch (t: Throwable) {
-            Log.printStackTrace(TAG, "loveCooperateWater err:", t)
+            Log.printStackTrace(TAG, "loveCooperateWater 异常:", t)
         }
     }
 
@@ -313,11 +319,11 @@ class AntCooperate : ModelTask() {
             }
 
             var needReturn = false //判断是否要返回个人
-            if(!isTeam(homeJo)){
+            if (!isTeam(homeJo)) {
 
                 val updateUserConfigStr = AntCooperateRpcCall.updateUserConfig(true)
-                val UserConfigJo =  JSONObject(updateUserConfigStr)
-                if (!ResChecker.checkRes(TAG, UserConfigJo)) {
+                val userConfigJo = JSONObject(updateUserConfigStr)
+                if (!ResChecker.checkRes(TAG, userConfigJo)) {
                     Log.record(TAG, "updateUserConfig 返回异常")
                     return
                 }
@@ -370,11 +376,11 @@ class AntCooperate : ModelTask() {
                 Log.record(TAG, "今日累计: ${newTotal}g / ${userDailyTarget}g")
             }
             //如果从个人来的就回到个人
-            if(needReturn){
+            if (needReturn) {
 
                 val updateUserConfigStr = AntCooperateRpcCall.updateUserConfig(false)
-                val UserConfigJo =  JSONObject(updateUserConfigStr)
-                if (!ResChecker.checkRes(TAG, UserConfigJo)) {
+                val userConfigJo = JSONObject(updateUserConfigStr)
+                if (!ResChecker.checkRes(TAG, userConfigJo)) {
                     Log.record(TAG, "updateUserConfig 返回异常")
                     return
                 }
@@ -398,7 +404,10 @@ class AntCooperate : ModelTask() {
          * @return 是否为团队
          */
         private fun isTeam(homeObj: JSONObject): Boolean {
-            return homeObj.optString("nextAction", "") == "Team"
+            // 修复逻辑：
+            // 如果 nextAction 是 "Team"，说明当前在个人主页（显示去组队的入口），因此不是团队模式，应返回 false
+            // 如果 nextAction 是 "Cultivate"，说明当前在团队主页（显示去种树的入口），是团队模式，应返回 true
+            return "Team" != homeObj.optString("nextAction", "")
         }
 
         /**
@@ -433,7 +442,7 @@ class AntCooperate : ModelTask() {
                             // 未获取到累计浇水量 返回 -1 不执行浇水
                             val energySummation = joItem.optInt("energySummation", -1)
                             if (energySummation >= 0) {
-                                Log.runtime(TAG, "当前用户[$userId]的累计浇水能量: $energySummation")
+                                Log.record(TAG, "当前用户[$userId]的累计浇水能量: $energySummation")
                             }
                             return energySummation
                         }

@@ -18,7 +18,7 @@ import java.util.List;
 
 import fansirsqi.xposed.sesame.R;
 import fansirsqi.xposed.sesame.model.ModelField;
-import fansirsqi.xposed.sesame.ui.StringDialog;
+import fansirsqi.xposed.sesame.ui.widget.StringDialog;
 /**
  * 表示一个存储字符串列表的字段模型，用于管理和展示列表数据。
  * 提供基本的获取类型、配置值以及视图展示的方法。

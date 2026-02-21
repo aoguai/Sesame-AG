@@ -1,6 +1,6 @@
 package fansirsqi.xposed.sesame.entity
 
-import fansirsqi.xposed.sesame.hook.SecurityBodyHelper
+import fansirsqi.xposed.sesame.hook.internal.SecurityBodyHelper
 import lombok.Getter
 import org.json.JSONException
 import org.json.JSONObject

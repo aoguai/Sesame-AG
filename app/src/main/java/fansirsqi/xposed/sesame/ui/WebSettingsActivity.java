@@ -1,6 +1,5 @@
 package fansirsqi.xposed.sesame.ui;
 
-import static fansirsqi.xposed.sesame.data.UIConfig.UI_OPTION_NEW;
 
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
@@ -39,8 +38,6 @@ import java.util.Map;
 import fansirsqi.xposed.sesame.BuildConfig;
 import fansirsqi.xposed.sesame.R;
 import fansirsqi.xposed.sesame.data.Config;
-import fansirsqi.xposed.sesame.data.UIConfig;
-import fansirsqi.xposed.sesame.data.ViewAppInfo;
 import fansirsqi.xposed.sesame.entity.AlipayUser;
 import fansirsqi.xposed.sesame.model.Model;
 import fansirsqi.xposed.sesame.model.ModelConfig;
@@ -53,6 +50,8 @@ import fansirsqi.xposed.sesame.ui.dto.ModelDto;
 import fansirsqi.xposed.sesame.ui.dto.ModelFieldInfoDto;
 import fansirsqi.xposed.sesame.ui.dto.ModelFieldShowDto;
 import fansirsqi.xposed.sesame.ui.dto.ModelGroupDto;
+import fansirsqi.xposed.sesame.ui.model.UiMode;
+import fansirsqi.xposed.sesame.ui.repository.ConfigRepository;
 import fansirsqi.xposed.sesame.ui.widget.ListDialog;
 import fansirsqi.xposed.sesame.util.Files;
 import fansirsqi.xposed.sesame.util.JsonUtil;
@@ -65,6 +64,7 @@ import fansirsqi.xposed.sesame.util.maps.IdMapManager;
 import fansirsqi.xposed.sesame.util.maps.MemberBenefitsMap;
 import fansirsqi.xposed.sesame.util.maps.ParadiseCoinBenefitIdMap;
 import fansirsqi.xposed.sesame.util.maps.ReserveaMap;
+import fansirsqi.xposed.sesame.util.maps.SesameGiftMap;
 import fansirsqi.xposed.sesame.util.maps.UserMap;
 import fansirsqi.xposed.sesame.util.maps.VitalityRewardsMap;
 import fansirsqi.xposed.sesame.util.PortUtil;
@@ -88,7 +88,7 @@ public class WebSettingsActivity extends BaseActivity {
         return getString(R.string.settings);
     }
 
-    @SuppressLint({ "MissingInflatedId", "SetJavaScriptEnabled" })
+    @SuppressLint({"MissingInflatedId", "SetJavaScriptEnabled"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -107,21 +107,22 @@ public class WebSettingsActivity extends BaseActivity {
         CooperateMap.getInstance(CooperateMap.class).load(userId);
         IdMapManager.getInstance(VitalityRewardsMap.class).load(this.userId);
         IdMapManager.getInstance(MemberBenefitsMap.class).load(this.userId);
+        IdMapManager.getInstance(SesameGiftMap.class).load(this.userId);
         IdMapManager.getInstance(ParadiseCoinBenefitIdMap.class).load(this.userId);
         IdMapManager.getInstance(ReserveaMap.class).load();
         IdMapManager.getInstance(BeachMap.class).load();
         Config.load(userId);
         LanguageUtil.setLocale(this);
         setContentView(R.layout.activity_web_settings);
-        // 处理返回键
+        //处理返回键
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
                 if (webView.canGoBack()) {
-                    Log.runtime(TAG, "WebSettingsActivity.handleOnBackPressed: go back");
+                    Log.record(TAG, "WebSettingsActivity.handleOnBackPressed: go back");
                     webView.goBack();
                 } else {
-                    Log.runtime(TAG, "WebSettingsActivity.handleOnBackPressed: save");
+                    Log.record(TAG, "WebSettingsActivity.handleOnBackPressed: save");
                     save();
                     finish();
                 }
@@ -135,7 +136,8 @@ public class WebSettingsActivity extends BaseActivity {
                     if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                         PortUtil.handleExport(this, result.getData().getData(), userId);
                     }
-                });
+                }
+        );
         // 初始化导入逻辑
         importLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
@@ -143,7 +145,8 @@ public class WebSettingsActivity extends BaseActivity {
                     if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                         PortUtil.handleImport(this, result.getData().getData(), userId);
                     }
-                });
+                }
+        );
         if (userName != null) {
             setBaseSubtitle(getString(R.string.settings) + ": " + userName);
         }
@@ -170,10 +173,12 @@ public class WebSettingsActivity extends BaseActivity {
                 Uri requestUrl = request.getUrl();
                 String scheme = requestUrl.getScheme();
                 assert scheme != null;
-                if (scheme.equalsIgnoreCase("http")
-                        || scheme.equalsIgnoreCase("https")
-                        || scheme.equalsIgnoreCase("ws")
-                        || scheme.equalsIgnoreCase("wss")) {
+                if (
+                        scheme.equalsIgnoreCase("http")
+                                || scheme.equalsIgnoreCase("https")
+                                || scheme.equalsIgnoreCase("ws")
+                                || scheme.equalsIgnoreCase("wss")
+                ) {
                     view.loadUrl(requestUrl.toString());
                     return true;
                 }
@@ -184,7 +189,7 @@ public class WebSettingsActivity extends BaseActivity {
         });
         if (BuildConfig.DEBUG) {
             WebView.setWebContentsDebuggingEnabled(true);
-            // webView.loadUrl("http://192.168.31.69:5500/app/src/main/assets/web/index.html");
+//            webView.loadUrl("http://192.168.31.69:5500/app/src/main/assets/web/index.html");
             webView.loadUrl("file:///android_asset/web/semi_index.html");
         } else {
             webView.loadUrl("file:///android_asset/web/semi_index.html");
@@ -195,17 +200,13 @@ public class WebSettingsActivity extends BaseActivity {
         Map<String, ModelConfig> modelConfigMap = ModelTask.getModelConfigMap();
         for (Map.Entry<String, ModelConfig> configEntry : modelConfigMap.entrySet()) {
             ModelConfig modelConfig = configEntry.getValue();
-            tabList.add(new ModelDto(configEntry.getKey(), modelConfig.getName(), modelConfig.getIcon(),
-                    modelConfig.getGroup().getCode(), null));
+            tabList.add(new ModelDto(configEntry.getKey(), modelConfig.getName(), modelConfig.getIcon(), modelConfig.getGroup().getCode(), null));
         }
         for (ModelGroup modelGroup : ModelGroup.values()) {
             groupList.add(new ModelGroupDto(modelGroup.getCode(), modelGroup.getName(), modelGroup.getIcon()));
         }
-        String tag = "用户: " + userName + "\n ID: " + userId;
-        if (userName.equals("默认") || userId == null) {
-            tag = "用户: " + "未登录" + "\n ID: " + "*************";
-        }
     }
+
 
     public class WebAppInterface {
         @JavascriptInterface
@@ -214,7 +215,7 @@ public class WebSettingsActivity extends BaseActivity {
                 if (webView.canGoBack()) {
                     webView.goBack();
                 } else {
-                    Log.runtime(TAG, "WebAppInterface onBackPressed: save");
+                    Log.record(TAG, "WebAppInterface onBackPressed: save");
                     save();
                     WebSettingsActivity.this.finish();
                 }
@@ -232,7 +233,7 @@ public class WebSettingsActivity extends BaseActivity {
         public String getTabs() {
             String result = JsonUtil.formatJson(tabList, false);
             if (BuildConfig.DEBUG) {
-                Log.runtime(TAG, "WebSettingsActivity.getTabs: " + result);
+//                Log.record(TAG, "WebSettingsActivity.getTabs: " + result);
             }
             return result;
         }
@@ -255,27 +256,25 @@ public class WebSettingsActivity extends BaseActivity {
         public String getGroup() {
             String result = JsonUtil.formatJson(groupList, false);
             if (BuildConfig.DEBUG) {
-                Log.runtime(TAG, "WebSettingsActivity.getGroup: " + result);
+//                Log.record(TAG, "WebSettingsActivity.getGroup: " + result);
             }
             return result;
         }
 
         @JavascriptInterface
         public String getModelByGroup(String groupCode) {
-            Collection<ModelConfig> modelConfigCollection = ModelTask
-                    .getGroupModelConfig(ModelGroup.getByCode(groupCode)).values();
+            Collection<ModelConfig> modelConfigCollection = ModelTask.getGroupModelConfig(ModelGroup.getByCode(groupCode)).values();
             List<ModelDto> modelDtoList = new ArrayList<>();
             for (ModelConfig modelConfig : modelConfigCollection) {
                 List<ModelFieldShowDto> modelFields = new ArrayList<>();
                 for (ModelField<?> modelField : modelConfig.getFields().values()) {
                     modelFields.add(ModelFieldShowDto.toShowDto(modelField));
                 }
-                modelDtoList.add(new ModelDto(modelConfig.getCode(), modelConfig.getName(), modelConfig.getIcon(),
-                        groupCode, modelFields));
+                modelDtoList.add(new ModelDto(modelConfig.getCode(), modelConfig.getName(), modelConfig.getIcon(), groupCode, modelFields));
             }
             String result = JsonUtil.formatJson(modelDtoList, false);
             if (BuildConfig.DEBUG) {
-                Log.runtime(TAG, "WebSettingsActivity.getModelByGroup: " + result);
+//                Log.record(TAG, "WebSettingsActivity.getModelByGroup: " + result);
             }
             return result;
         }
@@ -315,7 +314,7 @@ public class WebSettingsActivity extends BaseActivity {
                 }
                 String result = JsonUtil.formatJson(list, false);
                 if (BuildConfig.DEBUG) {
-                    Log.runtime(TAG, "WebSettingsActivity.getModel: " + result);
+//                    Log.record(TAG, "WebSettingsActivity.getModel: " + result);
                 }
                 return result;
             }
@@ -362,13 +361,14 @@ public class WebSettingsActivity extends BaseActivity {
                 if (modelField != null) {
                     String result = JsonUtil.formatJson(ModelFieldInfoDto.toInfoDto(modelField), false);
                     if (BuildConfig.DEBUG) {
-                        Log.runtime(TAG, "WebSettingsActivity.getField: " + result);
+//                        Log.record(TAG, "WebSettingsActivity.getField: " + result);
                     }
                     return result;
                 }
             }
             return null;
         }
+
 
         @JavascriptInterface
         public String setField(String modelCode, String fieldCode, String fieldValue) {
@@ -395,7 +395,7 @@ public class WebSettingsActivity extends BaseActivity {
         public boolean saveOnExit() {
             // 切换到主线程执行 UI 操作和保存逻辑
             runOnUiThread(() -> {
-                Log.runtime(TAG, "WebViewCallback: saveOnExit called");
+                Log.record(TAG, "WebViewCallback: saveOnExit called");
                 // 1. 调用外部类 WebSettingsActivity 的 save() 方法进行持久化保存
                 save();
                 // 2. 关闭当前 Activity
@@ -462,36 +462,28 @@ public class WebSettingsActivity extends BaseActivity {
                         .show();
                 break;
             case 4:
-                ListDialog.show(this, "单向好友列表", AlipayUser.getList(user -> user.getFriendStatus() != 1),
-                        SelectModelFieldFunc.newMapInstance(), false,
+                ListDialog.show(this, "单向好友列表", AlipayUser.getList(user -> user.getFriendStatus() != 1), SelectModelFieldFunc.newMapInstance(), false,
                         ListDialog.ListType.SHOW);
                 break;
             case 5:
-                UIConfig.INSTANCE.setUiOption(UI_OPTION_NEW);
-                if (UIConfig.save()) {
-                    Intent intent = new Intent(this, UIConfig.INSTANCE.getTargetActivityClass());
-                    intent.putExtra("userId", userId);
-                    intent.putExtra("userName", userName);
-                    finish();
-                    startActivity(intent);
-                } else {
-                    Toast.makeText(this, "切换失败", Toast.LENGTH_SHORT).show();
-                }
+                ConfigRepository.INSTANCE.setUiMode(UiMode.New);
+                Intent intent = new Intent(this, SettingActivity.class);
+                intent.putExtra("userId", userId);
+                intent.putExtra("userName", userName);
+                finish();
+                startActivity(intent);
                 break;
             case 6:
                 // 在调用 save() 之前，先调用 JS 函数同步 WebView 中的数据到 Java 端
-                Log.runtime(TAG, "WebSettingsActivity.onOptionsItemSelected: Calling handleData() in WebView");
-                webView.evaluateJavascript(
-                        "if(typeof handleData === 'function'){ handleData(); } else { console.error('handleData function not found'); }",
-                        null);
+                Log.record(TAG, "WebSettingsActivity.onOptionsItemSelected: Calling handleData() in WebView");
+                webView.evaluateJavascript("if(typeof handleData === 'function'){ handleData(); } else { console.error('handleData function not found'); }", null);
                 // 使用 Handler 延迟执行 save()，给 JS 一点时间完成异步操作
                 // 200 毫秒是一个经验值，如果仍然有问题可以适当增加
                 new Handler(Looper.getMainLooper()).postDelayed(this::save, 200); // 延迟 200 毫秒
                 break;
             case 7:
-                // 复制userId到剪切板
-                android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(
-                        CLIPBOARD_SERVICE);
+                //复制userId到剪切板
+                android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 ClipData clipData = ClipData.newPlainText("userId", this.userId);
                 cm.setPrimaryClip(clipData);
                 ToastUtil.INSTANCE.showToastWithDelay(this, "复制成功！", 100);

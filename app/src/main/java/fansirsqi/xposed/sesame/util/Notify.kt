@@ -48,13 +48,13 @@ object Notify {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 Log.error(TAG, "Missing POST_NOTIFICATIONS permission to send new notification$context")
-                Toast.show("请在设置中开启支付宝通知权限")
+                Toast.show("请在设置中开启目标应用通知权限")
                 return false
             }
         }
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             Log.error(TAG, "Notifications are disabled for this app.$context")
-            Toast.show("请在设置中开启支付宝通知权限")
+            Toast.show("请在设置中开启目标应用通知权限")
             return false
         }
         return true

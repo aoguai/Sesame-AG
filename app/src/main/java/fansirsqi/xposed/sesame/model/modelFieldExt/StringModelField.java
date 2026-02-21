@@ -8,7 +8,7 @@ import android.widget.LinearLayout;
 import androidx.core.content.ContextCompat;
 import fansirsqi.xposed.sesame.R;
 import fansirsqi.xposed.sesame.model.ModelField;
-import fansirsqi.xposed.sesame.ui.StringDialog;
+import fansirsqi.xposed.sesame.ui.widget.StringDialog;
 public class StringModelField extends ModelField<String> {
     public StringModelField(String code, String name, String value) {
         super(code, name, value);

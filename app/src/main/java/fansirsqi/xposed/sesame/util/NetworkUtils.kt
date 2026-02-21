@@ -11,7 +11,7 @@ object NetworkUtils {
 
     @RequiresPermission(Manifest.permission.ACCESS_NETWORK_STATE)
     fun isNetworkAvailable(): Boolean {
-        val context = ApplicationHook.getAppContext() ?: return false
+        val context = ApplicationHook.appContext ?: return false
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
         val network = connectivityManager.activeNetwork ?: return false
         val activeNetwork = connectivityManager.getNetworkCapabilities(network) ?: return false
@@ -26,7 +26,7 @@ object NetworkUtils {
 
     @RequiresPermission(Manifest.permission.ACCESS_NETWORK_STATE)
     fun getNetworkType(): String {
-        val context = ApplicationHook.getAppContext() ?: return "UNKNOWN"
+        val context = ApplicationHook.appContext ?: return "UNKNOWN"
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return "UNKNOWN"
         val network = connectivityManager.activeNetwork ?: return "NONE"
         val activeNetwork = connectivityManager.getNetworkCapabilities(network) ?: return "UNKNOWN"

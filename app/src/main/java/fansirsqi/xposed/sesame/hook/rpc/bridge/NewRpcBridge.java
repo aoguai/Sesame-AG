@@ -1,6 +1,8 @@
 package fansirsqi.xposed.sesame.hook.rpc.bridge;
 
-import fansirsqi.xposed.sesame.util.CoroutineUtils;
+import fansirsqi.xposed.sesame.hook.Toast;
+import fansirsqi.xposed.sesame.util.*;
+
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
@@ -16,17 +18,15 @@ import fansirsqi.xposed.sesame.entity.RpcEntity;
 import fansirsqi.xposed.sesame.hook.ApplicationHook;
 import fansirsqi.xposed.sesame.hook.rpc.intervallimit.RpcIntervalLimit;
 import fansirsqi.xposed.sesame.model.BaseModel;
-import fansirsqi.xposed.sesame.util.GlobalThreadPools;
-import fansirsqi.xposed.sesame.util.Log;
-import fansirsqi.xposed.sesame.util.Notify;
-import fansirsqi.xposed.sesame.util.RandomUtil;
-import fansirsqi.xposed.sesame.util.TimeUtil;
 
 /**
- * 新版rpc接口，支持最低支付宝版本v10.3.96.8100 记录rpc抓包，支持最低支付宝版本v10.3.96.8100
+ * 新版rpc接口，支持最低目标应用版本v10.3.96.8100 记录rpc抓包，支持最低目标应用版本v10.3.96.8100
  */
 public class NewRpcBridge implements RpcBridge {
     private static final String TAG = NewRpcBridge.class.getSimpleName();
+    private static final long ALIPAY_START_DEBOUNCE_TIME = 8000L; // 目标应用启动防抖时间：8秒
+    private static volatile long lastAlipayStartTime = 0L; // 上次启动目标应用的时间戳
+    private static final Object alipayStartLock = new Object(); // 目标应用启动锁
     private ClassLoader loader;
     private Object newRpcInstance;
     private Method parseObjectMethod;
@@ -79,7 +79,7 @@ public class NewRpcBridge implements RpcBridge {
 
     @Override
     public void load() throws Exception {
-        loader = ApplicationHook.getClassLoader();
+        loader = ApplicationHook.classLoader;
         try {
             Object service = XposedHelpers.callStaticMethod(XposedHelpers.findClass("com.alipay.mobile.nebulacore.Nebula", loader), "getService");
             Object extensionManager = XposedHelpers.callMethod(service, "getExtensionManager");
@@ -102,7 +102,7 @@ public class NewRpcBridge implements RpcBridge {
                     }
                 }
                 if (newRpcInstance == null) {
-                    Log.runtime(TAG, "get newRpcInstance null");
+                    Log.record(TAG, "get newRpcInstance null");
                     throw new RuntimeException("get newRpcInstance is null");
                 }
             }
@@ -127,9 +127,9 @@ public class NewRpcBridge implements RpcBridge {
                     , loader.loadClass("com.alibaba.ariver.engine.api.bridge.model.ApiContext")
                     , bridgeCallbackClazz
             );
-            Log.runtime(TAG, "get newRpcCallMethod successfully");
+            Log.record(TAG, "get newRpcCallMethod successfully");
         } catch (Exception e) {
-            Log.runtime(TAG, "get newRpcCallMethod err:");
+            Log.record(TAG, "get newRpcCallMethod err:");
             throw e;
         }
     }
@@ -190,13 +190,13 @@ public class NewRpcBridge implements RpcBridge {
         ClassLoader localLoader = loader;
         Class<?>[] localBridgeCallbackClazzArray = bridgeCallbackClazzArray;
 
-        if (ApplicationHook.isOffline()) {
+        if (ApplicationHook.offline) {
             return null;
         }
 
         // 如果RPC组件未准备好，尝试重新初始化一次
         if (localNewRpcCallMethod == null) {
-            Log.debug(TAG, "RPC方法为null，尝试重新初始化...");
+             Log.record(TAG, "RPC方法为null，尝试重新初始化...");
             try {
                 load();
                 // 重新加载初始化后的变量
@@ -205,7 +205,7 @@ public class NewRpcBridge implements RpcBridge {
                 localNewRpcInstance = newRpcInstance;
                 localLoader = loader;
                 localBridgeCallbackClazzArray = bridgeCallbackClazzArray;
-                Log.debug(TAG, "RPC重新初始化成功");
+                 Log.record(TAG, "RPC重新初始化成功");
             } catch (Exception e) {
                 Log.error(TAG, "RPC重新初始化失败:");
                 Log.printStackTrace(e);
@@ -253,7 +253,7 @@ public class NewRpcBridge implements RpcBridge {
                                                         jsonString = (String) XposedHelpers.callMethod(obj, "toJSONString");
                                                     } catch (Exception retryException) {
                                                         // 重试后仍失败，记录日志并标记错误，触发外层RPC重试
-                                                        Log.runtime(TAG, "toJSONString 重试后仍然失败，将触发整个 RPC 请求重试: " + retryException.getMessage());
+                                                        Log.record(TAG, "toJSONString 重试后仍然失败，将触发整个 RPC 请求重试: " + retryException.getMessage());
                                                         rpcEntity.setResponseObject(obj, null);
                                                         rpcEntity.setError();
                                                         return null;
@@ -271,9 +271,8 @@ public class NewRpcBridge implements RpcBridge {
                                                 }
                                             } catch (Exception e) {
                                                 rpcEntity.setError();
-                                                Log.error(TAG, "new rpc response2 | id: " + rpcEntity.hashCode() + " | method: " + rpcEntity.getRequestMethod() +
-                                                        " err:");
-                                                Log.printStackTrace(e);
+                                                Log.printStackTrace(TAG,"new rpc response2 | id: " + rpcEntity.hashCode() + " | method: " + rpcEntity.getRequestMethod() +
+                                                        " err:",e);
                                             }
                                         }
                                         return null;
@@ -292,9 +291,35 @@ public class NewRpcBridge implements RpcBridge {
                         String response = rpcEntity.getResponseString();
                         String methodName = rpcEntity.getRequestMethod();
 
+                        // 检测安全验证错误，提示手动处理（带防抖）
+
+                        if (errorMessage != null && errorMessage.contains("为了保障您的操作安全，请进行验证后继续")) {
+                            long currentTime = System.currentTimeMillis();
+                            long timeSinceLastStart = currentTime - lastAlipayStartTime;
+                            if (timeSinceLastStart < ALIPAY_START_DEBOUNCE_TIME) {
+                                 Log.record(TAG, "距离上次提醒仅 " + timeSinceLastStart + "ms，跳过本次提醒");
+                            } else {
+                                synchronized (alipayStartLock) {
+                                    // 双重检查，防止多线程竞争
+                                    currentTime = System.currentTimeMillis();
+                                    timeSinceLastStart = currentTime - lastAlipayStartTime;
+                                    if (timeSinceLastStart < ALIPAY_START_DEBOUNCE_TIME) {
+                                         Log.record(TAG, "距离上次提醒仅 " + timeSinceLastStart + "ms，跳过本次提醒（双重检查）");
+                                    } else {
+                                        lastAlipayStartTime = currentTime;
+                                         Log.record(TAG, "检测到安全验证错误，请手动打开目标应用完成验证后继续");
+                                        Toast.INSTANCE.show(
+                                                "为了保障您的操作安全，请打开支付宝完成验证后继续"
+                                        );
+                                    }
+                                }
+                            }
+                            return null;
+                        }
+
                         if (errorMark.contains(errorCode) || errorStringMark.contains(errorMessage)) {
                             int currentErrorCount = maxErrorCount.incrementAndGet();
-                            if (!ApplicationHook.isOffline()) {
+                            if (!ApplicationHook.offline) {
                                 if (currentErrorCount > setMaxErrorCount) {
                                     ApplicationHook.setOffline(true);
                                     Notify.updateStatusText("网络连接异常，已进入离线模式");
@@ -302,9 +327,9 @@ public class NewRpcBridge implements RpcBridge {
                                         Notify.sendNewNotification(TimeUtil.getTimeStr() + " | 网络异常次数超过阈值[" + setMaxErrorCount + "]", response);
                                     }
                                 }
-                                if (BaseModel.Companion.getErrNotify().getValue()) {
-                                    Notify.sendNewNotification(TimeUtil.getTimeStr() + " | 网络异常: " + methodName, response);
-                                }
+//                                if (BaseModel.Companion.getErrNotify().getValue()) {
+//                                    Notify.sendNewNotification(TimeUtil.getTimeStr() + " | 网络异常: " + methodName, response);
+//                                }//做得多错的多，不做就不会错
                                 if (BaseModel.Companion.getTimeoutRestart().getValue()) {
                                     Log.record(TAG, "尝试重新登录");
                                     ApplicationHook.reLoginByBroadcast();
@@ -336,8 +361,8 @@ public class NewRpcBridge implements RpcBridge {
             logNullResponse(rpcEntity, "重试次数耗尽", tryCount);
             return null;
         } finally {
-            Log.system(TAG, "New RPC\n方法: " + rpcEntity.getRequestMethod() + "\n参数: " + rpcEntity.getRequestData() + "\n数据: " + rpcEntity.getResponseString() + "\n" + "\n" + "堆栈:" + new Exception().getStackTrace()[1].toString());
-            Log.printStack(TAG);
+         //   Log.record(TAG, "New RPC\n方法: " + rpcEntity.getRequestMethod() + "\n参数: " + rpcEntity.getRequestData() + "\n数据: " + rpcEntity.getResponseString() + "\n" + "\n" + "堆栈:" + new Exception().getStackTrace()[1].toString());
+         //   Log.printStack(TAG);
 
         }
     }
