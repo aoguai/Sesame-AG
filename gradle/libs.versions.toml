@@ -2,7 +2,7 @@
 activity-compose = "1.12.1"
 
 android = "4.1.1.4"
-android-plugin = "8.9.3"
+android-plugin = "9.0.1"
 cmdAndroid = "0.8.2"
 constraintlayout = "2.2.1"
 

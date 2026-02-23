@@ -5,7 +5,6 @@ import java.util.TimeZone
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.rikka.tools.refine)
 }
@@ -80,11 +79,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlin {
-        compilerOptions {
-            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-        }
-    }
 
     signingConfigs {
         getByName("debug") {
@@ -111,7 +105,7 @@ android {
 
     sourceSets {
         getByName("main") {
-            jniLibs.srcDirs("src/main/jniLibs")
+            jniLibs.directories.add("src/main/jniLibs")
         }
     }
     val cmakeFile = file("src/main/cpp/CMakeLists.txt")
@@ -124,15 +118,11 @@ android {
             }
         }
     }
+}
 
-    applicationVariants.all {
-        val variant = this
-        variant.outputs.all {
-            val output = this
-            val abiName = output.filters.find { it.filterType == "ABI" }?.identifier ?: "universal"
-            val fileName = "Sesame-AG-${abiName}-${variant.versionName}.apk"
-            (output as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName = fileName
-        }
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 

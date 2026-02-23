@@ -106,7 +106,7 @@ class CustomRpcRequestEntity : MapperEntity() {
                     if (node.isObject) {
                         // Map 兼容：{ "<json>": "name", ... }
                         // 只有当它“像 map”时才走这条分支：字段值都是文本
-                        val fields = node.fields().asSequence().toList()
+                        val fields = node.properties().asSequence().toList()
                         val looksLikeMap = fields.isNotEmpty() && fields.all { it.value.isTextual }
                         if (looksLikeMap) {
                             for ((key, valueNode) in fields) {
