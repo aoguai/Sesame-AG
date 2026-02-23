@@ -68,6 +68,14 @@ class ExtendViewModel : ViewModel() {
         addBroadcastItem(R.string.search_for_new_items_on_saplings, "getNewTreeItems")
         addBroadcastItem(R.string.search_for_unlocked_regions, "queryAreaTrees")
         addBroadcastItem(R.string.search_for_unlocked_items, "getUnlockTreeItems")
+        menuItems.add(MenuItem("查询被浇水情况") {
+            sendItemsBroadcast(context, "getWateredItems")
+            ToastUtil.makeText(context, debugTips, 0).show()
+        })
+        menuItems.add(MenuItem("查询浇水情况") {
+            sendItemsBroadcast(context, "getWateringItems")
+            ToastUtil.makeText(context, debugTips, 0).show()
+        })
 
         // 2. 清空图片
         menuItems.add(MenuItem(context.getString(R.string.clear_photo)) {

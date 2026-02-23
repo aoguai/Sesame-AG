@@ -1,5 +1,6 @@
 package fansirsqi.xposed.sesame.hook.rpc.debug;
 
+import fansirsqi.xposed.sesame.data.Status;
 import fansirsqi.xposed.sesame.hook.RequestManager;
 import fansirsqi.xposed.sesame.task.reserve.ReserveRpcCall;
 import fansirsqi.xposed.sesame.util.Log;
@@ -50,6 +51,12 @@ public class DebugRpc {
                         break;
                     case "getUnlockTreeItems":
                         getUnlockTreeItems();
+                        break;
+                    case "getWateredItems":
+                        Status.getWateredFriendToday();
+                        break;
+                    case "getWateringItems":
+                        Status.getWateringFriendToday();
                         break;
                     case "walkGrid": // 走格子
                         walkGrid();

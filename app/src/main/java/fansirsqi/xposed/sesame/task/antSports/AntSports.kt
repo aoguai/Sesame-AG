@@ -819,10 +819,15 @@ class AntSports : ModelTask() {
             val pathStepCount = pathObj.getInt("pathStepCount")
             val forwardStepCount = userPathStep.getInt("forwardStepCount")
             val remainStepCount = userPathStep.getInt("remainStepCount")
-            val needStepCount = pathStepCount - forwardStepCount
+            if (pathStepCount <= 0) {
+                Log.error(TAG, "路线[pathId:${userPathStep.optString("pathId")}] pathStepCount 异常: $pathStepCount")
+                return
+            }
+            val needStepCount = pathStepCount - (forwardStepCount % pathStepCount)
 
             if (remainStepCount >= minGoStepCount) {
-                val useStepCount = min(remainStepCount, needStepCount)
+                val targetStepCount = max(needStepCount, minGoStepCount)
+                val useStepCount = min(remainStepCount, targetStepCount)
                 walkGo(userPathStep.getString("pathId"), useStepCount, userPathStep.getString("pathName"))
             }
         } catch (t: Throwable) {

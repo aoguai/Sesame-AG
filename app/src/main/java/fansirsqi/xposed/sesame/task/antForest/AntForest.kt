@@ -1000,6 +1000,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
 
                 doforestgame()
 
+                logForestEnergyInfo()
 
                 tc.stop()
             }
@@ -1042,6 +1043,34 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             val strTotalCollected =
                 "本次总 收:" + totalCollected + "g 帮:" + TOTAL_HELP_COLLECTED + "g 浇:" + TOTAL_WATERED + "g"
             updateLastExecText(strTotalCollected)
+        }
+    }
+
+    private fun logForestEnergyInfo() {
+        try {
+            val uid = UserMap.currentUid
+            if (uid.isNullOrBlank()) return
+
+            val homeStr = AntForestRpcCall.queryHomePage()
+            if (homeStr.isBlank()) return
+            val homeJo = JSONObject(homeStr)
+            if (!ResChecker.checkRes(TAG + "queryHomePage:", homeJo)) return
+
+            val currentEnergy = homeJo.optJSONObject("userBaseInfo")?.optInt("currentEnergy", 0) ?: 0
+
+            val dynamicStr = AntForestRpcCall.queryDynamicsIndex()
+            if (dynamicStr.isBlank()) return
+            val dynamicJo = JSONObject(dynamicStr)
+            if (!ResChecker.checkRes(TAG + "queryDynamicsIndex:", dynamicJo)) return
+
+            val summary = dynamicJo.optJSONObject("todayEnergySummary") ?: return
+            val obtainTotal = summary.optInt("obtainTotal", 0)
+            val robbedTotal = summary.optInt("robbedTotal", 0)
+
+            val selfName = UserMap.get(uid)?.showName ?: UserMap.getMaskName(uid) ?: uid
+            Log.forest("森林能量🌳[$selfName]收取${obtainTotal}g;被收${robbedTotal}g;当前${currentEnergy}g")
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "logForestEnergyInfo err", t)
         }
     }
 
@@ -1150,6 +1179,13 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             val friendId = wateringBubble.optString("userId")
             val id = wateringBubble.getLong("id")
             val response = AntForestRpcCall.collectEnergy("jiaoshui", selfId, id)
+            runCatching {
+                val bubbles = JSONObject(response).optJSONArray("bubbles") ?: return@runCatching
+                val collected = bubbles.optJSONObject(0)?.optInt("collectedEnergy", 0) ?: 0
+                if (collected > 0 && friendId.isNotEmpty()) {
+                    Status.wateredFriendToday(friendId)
+                }
+            }
             val friendName = getAndCacheUserName(friendId)
             val msg = if (!friendName.isNullOrEmpty()) "收取[$friendName]的金球🍯浇水" else "收取金球🍯浇水"
             processCollectResult(response, msg)
@@ -1411,7 +1447,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
 
                             // ✅ 关键改动：传入通知开关
                             val waterCountKVNode = returnFriendWater(
-                                uid, bizNo, waterCount, waterFriendCount!!.value, notify
+                                uid, bizNo, waterCount, waterFriendCount!!.value, notify, taskUid
                             )
 
                             val actualWaterCount: Int = waterCountKVNode.key!!
@@ -2856,7 +2892,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                             if (returnCount > 0) {
                                 // ✅ 调用 returnFriendWater 增加通知好友开关
                                 val notify = notifyFriend!!.value // 从配置获取
-                                returnFriendWater(userId, bizNo, 1, returnCount, notify)
+                                returnFriendWater(userId, bizNo, 1, returnCount, notify, selfId)
                             }
                         }
                     }
@@ -2984,7 +3020,8 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         bizNo: String?,
         count: Int,
         waterEnergy: Int,
-        notifyFriend: Boolean
+        notifyFriend: Boolean,
+        taskUid: String?
     ): KVMap<Int?, Boolean?> {
         // bizNo为空直接返回默认
         if (bizNo == null || bizNo.isEmpty()) {
@@ -2992,6 +3029,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         }
 
         var wateredTimes = 0 // 已浇水次数
+        var successTimes = 0 // SUCCESS 次数（用于统计）
         var isContinue = true // 是否可以继续浇水
 
         try {
@@ -3040,6 +3078,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                         ) ?: "未知"
                         Log.forest("好友浇水🚿[${UserMap.getMaskName(userId)}]#$waterEnergy g，当前能量状态 [$currentEnergy/$totalEnergy g]")
                         wateredTimes++
+                        successTimes++
                         GlobalThreadPools.sleepCompat(1200L)
                     }
 
@@ -3071,6 +3110,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "returnFriendWater err", t)
+        }
+
+        if (successTimes > 0 && !userId.isNullOrBlank()) {
+            Status.wateringFriendToday(userId, successTimes, taskUid)
         }
 
         return KVMap(wateredTimes, isContinue)

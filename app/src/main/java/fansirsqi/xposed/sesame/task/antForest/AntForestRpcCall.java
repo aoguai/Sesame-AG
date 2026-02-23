@@ -118,6 +118,22 @@ public class AntForestRpcCall {
         );
     }
 
+    public static String queryDynamicsIndex() {
+        try {
+            JSONObject arg = new JSONObject();
+            arg.put("autoRefresh", false);
+            arg.put("source", "chInfo_ch_appcenter__chsub_9patch");
+            arg.put("version", VERSION);
+            return RequestManager.requestString(
+                    "alipay.antforest.forest.h5.queryDynamicsIndex",
+                    new JSONArray().put(arg).toString()
+            );
+        } catch (Exception e) {
+            Log.printStackTrace(e);
+            return "";
+        }
+    }
+
     public static String queryFriendHomePage(String userId, String fromAct) {
         try {
             if (fromAct == null) {

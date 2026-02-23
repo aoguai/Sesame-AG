@@ -16,6 +16,8 @@ class Status {
 
     // =========================== forest
     var waterFriendLogList: MutableMap<String, Int> = HashMap()
+    var wateredFriendLogList: MutableMap<String, Int> = HashMap() // 统计“被浇水”(好友->次数)
+    var wateringFriendLogList: MutableMap<String, Int> = HashMap() // 统计“浇水”(好友->次数)
     var cooperateWaterList: MutableSet<String> = HashSet() // 合作浇水
     var reserveLogList: MutableMap<String, Int> = HashMap()
     var ancientTreeCityCodeList: MutableSet<String> = HashSet() // 古树
@@ -176,6 +178,95 @@ class Status {
             val key = "$taskUid-$id"
             INSTANCE.waterFriendLogList[key] = count
             save()
+        }
+
+        /**
+         * 记录“浇水”次数（给好友浇水 SUCCESS 时触发）。
+         *
+         * @param id 好友 UID
+         * @param addTimes 本次新增次数（SUCCESS 次数）
+         * @param taskUid 任务启动时捕获的 UID（避免切号后写入到错误账号）
+         */
+        @JvmStatic
+        fun wateringFriendToday(id: String, addTimes: Int, taskUid: String?) {
+            if (id.isBlank() || addTimes <= 0) return
+            val uid = if (taskUid.isNullOrBlank()) UserMap.currentUid else taskUid
+            if (uid.isNullOrBlank()) return
+            if (!taskUid.isNullOrBlank() && taskUid != UserMap.currentUid) return
+
+            val key = "$uid-$id"
+            val count = INSTANCE.wateringFriendLogList[key] ?: 0
+            INSTANCE.wateringFriendLogList[key] = count + addTimes
+            save()
+        }
+
+        /**
+         * 记录“被浇水”次数（收取浇水金球时触发）。
+         *
+         * @param id 给你浇水的好友 UID
+         */
+        @JvmStatic
+        fun wateredFriendToday(id: String) {
+            val uid = UserMap.currentUid
+            if (uid.isNullOrBlank() || id.isBlank()) return
+            val key = "$uid-$id"
+            val count = INSTANCE.wateredFriendLogList[key] ?: 0
+            INSTANCE.wateredFriendLogList[key] = count + 1
+            save()
+        }
+
+        /**
+         * 输出今日“被浇水”统计（明细 + 汇总），结果写入森林日志。
+         */
+        @JvmStatic
+        fun getWateredFriendToday() {
+            val uid = UserMap.currentUid
+            if (uid.isNullOrBlank()) return
+
+            val prefix = "$uid-"
+            val entries = INSTANCE.wateredFriendLogList.entries.filter { it.key.startsWith(prefix) }
+
+            var friendCount = 0
+            var totalTimes = 0
+
+            for ((key, times) in entries) {
+                val friendId = key.removePrefix(prefix)
+                val friendName = UserMap.get(friendId)?.showName ?: UserMap.getMaskName(friendId) ?: friendId
+                val safeTimes = times.coerceAtLeast(0)
+                Log.forest("统计被水🍯被[$friendName]浇水${safeTimes}次")
+                friendCount += 1
+                totalTimes += safeTimes
+            }
+
+            val selfName = UserMap.get(uid)?.showName ?: UserMap.getMaskName(uid) ?: uid
+            Log.forest("统计被水🍯共计被${friendCount}个好友浇水${totalTimes}次#[$selfName]")
+        }
+
+        /**
+         * 输出今日“浇水”统计（明细 + 汇总），结果写入森林日志。
+         */
+        @JvmStatic
+        fun getWateringFriendToday() {
+            val uid = UserMap.currentUid
+            if (uid.isNullOrBlank()) return
+
+            val prefix = "$uid-"
+            val entries = INSTANCE.wateringFriendLogList.entries.filter { it.key.startsWith(prefix) }
+
+            var friendCount = 0
+            var totalTimes = 0
+
+            for ((key, times) in entries) {
+                val friendId = key.removePrefix(prefix)
+                val friendName = UserMap.get(friendId)?.showName ?: UserMap.getMaskName(friendId) ?: friendId
+                val safeTimes = times.coerceAtLeast(0)
+                Log.forest("统计浇水🚿给[$friendName]浇水${safeTimes}次")
+                friendCount += 1
+                totalTimes += safeTimes
+            }
+
+            val selfName = UserMap.get(uid)?.showName ?: UserMap.getMaskName(uid) ?: uid
+            Log.forest("统计浇水🚿共计给${friendCount}个好友浇水${totalTimes}次#[$selfName]")
         }
 
         @JvmStatic
