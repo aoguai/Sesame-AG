@@ -2752,6 +2752,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     return@Runnable
                 }
 
+                // 炸弹卡效果：记录“被炸”掉的能量
+                val explodeEnergy = jo.optJSONObject("bombCardEffect")?.optInt("explodeEnergy", 0) ?: 0
+                val bombSuffix = if (explodeEnergy > 0) "被炸${explodeEnergy}g" else ""
+
                 // --- 收能量逻辑保持原样 ---
                 val jaBubbles = jo.getJSONArray("bubbles")
                 val jaBubbleLength = jaBubbles.length()
@@ -2775,7 +2779,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                         val str =
                             collectType + randomEmoji + collected + "g[" + getAndCacheUserName(
                                 userId
-                            ) + "]#"
+                            ) + "]#" + bombSuffix
                         totalCollected += collected
                         if (needDouble) {
                             Log.forest(str + "耗时[" + spendTime + "]ms[双击]")
@@ -2809,7 +2813,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                         val str =
                             collectType + randomEmoji + collected + "g[" + getAndCacheUserName(
                                 userId
-                            ) + "]"
+                            ) + "]" + if (bombSuffix.isNotEmpty()) "#$bombSuffix" else ""
                         totalCollected += collected
                         if (needDouble) {
                             Log.forest(str + "耗时[" + spendTime + "]ms[双击]")
@@ -3024,6 +3028,13 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     "WATERING_TIMES_LIMIT" -> {
                         Log.record(TAG, "好友浇水🚿今日已达上限: " + UserMap.getMaskName(userId))
                         wateredTimes = 3 // 上限假设3次
+                        break@label
+                    }
+
+                    // 该用户今日已被很多人浇水：直接标记为“已浇水”，避免重复尝试卡住流程
+                    "WATERING_USER_LIMIT" -> {
+                        Log.record(TAG, "好友浇水🚿" + jo.optString("resultDesc"))
+                        wateredTimes = count // 本次配置的浇水次数(通常≤3)，用于跳过后续重复尝试
                         break@label
                     }
 

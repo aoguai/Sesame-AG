@@ -71,6 +71,7 @@ class AntSports : ModelTask() {
     private lateinit var donateCharityCoinType: ChoiceModelField
     private lateinit var donateCharityCoinAmount: IntegerModelField
     private lateinit var minExchangeCount: IntegerModelField
+    private lateinit var earliestSyncStepTime: IntegerModelField
     private lateinit var latestExchangeTime: IntegerModelField
     private lateinit var syncStepCount: IntegerModelField
     private lateinit var tiyubiz: BooleanModelField
@@ -220,6 +221,10 @@ class AntSports : ModelTask() {
             IntegerModelField("minExchangeCount", "最小捐步步数", 0).also { minExchangeCount = it }
         )
         modelFields.addField(
+            IntegerModelField("earliestSyncStepTime", "同步步数 | 最早同步时间(24小时制)", 6, 0, 23)
+                .also { earliestSyncStepTime = it }
+        )
+        modelFields.addField(
             IntegerModelField("latestExchangeTime", "最晚捐步时间(24小时制)", 22)
                 .also { latestExchangeTime = it }
         )
@@ -286,7 +291,7 @@ class AntSports : ModelTask() {
 
             // 步数同步
             if (!Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE) &&
-                TimeUtil.isNowAfterOrCompareTimeStr("0600")) {
+                TimeUtil.isNowAfterOrCompareTimeStr(String.format("%02d00", earliestSyncStepTime.value.coerceIn(0, 23))) {
                 syncStepTask()
             }
 
@@ -447,7 +452,9 @@ class AntSports : ModelTask() {
                     if (taskType == "SETTLEMENT") continue
 
                     // 黑名单过滤
-                    if (TaskBlacklist.isTaskInBlacklist(taskId) || TaskBlacklist.isTaskInBlacklist(taskName)) {
+                    // 黑名单任务仍允许领取已完成(WAIT_RECEIVE)的奖励，避免“手动完成但无法领奖励”
+                    val isBlacklisted = TaskBlacklist.isTaskInBlacklist(taskId) || TaskBlacklist.isTaskInBlacklist(taskName)
+                    if (isBlacklisted && taskStatus != "WAIT_RECEIVE") {
                         continue
                     }
 
