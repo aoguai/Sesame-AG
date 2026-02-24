@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import de.robv.android.xposed.XposedHelpers
 import fansirsqi.xposed.sesame.data.RuntimeInfo
 import fansirsqi.xposed.sesame.data.Status
+import fansirsqi.xposed.sesame.data.Statistics
 import fansirsqi.xposed.sesame.entity.AlipayUser
 import fansirsqi.xposed.sesame.entity.CollectEnergyEntity
 import fansirsqi.xposed.sesame.entity.KVMap
@@ -829,6 +830,13 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             Log.record(TAG, "执行开始-蚂蚁$name")
             taskCount.set(0)
             selfId = UserMap.currentUid
+            // 加载“今日统计”（按账号维度持久化），用于跨重启/多次运行累计
+            selfId?.takeIf { it.isNotBlank() }?.let { uid ->
+                Statistics.load(uid)
+                totalCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.COLLECTED)
+                totalHelpCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.HELPED)
+                totalWatered = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.WATERED)
+            }
 
             // -------------------------------
             // 自己使用道具
@@ -1022,7 +1030,16 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             Log.record(TAG, "=".repeat(50))
             Log.record(TAG, "🌲🌲🌲 森林主任务执行完毕 🌲🌲🌲")
             Log.record(TAG, "⏱️ 主任务耗时: ${timeInSeconds}秒 (${totalTime}ms)")
-            Log.record(TAG, "📊 收取统计: 收${totalCollected}g 帮${TOTAL_HELP_COLLECTED}g 浇${TOTAL_WATERED}g")
+            // 保存统计文件（按账号维度）
+            selfId?.takeIf { it.isNotBlank() }?.let { uid ->
+                Statistics.save(uid)
+                // 保存后再刷新一次本地展示值（避免跨天重置导致展示不一致）
+                totalCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.COLLECTED)
+                totalHelpCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.HELPED)
+                totalWatered = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.WATERED)
+            }
+
+            Log.record(TAG, "📊 今日统计: 收${totalCollected}g 帮${totalHelpCollected}g 浇${totalWatered}g")
             if (waitingTaskCount > 0) {
                 Log.record(TAG, "⏰ 后台蹲点任务: $waitingTaskCount 个 (将在指定时间自动收取)")
                 // 输出详细的蹲点任务状态，帮助调试
@@ -1041,7 +1058,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             skipUsersCache.clear()
             // 清空好友主页缓存
             val strTotalCollected =
-                "本次总 收:" + totalCollected + "g 帮:" + TOTAL_HELP_COLLECTED + "g 浇:" + TOTAL_WATERED + "g"
+                "今日总 收:" + totalCollected + "g 帮:" + totalHelpCollected + "g 浇:" + totalWatered + "g"
             updateLastExecText(strTotalCollected)
         }
     }
@@ -1233,6 +1250,12 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 if (bubbles.length() > 0) {
                     val collected = bubbles.getJSONObject(0).getInt("collectedEnergy")
                     if (collected > 0) {
+                        selfId?.takeIf { it.isNotBlank() }?.let { uid ->
+                            Statistics.addData(uid, Statistics.DataType.COLLECTED, collected)
+                            totalCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.COLLECTED)
+                        } ?: run {
+                            totalCollected += collected
+                        }
                         val msg = successMessage + "[" + collected + "g]"
                         Log.forest(msg)
                         Toast.show(msg)
@@ -1329,7 +1352,14 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 val responseObj = JSONObject(response)
                 if (ResChecker.checkRes(TAG + "收取动物派遣能量失败:", responseObj)) {
                     val energy = extInfo.optInt("energy", 0)
-                    totalCollected += energy
+                    if (energy > 0) {
+                        selfId?.takeIf { it.isNotBlank() }?.let { uid ->
+                            Statistics.addData(uid, Statistics.DataType.COLLECTED, energy)
+                            totalCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.COLLECTED)
+                        } ?: run {
+                            totalCollected += energy
+                        }
+                    }
                     val str = "收取[" + animalName + "]派遣能量🦩[" + energy + "g]"
                     Toast.show(str)
                     Log.forest(str)
@@ -1392,7 +1422,14 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     val responseObj = JSONObject(response)
                     if (ResChecker.checkRes(TAG + "收取炸弹卡能量失败:", responseObj)) {
                         val collected = responseObj.optInt("collectEnergy", 0)
-                        totalCollected += collected
+                        if (collected > 0) {
+                            selfId?.takeIf { it.isNotBlank() }?.let { uid ->
+                                Statistics.addData(uid, Statistics.DataType.COLLECTED, collected)
+                                totalCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.COLLECTED)
+                            } ?: run {
+                                totalCollected += collected
+                            }
+                        }
                         val str = "收取炸弹卡能量💥[$collected g]"
                         Toast.show(str)
                         Log.forest(str)
@@ -2649,6 +2686,14 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                                 continue
                             }
                             val energy = giftBoxResult.optInt("energy", 0)
+                            if (energy > 0) {
+                                selfId?.takeIf { it.isNotBlank() }?.let { uid ->
+                                    Statistics.addData(uid, Statistics.DataType.COLLECTED, energy)
+                                    totalCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.COLLECTED)
+                                } ?: run {
+                                    totalCollected += energy
+                                }
+                            }
                             Log.forest("礼盒能量🎁[" + UserMap.getMaskName(userId) + "-" + title + "]#" + energy + "g")
                         } catch (t: Throwable) {
                             Log.printStackTrace(t)
@@ -2697,6 +2742,14 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                         val str =
                             "复活能量🚑[" + UserMap.getMaskName(userId) + "-" + fullEnergy + "g]" + (if (vitalityAmount > 0) "#活力值+$vitalityAmount" else "")
                         Log.forest(str)
+                        if (fullEnergy > 0) {
+                            selfId?.takeIf { it.isNotBlank() }?.let { uid ->
+                                Statistics.addData(uid, Statistics.DataType.HELPED, fullEnergy)
+                                totalHelpCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.HELPED)
+                            } ?: run {
+                                totalHelpCollected += fullEnergy
+                            }
+                        }
                         break
                     } catch (t: Throwable) {
                         Log.printStackTrace(t)
@@ -2834,7 +2887,12 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                             collectType + randomEmoji + collected + "g[" + getAndCacheUserName(
                                 userId
                             ) + "]#" + bombSuffix
-                        totalCollected += collected
+                        selfId?.takeIf { it.isNotBlank() }?.let { uid ->
+                            Statistics.addData(uid, Statistics.DataType.COLLECTED, collected)
+                            totalCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.COLLECTED)
+                        } ?: run {
+                            totalCollected += collected
+                        }
                         if (needDouble) {
                             Log.forest(str + "耗时[" + spendTime + "]ms[双击]")
                             Toast.show("$str[双击]")
@@ -2868,7 +2926,12 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                             collectType + randomEmoji + collected + "g[" + getAndCacheUserName(
                                 userId
                             ) + "]" + if (bombSuffix.isNotEmpty()) "#$bombSuffix" else ""
-                        totalCollected += collected
+                        selfId?.takeIf { it.isNotBlank() }?.let { uid ->
+                            Statistics.addData(uid, Statistics.DataType.COLLECTED, collected)
+                            totalCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.COLLECTED)
+                        } ?: run {
+                            totalCollected += collected
+                        }
                         if (needDouble) {
                             Log.forest(str + "耗时[" + spendTime + "]ms[双击]")
                             Toast.show("$str[双击]")
@@ -2901,7 +2964,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 Log.printStackTrace(TAG, "collectEnergy err", e)
             } finally {
                 val strTotalCollected =
-                    "本次总 收:" + totalCollected + "g 帮:" + TOTAL_HELP_COLLECTED + "g 浇:" + TOTAL_WATERED + "g"
+                    "今日总 收:" + totalCollected + "g 帮:" + totalHelpCollected + "g 浇:" + totalWatered + "g"
                 updateLastExecText(strTotalCollected)
                 notifyMain()
             }
@@ -3114,6 +3177,16 @@ class AntForest : ModelTask(), EnergyCollectCallback {
 
         if (successTimes > 0 && !userId.isNullOrBlank()) {
             Status.wateringFriendToday(userId, successTimes, taskUid)
+        }
+
+        if (successTimes > 0 && waterEnergy > 0) {
+            val wateredEnergy = successTimes * waterEnergy
+            selfId?.takeIf { it.isNotBlank() }?.let { uid ->
+                Statistics.addData(uid, Statistics.DataType.WATERED, wateredEnergy)
+                totalWatered = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.WATERED)
+            } ?: run {
+                totalWatered += wateredEnergy
+            }
         }
 
         return KVMap(wateredTimes, isContinue)
@@ -4992,8 +5065,8 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         var ecoLifeOpen: BooleanModelField? = null
         private var canConsumeAnimalProp = false
         private var totalCollected = 0
-        private const val TOTAL_HELP_COLLECTED = 0
-        private const val TOTAL_WATERED = 0
+        private var totalHelpCollected = 0
+        private var totalWatered = 0
         private const val MAX_BATCH_SIZE = 6
 
         // 找能量功能的冷却时间（毫秒），15分钟
@@ -5181,7 +5254,13 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * 为蹲点管理器提供能量收取功能（增强版）
      */
     override fun addToTotalCollected(energyCount: Int) {
-        totalCollected += energyCount
+        if (energyCount <= 0) return
+        selfId?.takeIf { it.isNotBlank() }?.let { uid ->
+            Statistics.addData(uid, Statistics.DataType.COLLECTED, energyCount)
+            totalCollected = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.COLLECTED)
+        } ?: run {
+            totalCollected += energyCount
+        }
     }
 
     override fun getWaitingCollectDelay(): Long {
