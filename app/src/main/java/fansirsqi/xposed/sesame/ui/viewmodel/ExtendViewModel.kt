@@ -11,10 +11,13 @@ import androidx.lifecycle.ViewModel
 import com.fasterxml.jackson.core.type.TypeReference
 import fansirsqi.xposed.sesame.R
 import fansirsqi.xposed.sesame.model.CustomSettings
+import fansirsqi.xposed.sesame.ui.LogViewerActivity
 import fansirsqi.xposed.sesame.util.DataStore
 import fansirsqi.xposed.sesame.util.FansirsqiUtil
+import fansirsqi.xposed.sesame.util.Files
 import fansirsqi.xposed.sesame.util.Log
 import fansirsqi.xposed.sesame.util.ToastUtil
+import fansirsqi.xposed.sesame.util.maps.UserMap
 import rikka.shizuku.Shizuku
 
 // 定义菜单项数据类
@@ -83,6 +86,25 @@ class ExtendViewModel : ViewModel() {
                 .getOrCreate("plate", object : TypeReference<List<Map<String, String>>>() {})
                 .size
             currentDialog = ExtendDialog.ClearPhotoConfirm(currentCount)
+        })
+
+        // 2.1 查看能量统计（statistics.json）
+        menuItems.add(MenuItem("查看能量统计") {
+            val uid = UserMap.currentUid
+            if (uid.isNullOrBlank()) {
+                ToastUtil.showToast(context, "用户为空，无法打开统计文件")
+                return@MenuItem
+            }
+            val file = Files.getTargetFileofUser(uid, "statistics.json")
+            if (file == null) {
+                ToastUtil.showToast(context, "统计文件路径获取失败")
+                return@MenuItem
+            }
+            val intent = Intent(context, LogViewerActivity::class.java).apply {
+                data = android.net.Uri.fromFile(file)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
         })
 
         // 3. 每日单次运行 (特殊处理：调用原有逻辑)

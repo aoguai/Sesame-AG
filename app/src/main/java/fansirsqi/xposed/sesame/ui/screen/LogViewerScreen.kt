@@ -417,10 +417,11 @@ fun LogViewerScreen(
                 }
             } else {
                 SelectionContainer {
+                    val listBottomPadding = if (!state.autoScroll && !state.isSearching) 120.dp else 24.dp
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 8.dp, end = 16.dp, top = 2.dp, bottom = 2.dp)
+                        contentPadding = PaddingValues(start = 8.dp, end = 16.dp, top = 2.dp, bottom = listBottomPadding)
                     ) {
                         items(
                             count = state.totalCount,
