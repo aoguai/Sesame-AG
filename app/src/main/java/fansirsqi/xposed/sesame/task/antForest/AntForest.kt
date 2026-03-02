@@ -4492,30 +4492,30 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         try {
             Log.record(TAG, "尝试使用保护罩...")
 
-            // 定义支持的保护罩类型
-            val shieldTypes = listOf(
-                "LIMIT_TIME_ENERGY_SHIELD_TREE",   // 限时森林保护罩（通常来自活动/青春特权）
-                "LIMIT_TIME_ENERGY_SHIELD",        // 限时能量保护罩
-                "ENERGY_SHIELD_YONGJIU",           // 限时能量保护罩（可能为旧版道具）
-                "RUIHE_ENERGY_SHIELD",             // 瑞和能量保护罩（合作方专属？）
-                "PK_SEASON1_ENERGY_SHIELD_TREE",   // PK赛限定保护罩
-                "ENERGY_SHIELD"                    // 通用能量保护罩
-            )
-
-            // 步骤1: 从背包中收集所有可用的保护罩
-            val availableShields: MutableList<JSONObject> = ArrayList()
-            val forestPropVOList = bagObject?.optJSONArray("forestPropVOList")
-
-            if (forestPropVOList != null) {
+            // 说明：
+            // 过去保护罩 propType 以 LIMIT_TIME_ENERGY_SHIELD / ENERGY_SHIELD 为主，
+            // 但现在活动/节日保护罩会出现更多 *_ENERGY_SHIELD（如 DFYC_ENERGY_SHIELD / FMQK_ENERGY_SHIELD 等）。
+            // 因此这里不再维护硬编码列表，改为依据 propGroup=shield（优先）或 propType 包含 ENERGY_SHIELD 判断。
+            fun collectShieldsFromBag(bag: JSONObject?, out: MutableList<JSONObject>) {
+                val forestPropVOList = bag?.optJSONArray("forestPropVOList") ?: return
                 for (i in 0..<forestPropVOList.length()) {
                     val prop = forestPropVOList.optJSONObject(i) ?: continue
-                    val propType = prop.optJSONObject("propConfigVO")?.optString("propType") ?: ""
+                    val propGroup = prop.optString("propGroup")
+                    val propType = prop.optJSONObject("propConfigVO")?.optString("propType")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: prop.optString("propType")
 
-                    if (shieldTypes.contains(propType)) {
-                        availableShields.add(prop)
+                    val isShield = propGroup.equals("shield", ignoreCase = true)
+                            || propType.contains("ENERGY_SHIELD", ignoreCase = true)
+                    if (isShield) {
+                        out.add(prop)
                     }
                 }
             }
+
+            // 步骤1: 从背包中收集所有可用的保护罩
+            val availableShields: MutableList<JSONObject> = ArrayList()
+            collectShieldsFromBag(bagObject, availableShields)
 
             // 步骤2: 如果没有找到保护罩，尝试获取
             if (availableShields.isEmpty()) {
@@ -4523,18 +4523,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 if (youthPrivilege?.value == true) {
                     Log.record(TAG, "尝试通过青春特权获取保护罩...")
                     if (youthPrivilege()) {
-                        val freshBag = querySelfHome()
-                        val freshPropList = freshBag?.optJSONArray("forestPropVOList")
-                        if (freshPropList != null) {
-                            for (i in 0..<freshPropList.length()) {
-                                val prop = freshPropList.optJSONObject(i) ?: continue
-                                val propType = prop.optJSONObject("propConfigVO")?.optString("propType") ?: ""
-
-                                if ("LIMIT_TIME_ENERGY_SHIELD_TREE" == propType) {
-                                    availableShields.add(prop)
-                                }
-                            }
-                        }
+                        collectShieldsFromBag(queryPropList(true), availableShields)
                     }
                 }
 
@@ -4542,19 +4531,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 if (availableShields.isEmpty() && shieldCardConstant?.value == true) {
                     Log.record(TAG, "尝试通过活力值兑换保护罩...")
                     if (exchangeEnergyShield()) {
-                        // 兑换后通常获得的是 LIMIT_TIME_ENERGY_SHIELD
-                        val exchangeBag = querySelfHome()
-                        val exchangePropList = exchangeBag?.optJSONArray("forestPropVOList")
-                        if (exchangePropList != null) {
-                            for (i in 0..<exchangePropList.length()) {
-                                val prop = exchangePropList.optJSONObject(i) ?: continue
-                                val propType = prop.optJSONObject("propConfigVO")?.optString("propType") ?: ""
-
-                                if ("LIMIT_TIME_ENERGY_SHIELD" == propType) {
-                                    availableShields.add(prop)
-                                }
-                            }
-                        }
+                        collectShieldsFromBag(queryPropList(true), availableShields)
                     }
                 }
             }
