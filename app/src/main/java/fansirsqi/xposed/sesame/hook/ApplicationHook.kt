@@ -261,6 +261,17 @@ class ApplicationHook {
                                 val untilMs = ApplicationHookConstants.offlineUntilMs
                                 val now = System.currentTimeMillis()
                                 val cooldownExpired = untilMs > 0L && now >= untilMs
+
+                                val lastReopenAt = lastReOpenAppLaunchAtMs
+                                val autoResumeByReopen =
+                                    reason == "auth_like" &&
+                                        !cooldownExpired &&
+                                        lastReopenAt > 0L &&
+                                        (now - lastReopenAt) in 0..AUTH_LIKE_AUTO_RECOVER_GUARD_MS
+                                if (autoResumeByReopen) {
+                                    record(TAG, "检测到 auth_like 离线，但 onResume 由 reOpenApp 触发(${now - lastReopenAt}ms)，保持离线等待用户完成验证")
+                                    return@submitEntry
+                                }
                                 val shouldRecover = cooldownExpired || when (reason) {
                                     "auth_like",
                                     "system_busy",
@@ -273,6 +284,7 @@ class ApplicationHook {
                                 if (shouldRecover) {
                                     record(TAG, "检测到 ${reason ?: "unknown"} 离线状态，尝试在 onResume 退出离线并恢复任务执行")
                                     ApplicationHookConstants.setOffline(false)
+                                    SmartSchedulerManager.cancelNamedTask("重新登录")
                                     // 避免快速返回App被 2s 间隔保护挡住而无法立刻恢复
                                     lastExecTime = 0
 
@@ -329,6 +341,17 @@ class ApplicationHook {
                             val untilMs = ApplicationHookConstants.offlineUntilMs
                             val now = System.currentTimeMillis()
                             val cooldownExpired = untilMs > 0L && now >= untilMs
+
+                            val lastReopenAt = lastReOpenAppLaunchAtMs
+                            val autoResumeByReopen =
+                                reason == "auth_like" &&
+                                    !cooldownExpired &&
+                                    lastReopenAt > 0L &&
+                                    (now - lastReopenAt) in 0..AUTH_LIKE_AUTO_RECOVER_GUARD_MS
+                            if (autoResumeByReopen) {
+                                record(TAG, "检测到 auth_like 离线，但 login.onResume 由 reOpenApp 触发(${now - lastReopenAt}ms)，保持离线等待用户完成验证")
+                                return@submitEntry
+                            }
                             val shouldRecover = cooldownExpired || when (reason) {
                                 "auth_like",
                                 "system_busy",
@@ -342,6 +365,7 @@ class ApplicationHook {
 
                             record(TAG, "检测到 ${reason ?: "unknown"} 离线状态，尝试在 login.onResume 退出离线并恢复任务执行")
                             ApplicationHookConstants.setOffline(false)
+                            SmartSchedulerManager.cancelNamedTask("重新登录")
                             lastExecTime = 0
 
                             val statusMsg = when (reason) {
@@ -655,6 +679,11 @@ class ApplicationHook {
 
         @Volatile
         var lastExecTime: Long = 0
+
+        @Volatile
+        private var lastReOpenAppLaunchAtMs: Long = 0L
+
+        private const val AUTH_LIKE_AUTO_RECOVER_GUARD_MS: Long = 1500L
 
         @Volatile
         var nextExecutionTime: Long = 0
@@ -976,6 +1005,7 @@ class ApplicationHook {
             ensureScheduler()
             schedule(20000L, "重新登录") {
                 try {
+                    lastReOpenAppLaunchAtMs = System.currentTimeMillis()
                     val intent = Intent(Intent.ACTION_VIEW)
                     intent.setClassName(General.PACKAGE_NAME, General.CURRENT_USING_ACTIVITY)
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

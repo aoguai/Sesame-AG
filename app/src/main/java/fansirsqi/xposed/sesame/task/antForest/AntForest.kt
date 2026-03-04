@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import de.robv.android.xposed.XposedHelpers
 import fansirsqi.xposed.sesame.data.RuntimeInfo
 import fansirsqi.xposed.sesame.data.Status
+import fansirsqi.xposed.sesame.data.StatusFlags
 import fansirsqi.xposed.sesame.data.Statistics
 import fansirsqi.xposed.sesame.entity.AlipayUser
 import fansirsqi.xposed.sesame.entity.CollectEnergyEntity
@@ -864,9 +865,13 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             // -------------------------------
             // 收PK好友能量
             // -------------------------------
-            Log.record(TAG, "🚀 异步执行PK好友能量收取")
-            collectPKEnergyCoroutine()  // 好友道具在 collectFriendEnergy 内会自动处理
-            tc.countDebug("收PK好友能量（同步）")
+            if (pkEnergy?.value == true) {
+                Log.record(TAG, "🚀 异步执行PK好友能量收取")
+                collectPKEnergyCoroutine()  // 好友道具在 collectFriendEnergy 内会自动处理
+                tc.countDebug("收PK好友能量（同步）")
+            } else {
+                tc.countDebug("跳过PK好友能量（未开启）")
+            }
 
             // -------------------------------
             // 收自己能量
@@ -2203,15 +2208,21 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * 协程版本：收取PK好友能量
      */
     private suspend fun collectPKEnergyCoroutine() {
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTFOREST_PK_SKIP_TODAY)) {
+            Log.record(TAG, "PK排行榜：今日已判定无需处理，跳过以避免风控")
+            return
+        }
+
         collectRankingsCoroutine(
             "PK排行榜",
             { AntForestRpcCall.queryTopEnergyChallengeRanking() },
             "totalData",
             "pk",
             JsonPredicate { pkObject: JSONObject? ->
-                if (pkObject!!.getString("rankMemberStatus") != "JOIN") {
-                    Log.record(TAG, "未加入PK排行榜,跳过,尝试关闭")
-                    pkEnergy!!.value = false
+                val memberStatus = pkObject?.optString("rankMemberStatus")
+                if (memberStatus != "JOIN") {
+                    Log.record(TAG, "未加入PK排行榜/赛季未开启，今日跳过PK任务以避免风控")
+                    Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_PK_SKIP_TODAY)
                     return@JsonPredicate false
                 }
                 true

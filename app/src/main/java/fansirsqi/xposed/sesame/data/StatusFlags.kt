@@ -22,6 +22,13 @@ object StatusFlags {
     const val FLAG_NEVERLAND_STEP_COUNT: String = "Flag_Neverland_StepCount"
 
     // ============================================================
+    // AntForest（蚂蚁森林）
+    // ============================================================
+
+    /** 森林 PK：今日已判定无需处理（未加入/赛季未开启），用于避免重复请求触发风控 */
+    const val FLAG_ANTFOREST_PK_SKIP_TODAY: String = "AntForest::pkSkipToday"
+
+    // ============================================================
     // AntMember（会员频道 / 积分）
     // ============================================================
 
