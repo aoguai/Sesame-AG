@@ -38,6 +38,9 @@ object StatusFlags {
     /** 是否已执行「领取所有可做芝麻任务」 */
     const val FLAG_ANTMEMBER_DO_ALL_SESAME_TASK: String = "AntMember::doAllAvailableSesameTask"
 
+    /** 芝麻信用：当日加入任务次数已达上限（PROMISE_TODAY_FINISH_TIMES_LIMIT），用于止损避免重复请求 */
+    const val FLAG_ANTMEMBER_SESAME_JOIN_LIMIT_REACHED: String = "AntMember::sesameJoinLimitReached"
+
     /** 今日是否已处理「芝麻粒福利签到」(zml check-in) */
     const val FLAG_ANTMEMBER_ZML_CHECKIN_DONE: String = "AntMember::zmlCheckInDone"
 

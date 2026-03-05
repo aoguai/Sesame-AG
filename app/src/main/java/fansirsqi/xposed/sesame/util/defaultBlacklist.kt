@@ -40,6 +40,7 @@ val defaultBlacklist = setOf(
     "逛商家积分兑好物",         // 操作太频繁：OP_REPEAT_CHECK
     "坚持浏览乐游记",           // 操作太频繁：OP_REPEAT_CHECK
     "去体验先用后付",           // 操作太频繁：OP_REPEAT_CHECK
+    "0.01元/日起",             // 参数错误：promiseActivityExtCheck / ILLEGAL_ARGUMENT
     "0.1元起租会员攒粒",        // 参数错误：ILLEGAL_ARGUMENT
     "完成旧衣回收得现金",        // 参数错误：ILLEGAL_ARGUMENT
     "坚持刷视频赚福利",         // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE

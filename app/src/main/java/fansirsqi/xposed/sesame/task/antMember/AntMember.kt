@@ -2825,6 +2825,8 @@ class AntMember : ModelTask() {
         private suspend fun joinAndFinishSesameTaskWithResult(taskList: JSONArray): IntArray {
             var completedCount = 0
             var skippedCount = 0
+            var joinLimitReached = hasFlagToday(StatusFlags.FLAG_ANTMEMBER_SESAME_JOIN_LIMIT_REACHED)
+            var joinLimitLogged = false
 
             for (i in 0..<taskList.length()) {
                 val task = taskList.getJSONObject(i)
@@ -2874,15 +2876,34 @@ class AntMember : ModelTask() {
 
                 var taskCompleted = false
                 if (!task.has("todayFinish")) {
+                    if (joinLimitReached) {
+                        // 当天加入任务次数已达上限：避免继续请求触发风控
+                        if (!joinLimitLogged) {
+                            record(TAG, "芝麻信用💳[领取任务已达当日上限] 今日不再领取新任务")
+                            joinLimitLogged = true
+                        }
+                        skippedCount++
+                        continue
+                    }
                     // 领取任务
                     s = AntMemberRpcCall.joinSesameTask(taskTemplateId)
                     delay(200)
                     responseObj = JSONObject(s)
+                    val joinResultCode = responseObj.optString("resultCode", responseObj.optString("errorCode", ""))
+                    if ("PROMISE_TODAY_FINISH_TIMES_LIMIT" == joinResultCode) {
+                        // “当天完成任务次数超过限制，请隔天再加入”
+                        joinLimitReached = true
+                        setFlagToday(StatusFlags.FLAG_ANTMEMBER_SESAME_JOIN_LIMIT_REACHED)
+                        record(TAG, "芝麻信用💳[领取任务已达当日上限] 今日不再领取新任务")
+                        joinLimitLogged = true
+                        skippedCount++
+                        continue
+                    }
                      if (!ResChecker.checkRes(TAG, responseObj)) {
-                         Log.error(TAG, "芝麻信用💳[领取任务" + taskTitle + "失败]#" + s)
-                         // 自动添加到黑名单
-                         val errorCode = responseObj.optString("errorCode", responseObj.optString("resultCode", ""))
-                         if (!errorCode.isEmpty()) {
+                          Log.error(TAG, "芝麻信用💳[领取任务" + taskTitle + "失败]#" + s)
+                          // 自动添加到黑名单
+                          val errorCode = responseObj.optString("errorCode", responseObj.optString("resultCode", ""))
+                          if (!errorCode.isEmpty()) {
                              autoAddToBlacklist(taskTitle, taskTitle, errorCode)
                          }
                          skippedCount++
