@@ -655,11 +655,13 @@ class AntFarm : ModelTask() {
             if (enterFarm() == null) {
                 return
             }
-            //先遣返，再雇佣，喂鸡
+            //先遣返，再召回自己的小鸡，再雇佣，最后喂鸡
             if (sendBackAnimal?.value == true) {
                 sendBackAnimal()
                 tc.countDebug("遣返")
             }
+            recallAnimal()
+            tc.countDebug("召回小鸡")
             // 雇佣小鸡
             if (hireAnimal?.value == true && AnimalFeedStatus.SLEEPY.name != ownerAnimal.animalFeedStatus) {
                 hireAnimal()
@@ -690,9 +692,6 @@ class AntFarm : ModelTask() {
 
             handleAutoFeedAnimal()
             tc.countDebug("喂食")
-
-            recallAnimal()
-            tc.countDebug("召回小鸡")
 
             listFarmTool() //装载道具信息
             tc.countDebug("装载道具信息")
@@ -1169,6 +1168,9 @@ class AntFarm : ModelTask() {
      * 自动喂鸡
      */
     private suspend fun handleAutoFeedAnimal(isChildTask: Boolean = false) {
+        if (!ownerFarmId.isNullOrBlank()) {
+            syncAnimalStatus(ownerFarmId)
+        }
 
 //        val sleepTimeStr = sleepTime!!.value
 //        if (sleepTimeStr != "-1") {
@@ -1317,6 +1319,8 @@ class AntFarm : ModelTask() {
                                         if (sendBackAnimal?.value == true) {
                                             sendBackAnimal()
                                         }
+                                        // 先召回自己的小鸡，避免因外出导致本轮雇佣/喂食不执行
+                                        recallAnimal()
                                         // 雇佣小鸡
                                         if (hireAnimal?.value == true) {
                                             hireAnimal()
@@ -1592,7 +1596,13 @@ class AntFarm : ModelTask() {
                     ) {
                         val bizInfo = JSONObject(joItem.getString("bizInfo"))
                         val awardType = bizInfo.getString("awardType")
-                        val toolType = ToolType.valueOf(awardType)
+                        val taskTitle = bizInfo.optString("taskTitle", joItem.optString("taskType", "未知道具任务"))
+                        val toolType = try {
+                            ToolType.valueOf(awardType)
+                        } catch (_: IllegalArgumentException) {
+                            Log.record(TAG, "发现暂未支持的庄园道具类型[$awardType]，跳过任务[$taskTitle]")
+                            continue
+                        }
                         var isFull = false
                         for (farmTool in farmTools) {
                             if (farmTool.toolType == toolType) {
@@ -1606,9 +1616,8 @@ class AntFarm : ModelTask() {
                             Log.record(TAG, "领取道具[" + toolType.nickName() + "]#已满，暂不领取")
                             continue
                         }
-                        val awardCount = bizInfo.getInt("awardCount")
+                        val awardCount = bizInfo.optInt("awardCount", 0)
                         val taskType = joItem.getString("taskType")
-                        val taskTitle = bizInfo.getString("taskTitle")
                         s = AntFarmRpcCall.receiveToolTaskReward(awardType, awardCount, taskType)
                         jo = JSONObject(s)
                         memo = jo.getString("memo")
@@ -2795,11 +2804,9 @@ class AntFarm : ModelTask() {
                                 animalStatusVO.getString("animalFeedStatus") //动物饲料状态
                             if (AnimalInteractStatus.HOME.name == animalInteractStatus && AnimalFeedStatus.HUNGRY.name == animalFeedStatus) { //状态是饥饿 并且在庄园
                                 val user = UserMap.getMaskName(userId) //喂 给我喂
-                                if (foodStock < 180) {
-                                    if (unreceiveTaskAward > 0) {
-                                        Log.record(TAG, "✨还有待领取的饲料")
-                                        receiveFarmAwards() //先去领个饲料
-                                    }
+                                if (foodStock < 180 && receiveFarmTaskAward?.value == true) {
+                                    Log.record(TAG, "帮喂前饲料不足180g，尝试领取饲料奖励")
+                                    receiveFarmAwards()
                                 }
                                 //第二次检查
                                 if (foodStock >= 180) {
@@ -2813,12 +2820,17 @@ class AntFarm : ModelTask() {
                                         Log.farm("帮喂好友🥣[" + user + "]的小鸡[180g]#剩余" + foodStock + "g")
                                         Status.feedFriendToday(userId)
                                     } else {
+                                        val resultCode = feedFriendAnimaljo.optString("resultCode", "")
+                                        val memo = feedFriendAnimaljo.optString("memo", "")
                                         Log.error(
                                             TAG,
                                             "😞喂[$user]的鸡失败$feedFriendAnimaljo"
                                         )
-                                        Status.setFlagToday("farm::feedFriendLimit")
-                                        break
+                                        if ("391" == resultCode || memo.contains("今日帮喂次数已达上限")) {
+                                            Status.setFlagToday("farm::feedFriendLimit")
+                                            break
+                                        }
+                                        continue
                                     }
                                 } else {
                                     Log.record(TAG, "😞喂鸡[$user]饲料不足")
@@ -3072,19 +3084,23 @@ class AntFarm : ModelTask() {
             val userId = UserMap.currentUid
             var jo = JSONObject(AntFarmRpcCall.enterKitchen(userId))
             if (ResChecker.checkRes(TAG, jo)) {
-                val canCollectDailyFoodMaterial = jo.getBoolean("canCollectDailyFoodMaterial")
-                val dailyFoodMaterialAmount = jo.getInt("dailyFoodMaterialAmount")
-                val garbageAmount = jo.optInt("garbageAmount", 0)
+                val canCollectDailyFoodMaterial = jo.optBoolean("canCollectDailyFoodMaterial", false)
+                val dailyFoodMaterialAmount = jo.optInt("dailyFoodMaterialAmount", 0)
+                val garbageAmount = listOf(
+                    jo.optInt("garbageAmount", -1),
+                    jo.optInt("kitchenGarbageAmount", -1)
+                ).firstOrNull { it >= 0 } ?: 0
                 if (jo.has("orchardFoodMaterialStatus")) {
                     val orchardFoodMaterialStatus = jo.getJSONObject("orchardFoodMaterialStatus")
-                    if ("FINISHED" == orchardFoodMaterialStatus.optString("foodStatus")) {
+                    if (shouldCollectOrchardFoodMaterial(orchardFoodMaterialStatus)) {
                         jo = JSONObject(AntFarmRpcCall.farmFoodMaterialCollect())
                         if (ResChecker.checkRes(TAG, jo)) {
-                            Log.farm("小鸡厨房👨🏻‍🍳[领取农场食材]#" + jo.getInt("foodMaterialAddCount") + "g")
+                            val collectAmount = jo.optInt("foodMaterialAddCount", jo.optInt("receiveFoodMaterialCount", 0))
+                            Log.farm("小鸡厨房👨🏻‍🍳[领取农场食材]#" + collectAmount + "g")
                         }
                     }
                 }
-                if (canCollectDailyFoodMaterial) {
+                if (canCollectDailyFoodMaterial && dailyFoodMaterialAmount > 0) {
                     jo =
                         JSONObject(AntFarmRpcCall.collectDailyFoodMaterial(dailyFoodMaterialAmount))
                     if (ResChecker.checkRes(TAG, jo)) {
@@ -3094,13 +3110,47 @@ class AntFarm : ModelTask() {
                 if (garbageAmount > 0) {
                     jo = JSONObject(AntFarmRpcCall.collectKitchenGarbage())
                     if (ResChecker.checkRes(TAG, jo)) {
-                        Log.farm("小鸡厨房👨🏻‍🍳[领取肥料]#" + jo.getInt("recievedKitchenGarbageAmount") + "g")
+                        val receivedGarbageAmount = listOf(
+                            jo.optInt("recievedKitchenGarbageAmount", -1),
+                            jo.optInt("receivedKitchenGarbageAmount", -1),
+                            jo.optInt("collectKitchenGarbageAmount", -1)
+                        ).firstOrNull { it >= 0 } ?: garbageAmount
+                        Log.farm("小鸡厨房👨🏻‍🍳[领取肥料]#" + receivedGarbageAmount + "g")
                     }
                 }
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "收集每日食材", t)
         }
+    }
+
+    private fun shouldCollectOrchardFoodMaterial(status: JSONObject?): Boolean {
+        if (status == null) {
+            return false
+        }
+        if (!status.optBoolean("orchardExist", true)) {
+            return false
+        }
+        if (status.optBoolean("canCollect", false)) {
+            return true
+        }
+        val collectableAmount = listOf(
+            status.optInt("collectableFoodMaterialAmount", -1),
+            status.optInt("canCollectFoodMaterialAmount", -1),
+            status.optInt("pendingCollectFoodMaterialAmount", -1),
+            status.optInt("foodMaterialAmount", -1)
+        ).firstOrNull { it > 0 } ?: 0
+        if (collectableAmount > 0) {
+            return true
+        }
+        val foodStatus = status.optString("foodStatus").trim().uppercase(Locale.ROOT)
+        if (foodStatus.isBlank()) {
+            return false
+        }
+        if (foodStatus in setOf("RECIVIED", "RECEIVED", "DONE", "COLLECTED", "EMPTY", "NONE")) {
+            return false
+        }
+        return foodStatus in setOf("FINISHED", "TODO", "WAITING_RECEIVE", "UNRECEIVED", "CAN_COLLECT", "AVAILABLE")
     }
 
     /**
@@ -3679,12 +3729,18 @@ class AntFarm : ModelTask() {
                         }
 
                         checkedCount++
-                        val actionTypeListStr = joo.getJSONArray("actionTypeList").toString()
-                        if (actionTypeListStr.contains("can_hire_action")) {
+                        val actionTypeListStr = joo.optJSONArray("actionTypeList")?.toString().orEmpty()
+                        val canHire = actionTypeListStr.contains("can_hire_action") ||
+                            joo.optString("actionType") == "can_hire_action" ||
+                            joo.optBoolean("canGrabHire", false)
+                        if (canHire) {
                             availableCount++
                             if (hireAnimalAction(userId)) {
                                 animalCount++
-                                break
+                                if (animalCount >= 3) {
+                                    break
+                                }
+                                continue
                             }
                             // 检查农场是否已满
                             if (isFarmFull) {
@@ -4951,7 +5007,8 @@ class AntFarm : ModelTask() {
                     list.add(AntFarmFamilyOption("deliverMsgSend", "道早安"))
                     list.add(AntFarmFamilyOption("familyClaimReward", "领取奖励"))
                     list.add(AntFarmFamilyOption("familyDonateStep", "运动公益捐步"))
-                    list.add(AntFarmFamilyOption("inviteFriendVisitFamily", "好友分享"))
+                    list.add(AntFarmFamilyOption("shareToFriends", "好友分享"))
+                    list.add(AntFarmFamilyOption("sleepTogether", "一起睡觉"))
                     list.add(AntFarmFamilyOption("assignRights", "使用顶梁柱特权"))
                     list.add(AntFarmFamilyOption("familyDrawInfo", "开扭蛋"))
                     list.add(AntFarmFamilyOption("batchInviteP2P", "串门送扭蛋"))

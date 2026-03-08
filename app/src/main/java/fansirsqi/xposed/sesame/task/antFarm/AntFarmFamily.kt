@@ -51,6 +51,59 @@ data object AntFarmFamily {
      */
     private var eatTogetherConfig: JSONObject = JSONObject()
 
+    private fun hasFamilyOption(familyOptions: SelectModelField, vararg optionKeys: String): Boolean {
+        val values = familyOptions.value ?: return false
+        return optionKeys.any { values.contains(it) }
+    }
+
+    private fun buildFamilyUserIds(memberList: JSONArray?): MutableList<String> {
+        if (memberList == null) {
+            return mutableListOf()
+        }
+        return mutableListOf<String>().apply {
+            for (index in 0 until memberList.length()) {
+                val userId = memberList.optJSONObject(index)?.optString("userId").orEmpty()
+                if (userId.isNotBlank()) {
+                    add(userId)
+                }
+            }
+        }
+    }
+
+    private fun refreshFamilyBaseInfoFromQueryFamilyInfo() {
+        try {
+            val queryRes = JSONObject(AntFarmRpcCall.queryFamilyInfo())
+            if (!ResChecker.checkRes(TAG, queryRes)) {
+                return
+            }
+            if (groupId.isBlank()) {
+                groupId = queryRes.optString("groupId")
+            }
+            if (groupName.isBlank()) {
+                groupName = queryRes.optString("familyName", queryRes.optString("groupName"))
+            }
+            if (familyUserIds.isEmpty()) {
+                familyUserIds = buildFamilyUserIds(queryRes.optJSONArray("familyMemberInfoList"))
+            }
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "refreshFamilyBaseInfoFromQueryFamilyInfo err:", t)
+        }
+    }
+
+    private fun queryFamilyTreadMillState(): JSONObject? {
+        return try {
+            val treadMillRes = JSONObject(AntFarmRpcCall.familyTreadMill())
+            if (!ResChecker.checkRes(TAG, treadMillRes)) {
+                null
+            } else {
+                treadMillRes
+            }
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "queryFamilyTreadMillState err:", t)
+            null
+        }
+    }
+
 
     fun run(familyOptions: SelectModelField, notInviteList: SelectModelField) {
         try {
@@ -70,32 +123,40 @@ data object AntFarmFamily {
             }
             val enterRes = JSONObject(AntFarmRpcCall.enterFamily());
             if (ResChecker.checkRes(TAG, enterRes)) {
-                if (!enterRes.has("groupId")) {
-                    Log.farm("请先开通小鸡家庭");
-                    return;
-                }
-                groupId = enterRes.getString("groupId")
-                groupName = enterRes.getString("groupName")
+                groupId = enterRes.optString("groupId")
+                groupName = enterRes.optString("groupName", enterRes.optString("familyName"))
                 val familyAwardNum: Int = enterRes.optInt("familyAwardNum", 0)//奖励数量
                 val familySignTips: Boolean = enterRes.optBoolean("familySignTips", false)//签到
                 val assignFamilyMemberInfo: JSONObject? = enterRes.optJSONObject("assignFamilyMemberInfo")//分配成员信息-顶梁柱
-                familyAnimals = enterRes.getJSONArray("animals")//家庭动物列表
-                familyUserIds = (0..<familyAnimals.length())
-                    .map { familyAnimals.getJSONObject(it).getString("userId") }
-                    .toMutableList()
-                familyInteractActions = enterRes.getJSONArray("familyInteractActions")//互动功能列表
-                eatTogetherConfig = enterRes.getJSONObject("eatTogetherConfig")//美食配置对象
+                familyAnimals = enterRes.optJSONArray("animals") ?: JSONArray()//家庭动物列表
+                familyUserIds = buildFamilyUserIds(familyAnimals)
+                if (familyUserIds.isEmpty()) {
+                    familyUserIds = buildFamilyUserIds(enterRes.optJSONArray("familyMemberInfoList"))
+                }
+                familyInteractActions = enterRes.optJSONArray("familyInteractActions") ?: JSONArray()//互动功能列表
+                eatTogetherConfig = enterRes.optJSONObject("eatTogetherConfig") ?: JSONObject()//美食配置对象
 
+                if (groupId.isBlank() || groupName.isBlank() || familyUserIds.isEmpty()) {
+                    refreshFamilyBaseInfoFromQueryFamilyInfo()
+                }
+                if (groupId.isBlank()) {
+                    Log.farm("请先开通小鸡家庭");
+                    return;
+                }
 
-                if (familyOptions.value?.contains("familySign") == true && familySignTips) {
+                if (hasFamilyOption(familyOptions, "familySign") && familySignTips) {
                     familySign()
                 }
 
                 if (assignFamilyMemberInfo != null
-                    && familyOptions.value?.contains("assignRights") == true
-                    && assignFamilyMemberInfo.getJSONObject("assignRights").getString("status") != "USED"
+                    && hasFamilyOption(familyOptions, "assignRights")
                 ) {
-                    if (assignFamilyMemberInfo.getJSONObject("assignRights").getString("assignRightsOwner") == UserMap.currentUid) {
+                    val assignRights = assignFamilyMemberInfo.optJSONObject("assignRights")
+                    if (assignRights == null) {
+                        Log.record(TAG, "家庭任务🏡[使用顶梁柱特权] 缺少 assignRights 信息，跳过")
+                    } else if (assignRights.optString("status") != "USED" &&
+                        assignRights.optString("assignRightsOwner") == UserMap.currentUid
+                    ) {
                         assignFamilyMember(assignFamilyMemberInfo, familyUserIds)
                     } else {
                         Log.record("家庭任务🏡[使用顶梁柱特权] 不是家里的顶梁柱！")
@@ -103,34 +164,34 @@ data object AntFarmFamily {
                     }
                 }
 
-                if (familyOptions.value?.contains("familyClaimReward") == true && familyAwardNum > 0) {
+                if (hasFamilyOption(familyOptions, "familyClaimReward") && familyAwardNum > 0) {
                     familyClaimRewardList()
                 }
 
-                if (familyOptions.value?.contains("feedFamilyAnimal") == true) {
+                if (hasFamilyOption(familyOptions, "feedFamilyAnimal") && familyAnimals.length() > 0) {
                     familyFeedFriendAnimal(familyAnimals)
                 }
 
-                if (familyOptions.value?.contains("sleepTogether") == true) {
+                if (hasFamilyOption(familyOptions, "sleepTogether") && familyAnimals.length() > 0) {
                     familySleepTogether(enterRes)
                 }
 
-                if (familyOptions.value?.contains("eatTogetherConfig") == true) {
-                    familyEatTogether(eatTogetherConfig, familyInteractActions, familyUserIds)
+                if (hasFamilyOption(familyOptions, "eatTogetherConfig") && eatTogetherConfig.length() > 0) {
+                    familyEatTogether(eatTogetherConfig, familyInteractActions, familyUserIds.toMutableList())
                 }
 
-                if (familyOptions.value?.contains("familyDonateStep") == true) {
+                if (hasFamilyOption(familyOptions, "familyDonateStep")) {
                     familyDonateStep()
                 }
 
-                if (familyOptions.value?.contains("deliverMsgSend") == true) {
-                    deliverMsgSend(familyUserIds)
+                if (hasFamilyOption(familyOptions, "deliverMsgSend") && familyUserIds.isNotEmpty()) {
+                    deliverMsgSend(familyUserIds.toMutableList())
                 }
 
-                if (familyOptions.value?.contains("shareToFriends") == true) {
-                    familyShareToFriends(familyUserIds, notInviteList)
+                if (hasFamilyOption(familyOptions, "shareToFriends", "inviteFriendVisitFamily")) {
+                    familyShareToFriends(familyUserIds.toMutableList(), notInviteList)
                 }
-                if (familyOptions.value?.contains("ExchangeFamilyDecoration") == true) {
+                if (hasFamilyOption(familyOptions, "ExchangeFamilyDecoration")) {
                     autoExchangeFamilyDecoration()
                 }
             }
@@ -451,6 +512,31 @@ data object AntFarmFamily {
 
             if (!needDonateStep) {
                 return
+            }
+
+            val treadMillJo = queryFamilyTreadMillState()
+            val currentMemberState = treadMillJo?.optJSONArray("familyMemberInfoList")
+                ?.let { memberList ->
+                    (0 until memberList.length())
+                        .mapNotNull { memberList.optJSONObject(it) }
+                        .firstOrNull {
+                            it.optBoolean("currentUser", false) || it.optString("userId") == currentUid
+                        }
+                }
+            if (currentMemberState?.optBoolean("alreadyDonate", false) == true) {
+                Status.exchangeToday(currentUid)
+                Log.record(TAG, "家庭任务🏠捐步做公益#家庭页显示今日已捐步，跳过")
+                return
+            }
+            if (currentMemberState != null) {
+                if (!currentMemberState.optBoolean("openSportsPolicy", true)) {
+                    Log.record(TAG, "家庭任务🏠捐步做公益#当前账号未开启运动步数授权，跳过")
+                    return
+                }
+                if (!currentMemberState.optBoolean("treadMillDataShare", true)) {
+                    Log.record(TAG, "家庭任务🏠捐步做公益#当前账号未开启家庭步数共享，跳过")
+                    return
+                }
             }
 
             if (!Status.canExchangeToday(currentUid)) {

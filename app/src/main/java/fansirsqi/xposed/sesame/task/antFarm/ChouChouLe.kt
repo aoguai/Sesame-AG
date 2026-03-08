@@ -68,18 +68,24 @@ class ChouChouLe {
             }
 
             val drawMachineInfo = jo.optJSONObject("drawMachineInfo")
-            if (drawMachineInfo == null) {
+            val hasIpDraw = drawMachineInfo?.has("ipDrawMachineActivityId") == true ||
+                jo.has("ipDrawMachineActivityId") ||
+                jo.has("ipDrawMachine")
+            val hasDailyDraw = drawMachineInfo?.has("dailyDrawMachineActivityId") == true ||
+                jo.has("dailyDrawMachineActivityId") ||
+                jo.has("dailyDrawMachine")
+            if (!hasIpDraw && !hasDailyDraw) {
                 Log.error(TAG, "抽抽乐🎁[获取抽抽乐活动信息失败]")
                 return false
             }
 
             // 执行IP抽抽乐
-            if (drawMachineInfo.has("ipDrawMachineActivityId")) {
+            if (hasIpDraw) {
                 allFinished = true and doChouchoule("ipDraw")
             }
 
             // 执行普通抽抽乐
-            if (drawMachineInfo.has("dailyDrawMachineActivityId")) {
+            if (hasDailyDraw) {
                 allFinished = allFinished and doChouchoule("dailyDraw")
             }
 
@@ -263,13 +269,23 @@ class ChouChouLe {
             val info = TaskInfo(
                 taskStatus = item.getString("taskStatus"),
                 title = item.getString("title"),
-                taskId = item.getString("bizKey"),
+                taskId = item.optString("bizKey").ifBlank { item.optString("taskId") },
                 innerAction = item.optString("innerAction"),
-                rightsTimes = item.optInt("rightsTimes", 0),
-                rightsTimesLimit = item.optInt("rightsTimesLimit", 0),
-                awardType = item.optString("awardType"),
-                awardCount = item.optInt("awardCount", 0),
-                targetUrl = item.optString("targetUrl", "")
+                rightsTimes = listOf(
+                    item.optInt("rightsTimes", -1),
+                    item.optInt("receivedTimes", -1)
+                ).firstOrNull { it >= 0 } ?: 0,
+                rightsTimesLimit = listOf(
+                    item.optInt("rightsTimesLimit", -1),
+                    item.optInt("drawRightsTimes", -1),
+                    item.optInt("canReceiveAwardCount", -1)
+                ).firstOrNull { it >= 0 } ?: 0,
+                awardType = item.optString("awardType").ifBlank { item.optString("taskAwardType") },
+                awardCount = listOf(
+                    item.optInt("awardCount", -1),
+                    item.optInt("canReceiveAwardCount", -1)
+                ).firstOrNull { it >= 0 } ?: 0,
+                targetUrl = item.optString("targetUrl").ifBlank { item.optString("finishedUrl") }
             )
             list.add(info)
         }
@@ -282,6 +298,10 @@ class ChouChouLe {
     private fun doChouTask(drawType: String, task: TaskInfo): Boolean {
         try {
             if (shouldSkipLimitedTaskToday(task)) {
+                return false
+            }
+            if (task.taskId.isBlank()) {
+                Log.record(TAG, "抽抽乐任务[${task.title}]缺少 taskId，跳过")
                 return false
             }
             val taskName = if (drawType == "ipDraw") "IP抽抽乐" else "抽抽乐"
@@ -454,6 +474,10 @@ class ChouChouLe {
      */
     private fun receiveTaskAward(drawType: String, task: TaskInfo): Boolean {
         try {
+            if (task.taskId.isBlank()) {
+                Log.record(TAG, "抽抽乐奖励[${task.title}]缺少 taskId，跳过领取")
+                return false
+            }
             val s = AntFarmRpcCall.chouchouleReceiveFarmTaskAward(
                 drawType,
                 task.taskId,

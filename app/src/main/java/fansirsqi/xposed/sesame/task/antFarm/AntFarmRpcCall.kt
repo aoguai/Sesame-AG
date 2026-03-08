@@ -1119,6 +1119,20 @@ object AntFarmRpcCall {
         return requestString("com.alipay.antfarm.enterFamily", args)
     }
 
+    @JvmStatic
+    fun queryFamilyInfo(): String {
+        val args =
+            "[{\"requestType\":\"NORMAL\",\"sceneCode\":\"ANTFARM\",\"source\":\"H5\"}]"
+        return requestString("com.alipay.antfarm.queryFamilyInfo", args)
+    }
+
+    @JvmStatic
+    fun familyTreadMill(): String {
+        val args =
+            "[{\"openSportsPolicy\":true,\"requestType\":\"NORMAL\",\"sceneCode\":\"ANTFARM\",\"source\":\"H5\",\"timeZoneId\":\"Asia/Shanghai\"}]"
+        return requestString("com.alipay.antfarm.familyTreadMill", args)
+    }
+
     /**
      * 家庭任务入口 - 查询当前是否还有「道早安」等家庭任务
      *
