@@ -687,7 +687,7 @@ class AntMember : ModelTask() {
                         val statistics = spreadTaobaoData.optJSONObject("statistics")
                         val dailyAppWateringCount = statistics?.optInt("dailyAppWateringCount", 0) ?: 0
 
-                        Log.forest("今日农场已施肥💩 $dailyAppWateringCount 次 [$stageText]")
+                        Log.farm("今日农场已施肥💩 $dailyAppWateringCount 次 [$stageText]")
 
                         Log.other(
                             TAG, "信誉任务[芭芭农场施肥成功] $title | 已施肥 $dailyAppWateringCount 次"
@@ -3338,7 +3338,7 @@ class AntMember : ModelTask() {
                 // 待领取状态
                 if (doTaskAction(taskId, "receive")) {
                     val logMsg = "芝麻树🌳[领取奖励] " + title + " #" + (prizeName.ifEmpty { "奖励已领取" })
-                    Log.forest(logMsg) // 输出到 forest
+                    Log.other(logMsg)
                 }
             }
         } catch (e: Exception) {
@@ -3360,7 +3360,7 @@ class AntMember : ModelTask() {
                 // 发送"领取"指令
                 if (doTaskAction(taskId, "receive")) {
                     val logMsg = "芝麻树🌳[完成任务] " + title + " #" + (prizeName.ifEmpty { "奖励已领取" })
-                    Log.forest(logMsg) // 这里输出到 forest
+                    Log.other(logMsg)
                     return true
                 }
             }
@@ -3492,7 +3492,7 @@ class AntMember : ModelTask() {
 
                 var log = "芝麻树🌳[净化]第" + (i + 1) + "次 | 剩:" + newScore + "g"
                 if (growth != -1) log += "|成长:$growth"
-                Log.forest("$log ✅")
+                Log.other("$log ✅")
 
                 delay(1500)
             }
