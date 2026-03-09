@@ -3480,8 +3480,6 @@ class AntMember : ModelTask() {
                 continue
             }
 
-            delay(calcSesameTaskWaitMillis(task))
-
             if (!recordId.isEmpty()) {
                 val finishRes = AntMemberRpcCall.finishSesameTask(recordId)
                 val finishJo = JSONObject(finishRes)
@@ -4074,31 +4072,6 @@ class AntMember : ModelTask() {
                 task.optString("subTitle").contains("邀请成功")
         }
 
-        private fun calcSesameAdTaskWaitMillis(title: String): Long {
-            return if (title.contains("15秒") || title.contains("15s", true)) {
-                10_000L
-            } else {
-                8_000L
-            }
-        }
-
-        private fun calcSesameTaskWaitMillis(task: JSONObject): Long {
-            val title = task.optString("title")
-            val actionText = task.optString("actionText")
-            val subTitle = task.optString("subTitle")
-            val actionUrl = task.optString("actionUrl")
-            val mergedText = "$title|$actionText|$subTitle"
-            return when {
-                mergedText.contains("15秒") || mergedText.contains("15s", true) -> 15_500L
-                mergedText.contains("浏览") || mergedText.contains("逛") ||
-                    mergedText.contains("会场") || mergedText.contains("路线") ||
-                    mergedText.contains("视频") || mergedText.contains("游历") ||
-                    actionUrl.contains("render.alipay.com") -> 15_500L
-
-                else -> 1_200L
-            }
-        }
-
         private fun isTransientSesameTaskError(errorCode: String, resultView: String = ""): Boolean {
             if (errorCode.isEmpty() && resultView.isEmpty()) {
                 return false
@@ -4229,7 +4202,6 @@ class AntMember : ModelTask() {
                 return false
             }
             record(TAG, "$logPrefix[广告任务准备]#$taskTitle")
-            delay(calcSesameAdTaskWaitMillis(taskTitle))
             val adFinishRes = AntMemberRpcCall.taskFinish(bizId)
             val adFinishJo = JSONObject(adFinishRes)
             if (ResChecker.checkRes(TAG, adFinishJo) || "0" == adFinishJo.optString("errCode")) {
@@ -4370,8 +4342,6 @@ class AntMember : ModelTask() {
                     skippedCount++
                     continue
                 }
-
-                delay(calcSesameTaskWaitMillis(task))
 
                 s = AntMemberRpcCall.finishSesameTask(recordId)
                 delay(200)

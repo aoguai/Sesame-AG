@@ -401,7 +401,6 @@ class ChouChouLe {
             if (ResChecker.checkRes(TAG, jo)) {
                 successCount++
                 Log.farm("$taskName🧾️[任务: ${task.title}]#第${task.rightsTimes + successCount}次")
-                GlobalThreadPools.sleepCompat(if (index + 1 < maxTimes) 1500L else 600L)
                 continue
             }
             if (isLimitedTaskEndedResponse(jo)) {

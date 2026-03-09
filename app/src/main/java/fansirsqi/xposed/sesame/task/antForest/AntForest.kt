@@ -3449,43 +3449,6 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         }
     }
 
-    private fun forestTaskSettleDelayMs(taskType: String, taskTitle: String, bizInfo: JSONObject): Long {
-        val texts = sequenceOf(
-            taskType,
-            taskTitle,
-            bizInfo.optString("taskDesc"),
-            bizInfo.optString("taskContent"),
-            bizInfo.optString("taskJumpUrl")
-        ).filter { it.isNotBlank() }.toList()
-
-        val secondRegex = Regex("(\\d{1,3})\\s*(?:s|秒)", RegexOption.IGNORE_CASE)
-        val waitSeconds = texts.asSequence()
-            .flatMap { text ->
-                secondRegex.findAll(text).mapNotNull { matchResult ->
-                    matchResult.groupValues.getOrNull(1)?.toIntOrNull()
-                }
-            }
-            .maxOrNull()
-
-        if (waitSeconds != null && waitSeconds > 0) {
-            return (waitSeconds + 3L).coerceAtMost(40L) * 1000L
-        }
-
-        val combinedText = texts.joinToString(separator = " ")
-        return if (
-            taskType.startsWith("GYG_") ||
-            combinedText.contains("逛一逛") ||
-            combinedText.contains("去逛") ||
-            combinedText.contains("去看看") ||
-            combinedText.contains("玩一玩") ||
-            combinedText.contains("试玩")
-        ) {
-            12_000L
-        } else {
-            0L
-        }
-    }
-
     private fun appendSignInfo(signInfo: JSONObject?, uniqueSigns: MutableMap<String, JSONObject>) {
         val safeSignInfo = signInfo ?: return
         val signId = safeSignInfo.optString("signId")
@@ -3660,10 +3623,6 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     ResChecker.checkRes(TAG + "完成森林任务失败:", finishTaskResponse) -> {
                         forestTaskTryCount.remove(bizKey)
                         Log.forest("森林任务🧾️[$taskTitle]")
-                        val settleDelayMs = forestTaskSettleDelayMs(taskType, taskTitle, bizInfo)
-                        if (settleDelayMs > 0) {
-                            GlobalThreadPools.sleepCompat(settleDelayMs)
-                        }
                         true
                     }
 

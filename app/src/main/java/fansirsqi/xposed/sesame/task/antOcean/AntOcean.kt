@@ -432,43 +432,6 @@ class AntOcean : ModelTask() {
         }
     }
 
-    private fun oceanTaskSettleDelayMs(taskType: String, taskTitle: String, bizInfo: JSONObject): Long {
-        val texts = sequenceOf(
-            taskType,
-            taskTitle,
-            bizInfo.optString("taskDesc"),
-            bizInfo.optString("taskJumpBtn"),
-            bizInfo.optString("taskJumpUrl")
-        ).filter { it.isNotBlank() }.toList()
-
-        val secondRegex = Regex("(\\d{1,3})\\s*(?:s|秒)", RegexOption.IGNORE_CASE)
-        val waitSeconds = texts.asSequence()
-            .flatMap { text ->
-                secondRegex.findAll(text).mapNotNull { matchResult ->
-                    matchResult.groupValues.getOrNull(1)?.toIntOrNull()
-                }
-            }
-            .maxOrNull()
-
-        if (waitSeconds != null && waitSeconds > 0) {
-            return (waitSeconds + 3L).coerceAtMost(35L) * 1000L
-        }
-
-        val combinedText = texts.joinToString(separator = " ")
-        return if (
-            taskType.startsWith("BUSINESS_LIGHTS") ||
-            combinedText.contains("逛一逛") ||
-            combinedText.contains("去逛逛") ||
-            combinedText.contains("去看看") ||
-            combinedText.contains("滑动") ||
-            combinedText.contains("广告")
-        ) {
-            8_000L
-        } else {
-            0L
-        }
-    }
-
     private fun isActiveExtraCollect(extraCollectVO: JSONObject?): Boolean {
         if (extraCollectVO == null) {
             return false
@@ -1135,10 +1098,6 @@ class AntOcean : ModelTask() {
                             if (ResChecker.checkRes(TAG, joFinishTask)) {
                                 oceanTaskTryCount.remove(bizKey)
                                 Log.forest("海洋任务🌊完成[$taskTitle]")
-                                val settleDelayMs = oceanTaskSettleDelayMs(taskType, taskTitle, bizInfo)
-                                if (settleDelayMs > 0) {
-                                    delay(settleDelayMs)
-                                }
                                 done = true
                             } else {
                                 Log.error(TAG, "海洋任务🌊完成失败：$joFinishTask")
