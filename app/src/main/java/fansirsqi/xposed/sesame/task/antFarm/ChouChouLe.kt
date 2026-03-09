@@ -292,6 +292,33 @@ class ChouChouLe {
         return list
     }
 
+    private fun isAdBrowseTask(task: TaskInfo): Boolean {
+        if (task.innerAction == "DONATION") {
+            return false
+        }
+        val merged = listOf(task.taskId, task.title, task.targetUrl)
+            .joinToString("|")
+            .lowercase()
+        return merged.contains("shangyehua") ||
+            merged.contains("30s") ||
+            merged.contains("15s") ||
+            merged.contains("browse") ||
+            merged.contains("杂货铺") ||
+            merged.contains("逛一逛")
+    }
+
+    private fun resolveAdTaskAttemptCount(task: TaskInfo): Int {
+        val remainingTimes = task.getRemainingTimes()
+        if (remainingTimes > 0) {
+            return remainingTimes
+        }
+        if (task.rightsTimesLimit <= 0) {
+            Log.record(TAG, "广告任务[${task.title}]剩余次数字段异常，按默认3次兜底")
+            return 3
+        }
+        return 0
+    }
+
     /**
      * 执行任务
      */
@@ -307,7 +334,7 @@ class ChouChouLe {
             val taskName = if (drawType == "ipDraw") "IP抽抽乐" else "抽抽乐"
 
             // 特殊任务：浏览广告
-            if (task.taskId == "SHANGYEHUA_DAILY_DRAW_TIMES" || task.taskId == "IP_SHANGYEHUA_TASK") {
+            if (isAdBrowseTask(task)) {
                 return handleAdTask(drawType, task)
             }
 
@@ -346,6 +373,53 @@ class ChouChouLe {
         }
     }
 
+    private fun finishAdTaskDirectly(
+        drawType: String,
+        task: TaskInfo,
+        taskSceneCode: String,
+        maxRetry: Int? = null
+    ): Int {
+        val taskName = if (drawType == "ipDraw") "IP抽抽乐" else "抽抽乐"
+        val attemptCount = resolveAdTaskAttemptCount(task)
+        if (attemptCount <= 0) {
+            return 0
+        }
+        val maxTimes = maxRetry?.let { attemptCount.coerceAtMost(it) } ?: attemptCount
+        var successCount = 0
+        for (index in 0 until maxTimes) {
+            val outBizNo = buildString {
+                append(task.taskId)
+                append("_")
+                append(System.currentTimeMillis())
+                append("_")
+                append(index)
+                append("_")
+                append(Integer.toHexString((Math.random() * 0xFFFFFF).toInt()))
+            }
+            val response = AntFarmRpcCall.finishTask(task.taskId, taskSceneCode, outBizNo)
+            val jo = JSONObject(response)
+            if (ResChecker.checkRes(TAG, jo)) {
+                successCount++
+                Log.farm("$taskName🧾️[任务: ${task.title}]#第${task.rightsTimes + successCount}次")
+                GlobalThreadPools.sleepCompat(if (index + 1 < maxTimes) 1500L else 600L)
+                continue
+            }
+            if (isLimitedTaskEndedResponse(jo)) {
+                markLimitedTaskEndedToday(task, getResponseMessage(jo))
+                return successCount
+            }
+            val message = getResponseMessage(jo)
+            if (message.contains("任务已完成") || message.contains("已完成")) {
+                return max(1, successCount)
+            }
+            if (successCount == 0) {
+                Log.record(TAG, "广告任务直连完成失败[${task.title}]: ${message.ifBlank { jo.toString() }}")
+            }
+            break
+        }
+        return successCount
+    }
+
     /**
      * 处理广告任务
      */
@@ -354,10 +428,13 @@ class ChouChouLe {
             if (shouldSkipLimitedTaskToday(task)) {
                 return false
             }
-            val referToken = AntFarm.loadAntFarmReferToken()
             val taskSceneCode = if (drawType == "ipDraw") "ANTFARM_IP_DRAW_TASK" else "ANTFARM_DAILY_DRAW_TASK"
+            val directSuccessCount = finishAdTaskDirectly(drawType, task, taskSceneCode)
+            if (directSuccessCount > 0) {
+                return true
+            }
 
-            // 如果有referToken，尝试执行广告任务
+            val referToken = AntFarm.loadAntFarmReferToken()
             if (!referToken.isNullOrEmpty()) {
                 val response = AntFarmRpcCall.xlightPlugin(referToken, "HDWFCJGXNZW_CUSTOM_20250826173111")
                 val jo = JSONObject(response)
@@ -381,22 +458,7 @@ class ChouChouLe {
                 Log.record(TAG, "浏览广告任务[没有可用Token，请手动看一起广告]")
             }
 
-            // 没有token或广告任务失败，使用普通完成方式
-            val outBizNo = task.taskId + "_" + System.currentTimeMillis() + "_" +
-                    Integer.toHexString((Math.random() * 0xFFFFFF).toInt())
-            val response = AntFarmRpcCall.finishTask(task.taskId, taskSceneCode, outBizNo)
-            val jo = JSONObject(response)
-
-            if (jo.optBoolean("success", false)) {
-                Log.farm((if (drawType == "ipDraw") "IP抽抽乐" else "抽抽乐") + "🧾️[任务: ${task.title}]")
-                GlobalThreadPools.sleepCompat(3000L)
-                return true
-            }
-            if (isLimitedTaskEndedResponse(jo)) {
-                markLimitedTaskEndedToday(task, getResponseMessage(jo))
-                return true
-            }
-            return false
+            return finishAdTaskDirectly(drawType, task, taskSceneCode, 1) > 0
         } catch (t: Throwable) {
             Log.printStackTrace("处理广告任务 err:", t)
             return false

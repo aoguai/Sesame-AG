@@ -724,6 +724,7 @@ class AntFarm : ModelTask() {
                     collectDailyFoodMaterial()
                     collectDailyLimitedFoodMaterial()
                     cook()
+                    refreshFarmStatus("厨房流程后")
                 }
                 tc.countDebug("小鸡厨房")
             }
@@ -783,6 +784,7 @@ class AntFarm : ModelTask() {
             if (enableChouchoule?.value == true) {
                 tc.countDebug("抽抽乐")
                 handleChouChouLeLogic()
+                refreshFarmStatus("抽抽乐流程后")
             }
 
             if (getFeed?.value == true) {
@@ -1437,6 +1439,14 @@ class AntFarm : ModelTask() {
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "syncAnimalStatus err:", t)
         }
+    }
+
+    private fun refreshFarmStatus(reason: String) {
+        if (ownerFarmId.isNullOrBlank()) {
+            return
+        }
+        Log.record(TAG, "刷新庄园状态[$reason]")
+        syncAnimalStatus(ownerFarmId)
     }
 
     private fun syncAnimalStatusAfterFeedAnimal(farmId: String?): JSONObject? {
