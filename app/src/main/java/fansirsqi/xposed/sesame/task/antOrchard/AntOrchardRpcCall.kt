@@ -115,6 +115,19 @@ object AntOrchardRpcCall {
         )
     }
 
+    /**
+     * 收取「庄园鸡屎/肥料」(芭芭农场里的肥料池)。
+     */
+    fun collectManurePot(
+        manurePotNOs: String,
+        source: String = DEFAULT_SOURCE
+    ): String {
+        return RequestManager.requestString(
+            "com.alipay.antfarm.collectManurePot",
+            "[{\"manurePotNOs\":\"$manurePotNOs\",\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"$source\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
     fun finishTask(
         userId: String,
         sceneCode: String,

@@ -130,6 +130,9 @@ class AntOrchard : ModelTask() {
                 userId = UserMap.currentUid
             }
 
+            // 施肥活动奖励（丰收奖励）：抓包可见 spreadManureActivity.status=FINISHED 但 manureTaskAwardReceive=false
+            tryReceiveSpreadManureActivityAward(indexJson)
+
             // 七日礼包
             if (receiveSevenDayGift.value == true) {
                 if (indexJson.has("lotteryPlusInfo")) {
@@ -182,6 +185,8 @@ class AntOrchard : ModelTask() {
             if ((orchardSpreadManureCountMain.value ?: 0) > 0 || (orchardSpreadManureCountYeb.value ?: 0) > 0) {
                 CoroutineUtils.sleepCompat(200)
                 orchardSpreadManure()
+                // 施肥后刷新并尝试领取丰收奖励（例如：施肥满5次可领）
+                tryReceiveSpreadManureActivityAwardByQueryIndex()
             }
 
             // 许愿 (仅根据果树计数判断，或者可以改为独立配置，此处保持原逻辑使用果树计数)
@@ -1111,7 +1116,8 @@ class AntOrchard : ModelTask() {
                         }
                     }
                     "ANTFARM_COLLECT_MANURE" -> {
-                        Log.record(TAG, "农场联动任务⏭️[庄园鸡屎] 依赖庄园模块完成后再领奖")
+                        // actionType=ANTFARM_COLLECT_MANURE(taskStatus=TODO) 时，需要调用 com.alipay.antfarm.collectManurePot(sceneCode=ORCHARD)
+                        collectOrchardManurePotIfNeeded(responseJson)
                     }
                     "ANTFOREST_DEFOLIATION" -> {
                         Log.record(TAG, "农场联动任务⏭️[森林落叶] 依赖森林模块完成后再领奖")
@@ -1126,6 +1132,68 @@ class AntOrchard : ModelTask() {
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "doOrchardDailyTask err:", t)
+        }
+    }
+
+    private fun collectOrchardManurePotIfNeeded(listTaskJson: JSONObject) {
+        try {
+            val manureFactory = listTaskJson.optJSONObject("manureFactory") ?: run {
+                Log.record(TAG, "庄园鸡屎💩任务：缺少 manureFactory 字段，跳过")
+                return
+            }
+            if (!manureFactory.optBoolean("canCollect", false)) {
+                Log.record(TAG, "庄园鸡屎💩任务：当前不可收取（canCollect=false）")
+                return
+            }
+
+            val manure = manureFactory.optJSONObject("manure")
+            val potList = manure?.optJSONArray("manurePotList")
+            val potNos = buildString {
+                if (potList != null) {
+                    val candidateNos = ArrayList<String>()
+                    for (i in 0 until potList.length()) {
+                        val pot = potList.optJSONObject(i) ?: continue
+                        val potNo = pot.optString("manurePotNO").trim()
+                        if (potNo.isEmpty()) continue
+                        val potNum = pot.optDouble("manurePotNum", 0.0)
+                        if (potNum > 0) {
+                            candidateNos.add(potNo)
+                        }
+                    }
+                    if (candidateNos.isNotEmpty()) {
+                        append(candidateNos.joinToString(","))
+                    } else {
+                        // 兜底：有 potList 但数值结构异常时，直接收取全部 pot
+                        val allNos = ArrayList<String>()
+                        for (i in 0 until potList.length()) {
+                            val pot = potList.optJSONObject(i) ?: continue
+                            val potNo = pot.optString("manurePotNO").trim()
+                            if (potNo.isNotEmpty()) allNos.add(potNo)
+                        }
+                        if (allNos.isNotEmpty()) {
+                            append(allNos.joinToString(","))
+                        }
+                    }
+                }
+            }.ifEmpty {
+                // 抓包常见 1,2,3
+                "1,2,3"
+            }
+
+            val source = getSceneSource()
+            val collectResp = JSONObject(AntOrchardRpcCall.collectManurePot(potNos, source))
+            if (ResChecker.checkRes(TAG, collectResp)) {
+                val collected = collectResp.optInt("collectManurePotNum", 0)
+                if (collected > 0) {
+                    Log.farm("庄园鸡屎💩[收取肥料]#${collected}g")
+                } else {
+                    Log.record(TAG, "庄园鸡屎💩任务：已触发收取，但本次为0g")
+                }
+            } else {
+                Log.record(TAG, "庄园鸡屎💩任务收取失败: ${collectResp.toString()}")
+            }
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "collectOrchardManurePotIfNeeded err:", t)
         }
     }
 
@@ -1229,6 +1297,48 @@ class AntOrchard : ModelTask() {
 
     private fun getSceneSource(scene: String = currentPlantScene): String {
         return if (scene == "yeb") YEB_SOURCE else ORCHARD_SOURCE
+    }
+
+    private fun tryReceiveSpreadManureActivityAward(indexJson: JSONObject) {
+        try {
+            // manureTaskAwardReceive=false + spreadManureStage.status=FINISHED 时，可通过 antiep.receiveTaskAward 领奖
+            val alreadyReceived = indexJson.optBoolean("manureTaskAwardReceive", true)
+            val stage = indexJson.optJSONObject("spreadManureActivity")
+                ?.optJSONObject("spreadManureStage")
+                ?: return
+            val status = stage.optString("status")
+            if (alreadyReceived || status != "FINISHED") {
+                return
+            }
+            val sceneCode = stage.optString("sceneCode")
+            val taskType = stage.optString("taskType")
+            if (sceneCode.isBlank() || taskType.isBlank()) {
+                Log.record(TAG, "丰收奖励🎁字段缺失: sceneCode=$sceneCode taskType=$taskType")
+                return
+            }
+            val awardCount = stage.optInt("awardCount", 0)
+            val source = getSceneSource(indexJson.optString("currentPlantScene", currentPlantScene))
+            val awardResp = JSONObject(AntOrchardRpcCall.receiveTaskAward(sceneCode, taskType, source))
+            if (ResChecker.checkRes(TAG, awardResp)) {
+                Log.farm("丰收奖励🎁[领取成功]#${awardCount}g肥料")
+            } else {
+                Log.record(TAG, "丰收奖励🎁领取失败: ${awardResp.toString()}")
+            }
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "tryReceiveSpreadManureActivityAward err:", t)
+        }
+    }
+
+    private fun tryReceiveSpreadManureActivityAwardByQueryIndex() {
+        try {
+            val refreshed = JSONObject(AntOrchardRpcCall.orchardIndex())
+            if (refreshed.optString("resultCode") != "100") {
+                return
+            }
+            tryReceiveSpreadManureActivityAward(refreshed)
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "tryReceiveSpreadManureActivityAwardByQueryIndex err:", t)
+        }
     }
 
     private fun buildXLightSession(): String {

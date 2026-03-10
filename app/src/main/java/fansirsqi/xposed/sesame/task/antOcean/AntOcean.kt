@@ -432,6 +432,27 @@ class AntOcean : ModelTask() {
         }
     }
 
+    private fun resolveOceanTaskWaitSeconds(taskTitle: String, bizInfo: JSONObject): Int {
+        val timeCount = bizInfo.optString("timeCount").trim()
+        val parsedTimeCount = timeCount.toIntOrNull()
+        if (parsedTimeCount != null && parsedTimeCount in 1..30) {
+            return parsedTimeCount
+        }
+
+        val taskDesc = bizInfo.optString("taskDesc")
+        val candidates = listOf(taskTitle, taskDesc)
+        val secondsPattern = Regex("""(\d{1,2})\s*(?:s|秒)""", RegexOption.IGNORE_CASE)
+        for (candidate in candidates) {
+            if (candidate.isBlank()) continue
+            val match = secondsPattern.find(candidate) ?: continue
+            val seconds = match.groupValues.getOrNull(1)?.toIntOrNull() ?: continue
+            if (seconds in 1..30) {
+                return seconds
+            }
+        }
+        return 0
+    }
+
     private fun isActiveExtraCollect(extraCollectVO: JSONObject?): Boolean {
         if (extraCollectVO == null) {
             return false
@@ -1017,8 +1038,17 @@ class AntOcean : ModelTask() {
     private suspend fun receiveTaskAward() {
         try {
             val presetBad = LinkedHashSet(listOf("DEMO", "DEMO1"))
+            val badTaskSetSchemaVersion = 2
+            val badTaskSetSchemaKey = "badOceanTaskSetSchemaVersion"
             val typeRef = object : TypeReference<MutableSet<String>>() {}
             var badTaskSet = DataStore.getOrCreate("badOceanTaskSet", typeRef)
+            val storedSchemaVersion = DataStore.getOrCreate<Int>(badTaskSetSchemaKey)
+            if (storedSchemaVersion != badTaskSetSchemaVersion) {
+                badTaskSet.clear()
+                badTaskSet.addAll(presetBad)
+                DataStore.put("badOceanTaskSet", badTaskSet)
+                DataStore.put(badTaskSetSchemaKey, badTaskSetSchemaVersion)
+            }
             if (badTaskSet.isEmpty()) {
                 badTaskSet.addAll(presetBad)
                 DataStore.put("badOceanTaskSet", badTaskSet)
@@ -1076,18 +1106,43 @@ class AntOcean : ModelTask() {
                                 done = true
                             }
                         } else {
+                            val waitSeconds = resolveOceanTaskWaitSeconds(taskTitle, bizInfo)
+                            if (waitSeconds > 0) {
+                                Log.record(TAG, "海洋任务🌊[$taskTitle]需等待${waitSeconds}s，跳过处理")
+                                continue
+                            }
+
                             val bizKey = "${sceneCode}_$taskType"
                             val count = oceanTaskTryCount.computeIfAbsent(bizKey) { AtomicInteger(0) }
                                 .incrementAndGet()
 
                             val finishSource = resolveOceanTaskFinishSource(taskType, taskTitle, bizInfo)
-                            val finishResponse = AntOceanRpcCall.finishTask(sceneCode, taskType, finishSource)
-                            val joFinishTask = JsonUtil.parseJSONObjectOrNull(finishResponse) ?: continue
+                            val fallbackSource = if (finishSource == "ADBASICLIB") "ANTFOCEAN" else "ADBASICLIB"
+                            val sourcesToTry = listOf(finishSource, fallbackSource).distinct()
+                            var joFinishTask: JSONObject? = null
+                            var finishOk = false
+                            var notSupportedCount = 0
 
-                            // 检查特定错误码：不支持RPC完成的任务，直接加入黑名单
-                            val errorCode = joFinishTask.optString("code", "")
-                            val desc = joFinishTask.optString("desc", "")
-                            if (errorCode == "400000040" || desc.contains("不支持RPC完成")) {
+                            for (source in sourcesToTry) {
+                                val finishResponse = AntOceanRpcCall.finishTask(sceneCode, taskType, source)
+                                val parsed = JsonUtil.parseJSONObjectOrNull(finishResponse) ?: continue
+                                joFinishTask = parsed
+
+                                // 检查特定错误码：不支持RPC完成的任务，仅在两种 source 都不支持时再加入黑名单
+                                val errorCode = parsed.optString("code", "")
+                                val desc = parsed.optString("desc", "")
+                                if (errorCode == "400000040" || desc.contains("不支持RPC完成")) {
+                                    notSupportedCount++
+                                    continue
+                                }
+
+                                if (ResChecker.checkRes(TAG, parsed)) {
+                                    finishOk = true
+                                    break
+                                }
+                            }
+
+                            if (!finishOk && notSupportedCount >= sourcesToTry.size) {
                                 Log.error(TAG, "海洋任务🌊[$taskTitle]不支持RPC完成，已加入黑名单")
                                 badTaskSet.add(taskTitle)
                                 badTaskSet.add(taskType)
@@ -1095,12 +1150,13 @@ class AntOcean : ModelTask() {
                                 continue
                             }
 
-                            if (ResChecker.checkRes(TAG, joFinishTask)) {
+                            val finishResult = joFinishTask ?: continue
+                            if (finishOk) {
                                 oceanTaskTryCount.remove(bizKey)
                                 Log.forest("海洋任务🌊完成[$taskTitle]")
                                 done = true
                             } else {
-                                Log.error(TAG, "海洋任务🌊完成失败：$joFinishTask")
+                                Log.error(TAG, "海洋任务🌊完成失败：$finishResult")
                                 if (count > 1) {
                                     badTaskSet.add(taskTitle)
                                     badTaskSet.add(taskType)
