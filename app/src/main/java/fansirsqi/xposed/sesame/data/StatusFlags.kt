@@ -41,6 +41,9 @@ object StatusFlags {
     /** 今日会员任务已判定无需继续刷新（列表为空/仅剩黑名单/仅剩暂不支持任务） */
     const val FLAG_ANTMEMBER_MEMBER_TASK_EMPTY_TODAY: String = "AntMember::memberTaskEmptyToday"
 
+    /** 今日会员任务因风控/离线止损，不再继续刷新 */
+    const val FLAG_ANTMEMBER_MEMBER_TASK_RISK_STOP_TODAY: String = "AntMember::memberTaskRiskStopToday"
+
     /** 是否已执行「领取所有可做芝麻任务」 */
     const val FLAG_ANTMEMBER_DO_ALL_SESAME_TASK: String = "AntMember::doAllAvailableSesameTask"
 
