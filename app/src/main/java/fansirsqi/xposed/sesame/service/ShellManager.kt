@@ -7,6 +7,8 @@ import com.niki.cmd.ShizukuShell
 import com.niki.cmd.model.bean.ShellResult
 import fansirsqi.xposed.sesame.service.patch.SafeRootShell
 import fansirsqi.xposed.sesame.util.Log
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import rikka.shizuku.Shizuku
 
 class ShellManager(context: Context) {
@@ -26,6 +28,7 @@ class ShellManager(context: Context) {
     private var selectedShell: Shell? = null
     @Volatile
     private var lastNotifiedType: String? = null
+    private val selectionMutex = Mutex()
 
     /**
      * 获取当前使用的 Shell 名称
@@ -58,41 +61,44 @@ class ShellManager(context: Context) {
     }
 
     private suspend fun selectExecutor(notifyUnavailable: Boolean = true) {
-        // 如果已经选中且可用，直接返回
-        if (selectedShell != null && selectedShell!!.isAvailable()) return
+        selectionMutex.withLock {
+            // 如果已经选中且可用，直接返回
+            if (selectedShell != null && selectedShell!!.isAvailable()) return
 
-        Log.d(TAG, "正在寻找可用的 Root 或 Shizuku Shell...")
+            Log.d(TAG, "正在寻找可用的 Root 或 Shizuku Shell...")
 
-        val shizukuReady = isShizukuReady()
-        val executors = if (shizukuReady) {
-            listOf<Shell>(shizukuShell, rootShell)
-        } else {
-            listOf<Shell>(rootShell, shizukuShell)
-        }
-
-        for (shell in executors) {
-            try {
-                if (shell is ShizukuShell) {
-                    if (!shizukuReady) {
-                        Log.d(TAG, "跳过 ShizukuShell: 未授权或服务未运行")
-                        continue
-                    }
-                }
-
-                if (shell.isAvailable()) {
-                    selectedShell = shell
-                    notifyChange() // 🔥 通知：选中了新 Shell
-                    Log.i(TAG, "✅ 成功选中 Shell: ${shell.javaClass.simpleName}")
-                    return
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Shell ${shell.javaClass.simpleName} 检测失败: ${e.message}")
+            val shizukuReady = isShizukuReady()
+            val executors = if (shizukuReady) {
+                listOf<Shell>(shizukuShell, rootShell)
+            } else {
+                listOf<Shell>(rootShell, shizukuShell)
             }
-        }
-        // 如果都失败了，置空
-        selectedShell = null
-        if (notifyUnavailable) {
-            notifyChange() // 🔥 通知：变成 None 了
+
+            for (shell in executors) {
+                try {
+                    if (shell is ShizukuShell) {
+                        if (!shizukuReady) {
+                            Log.d(TAG, "跳过 ShizukuShell: 未授权或服务未运行")
+                            continue
+                        }
+                    }
+
+                    if (shell.isAvailable()) {
+                        selectedShell = shell
+                        notifyChange() // 🔥 通知：选中了新 Shell
+                        Log.i(TAG, "✅ 成功选中 Shell: ${shell.javaClass.simpleName}")
+                        return
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Shell ${shell.javaClass.simpleName} 检测失败: ${e.message}")
+                }
+            }
+
+            // 如果都失败了，置空
+            selectedShell = null
+            if (notifyUnavailable) {
+                notifyChange() // 🔥 通知：变成 None 了
+            }
         }
     }
 
