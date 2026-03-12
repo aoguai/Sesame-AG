@@ -1156,25 +1156,48 @@ class AntOrchard : ModelTask() {
 
             val manure = manureFactory.optJSONObject("manure")
             val potList = manure?.optJSONArray("manurePotList")
-            val candidateNos = ArrayList<String>()
+            val candidateNos = LinkedHashSet<String>()
+            val fallbackNos = LinkedHashSet<String>()
+            val allPotNos = LinkedHashSet<String>()
+            var totalPotNum = 0.0
             if (potList != null) {
                 for (i in 0 until potList.length()) {
                     val pot = potList.optJSONObject(i) ?: continue
                     val potNo = pot.optString("manurePotNO").trim()
-                    if (potNo.isEmpty()) continue
                     val potNum = pot.optDouble("manurePotNum", 0.0)
+                    totalPotNum += potNum.coerceAtLeast(0.0)
+                    if (potNo.isEmpty()) continue
+                    allPotNos.add(potNo)
+                    if (potNum > 0.0) {
+                        fallbackNos.add(potNo)
+                    }
                     if (potNum > 1.0) {
                         candidateNos.add(potNo)
                     }
                 }
             }
-            if (candidateNos.isEmpty()) {
-                Log.record(TAG, "庄园鸡屎💩任务：当前各肥料池未达到>1g门槛，跳过收取")
+            val collectTargets: List<String> = when {
+                allPotNos.size >= 3 && candidateNos.size >= 3 -> candidateNos.toList()
+                allPotNos.size < 3 && totalPotNum > 3.0 && fallbackNos.isNotEmpty() -> fallbackNos.toList()
+                else -> emptyList()
+            }
+            if (collectTargets.isEmpty()) {
+                if (allPotNos.size >= 3) {
+                    Log.record(
+                        TAG,
+                        "庄园鸡屎💩任务：已识别${allPotNos.size}个池子，但未满足至少3个池子都>1g，跳过收取"
+                    )
+                } else {
+                    Log.record(
+                        TAG,
+                        "庄园鸡屎💩任务：未识别到完整三池结构，当前总量${"%.1f".format(totalPotNum)}g未达到>3g兜底门槛，跳过收取"
+                    )
+                }
                 return
             }
 
             val source = getSceneSource()
-            val collectResp = JSONObject(AntOrchardRpcCall.collectManurePot(candidateNos.joinToString(","), source))
+            val collectResp = JSONObject(AntOrchardRpcCall.collectManurePot(collectTargets.joinToString(","), source))
             if (ResChecker.checkRes(TAG, collectResp)) {
                 val collected = collectResp.optInt("collectManurePotNum", 0)
                 if (collected > 0) {

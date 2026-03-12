@@ -283,6 +283,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
 
     private var cachedBagObject: JSONObject? = null
     private var lastQueryPropListTime: Long = 0
+    private var lastUsePropCheckTime: Long = 0
 
     // {{ 新增接口定义：收自己能量的方式 }}
     interface CollectSelfType {
@@ -931,6 +932,8 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             Log.record(TAG, "执行开始-蚂蚁${getName()}")
             taskCount.set(0)
             selfId = UserMap.currentUid
+            lastUsePropCheckTime = 0
+            invalidatePropBagCache()
             initRebornWeeklyState()
             // 加载“今日统计”（按账号维度持久化），用于跨重启/多次运行累计
             selfId?.takeIf { it.isNotBlank() }?.let { uid ->
@@ -3836,6 +3839,12 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 Log.record(TAG, "⚡ 快速收取通道：跳过道具检查，加速蹲点收取")
                 return
             }
+            val now = System.currentTimeMillis()
+            if (now - lastUsePropCheckTime < 5000) {
+                Log.record(TAG, "道具检查刚在5秒内完成，复用当前状态，跳过重复请求")
+                return
+            }
+            lastUsePropCheckTime = now
 
             /*
              * 在收集能量之前决定是否使用增益类道具卡。
@@ -3853,7 +3862,6 @@ class AntForest : ModelTask(), EnergyCollectCallback {
              * 4. 如果有任何一个道具需要使用，则同步查询背包信息，并调用相应的使用道具方法。
              */
 
-            val now = System.currentTimeMillis()
             // 双击卡判断
             val needDouble =
                 doubleCard!!.value != ApplyPropType.CLOSE && shouldRenewDoubleCard(
@@ -4561,6 +4569,11 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         return queryPropList(false)
     }
 
+    private fun invalidatePropBagCache() {
+        cachedBagObject = null
+        lastQueryPropListTime = 0L
+    }
+
     @Synchronized
     private fun queryPropList(forceRefresh: Boolean): JSONObject? {
         val now = System.currentTimeMillis()
@@ -4814,6 +4827,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
 
             // 统一结果处理
             if (ResChecker.checkRes(TAG + "使用道具失败:", jo)) {
+                invalidatePropBagCache()
                 // ⚡ 优化点：根据参数决定是否执行耗时的刷新操作
                 if (needRefreshHome) {
                     updateSelfHomePage()
@@ -4824,7 +4838,17 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 if (errorData == null) {
                     errorData = jo
                 }
-                val resultDesc = errorData.optString("resultDesc", "未知错误")
+                val resultCode = errorData.optString("resultCode")
+                    .ifBlank { jo.optString("resultCode") }
+                val resultDesc = errorData.optString("resultDesc")
+                    .ifBlank { errorData.optString("memo") }
+                    .ifBlank { jo.optString("resultDesc") }
+                    .ifBlank { jo.optString("memo") }
+                    .ifBlank { "未知错误" }
+                if (handleAlreadyActivePropUseFailure(propType, propName, resultCode, resultDesc, needRefreshHome)) {
+                    invalidatePropBagCache()
+                    return true
+                }
                 Log.record("使用道具失败: $resultDesc")
                 Toast.show(resultDesc)
                 return false
@@ -4833,6 +4857,58 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             Log.printStackTrace(TAG, "usePropBag err", th)
             return false
         }
+    }
+
+    private fun handleAlreadyActivePropUseFailure(
+        propType: String,
+        propName: String,
+        resultCode: String,
+        resultDesc: String,
+        needRefreshHome: Boolean
+    ): Boolean {
+        val supportsActiveState = isRenewableProp(propType) || propType.contains("EXPAND_CARD")
+        if (!supportsActiveState) {
+            return false
+        }
+        val alreadyActive = when {
+            resultCode.contains("IN_USE") -> true
+            resultDesc.contains("已经在用") -> true
+            resultDesc.contains("已经在使用") -> true
+            resultDesc.contains("当前已生效") -> true
+            resultDesc.contains("已在生效") -> true
+            else -> false
+        }
+        if (!alreadyActive) {
+            return false
+        }
+        val now = System.currentTimeMillis()
+        when {
+            propType.contains("DOUBLE_CLICK") -> {
+                doubleEndTime = maxOf(doubleEndTime, now + 5 * TimeFormatter.ONE_MINUTE_MS)
+            }
+
+            propType.contains("STEALTH") -> {
+                stealthEndTime = maxOf(stealthEndTime, now + TimeFormatter.ONE_DAY_MS)
+            }
+
+            propType.contains("SHIELD") -> {
+                shieldEndTime = maxOf(shieldEndTime, now + TimeFormatter.ONE_DAY_MS)
+            }
+
+            propType.contains("BOMB_CARD") -> {
+                energyBombCardEndTime = maxOf(energyBombCardEndTime, now + TimeFormatter.ONE_DAY_MS)
+            }
+
+            propType.contains("EXPAND_CARD") -> {
+                robExpandCardEndTime = maxOf(robExpandCardEndTime, now + 5 * TimeFormatter.ONE_MINUTE_MS)
+            }
+        }
+        Log.record(TAG, "道具[$propName]已在生效中，跳过重复使用并同步状态")
+        if (needRefreshHome) {
+            runCatching { updateSelfHomePage() }
+                .onFailure { Log.printStackTrace(TAG, "refresh prop state after in-use", it) }
+        }
+        return true
     }
 
     /**
@@ -4852,6 +4928,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      */
     private fun useDoubleCard(bagObject: JSONObject) {
         try {
+            if (doubleEndTime > System.currentTimeMillis()) {
+                Log.record(TAG, "双击卡已生效，剩余${formatTimeDifference(doubleEndTime - System.currentTimeMillis())}，跳过重复使用")
+                return
+            }
             // 前置检查1: 检查今日使用次数是否已达上限
             if (!Status.canDoubleToday()) {
                 Log.record(TAG, "双击卡使用条件检查: 今日次数已达上限")
@@ -5172,6 +5252,13 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      */
     private fun userobExpandCard(bag: JSONObject? = queryPropList()) {
         try {
+            if (robExpandCardEndTime > System.currentTimeMillis()) {
+                Log.record(
+                    TAG,
+                    "收好友翻倍卡已生效，剩余${formatTimeDifference(robExpandCardEndTime - System.currentTimeMillis())}，跳过重复使用"
+                )
+                return
+            }
             val jo = selectPreferredRobExpandProp(bag)
             if (jo != null && usePropBag(jo)) {
                 robExpandCardEndTime = System.currentTimeMillis() + 1000 * 60 * 5
@@ -5513,8 +5600,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     config.endTimeUpdater?.accept(System.currentTimeMillis())
                 }
             } else {
-                Log.record(TAG, "背包中未找到任何可用的" + config.propName)
-                updateSelfHomePage()
+                Log.record(TAG, "背包中未找到任何可用的" + config.propName + "，本次不额外刷新主页")
             }
         } catch (th: Throwable) {
             handleException("use" + config.propName, th)

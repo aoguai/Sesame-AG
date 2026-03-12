@@ -2733,6 +2733,42 @@ class AntFarm : ModelTask() {
         return isUseAccelerateTool
     }
 
+    private fun confirmFarmToolResultAfterInvalid(
+        targetFarmId: String?,
+        toolType: ToolType,
+        toolCountBefore: Int,
+        wasBigEaterActive: Boolean
+    ): Boolean {
+        try {
+            Log.record(TAG, "道具🎭[${toolType.nickName()}]返回“道具使用无效”，开始刷新状态复核")
+            syncAnimalStatus(targetFarmId)
+            listFarmTool()
+            val toolCountAfter = getFarmToolCount(toolType, forceRefresh = false)
+            if (toolCountAfter in 0 until toolCountBefore) {
+                Log.record(
+                    TAG,
+                    "道具🎭[${toolType.nickName()}]复核后确认已生效/已消耗（${toolCountBefore}→${toolCountAfter}），按成功处理"
+                )
+                return true
+            }
+            if (toolType == ToolType.BIG_EATER_TOOL && !wasBigEaterActive && serverUseBigEaterTool) {
+                Log.record(TAG, "道具🎭[${toolType.nickName()}]复核后确认已处于生效状态，按成功处理")
+                return true
+            }
+            if (toolType == ToolType.ACCELERATETOOL && AnimalBuff.ACCELERATING.name == ownerAnimal.animalBuff) {
+                invalidToolTypesThisRound.add(toolType)
+                Log.record(TAG, "道具🎭[${toolType.nickName()}]当前已处于加速状态，本轮不再重复尝试")
+                return false
+            }
+            invalidToolTypesThisRound.add(toolType)
+            Log.record(TAG, "道具🎭[${toolType.nickName()}]复核后仍无效，已在本轮停止继续尝试")
+        } catch (t: Throwable) {
+            invalidToolTypesThisRound.add(toolType)
+            Log.printStackTrace(TAG, "confirmFarmToolResultAfterInvalid err:", t)
+        }
+        return false
+    }
+
     private fun useFarmTool(targetFarmId: String?, toolType: ToolType): Boolean {
         try {
             if (invalidToolTypesThisRound.contains(toolType)) {
@@ -2753,6 +2789,8 @@ class AntFarm : ModelTask() {
                 return false
             }
 
+            val toolCountBefore = tool.toolCount
+            val wasBigEaterActive = serverUseBigEaterTool
             var s = AntFarmRpcCall.useFarmTool(targetFarmId, tool.toolId.orEmpty(), toolType.name)
             var jo = JSONObject(s)
             val memo = jo.optString("memo")
@@ -2768,8 +2806,9 @@ class AntFarm : ModelTask() {
                 // 针对加速卡：当日达到上限(resultCode=3D16)后，设置当日标记，避免后续重复尝试
                 val resultCode = jo.optString("resultCode")
                 if (resultCode == "348" || memo.contains("道具使用无效")) {
-                    invalidToolTypesThisRound.add(toolType)
-                    Log.record(TAG, "道具🎭[${toolType.nickName()}]返回“道具使用无效”，已在本轮停止继续尝试")
+                    if (confirmFarmToolResultAfterInvalid(targetFarmId, toolType, toolCountBefore, wasBigEaterActive)) {
+                        return true
+                    }
                 }
                 if (toolType == ToolType.ACCELERATETOOL && resultCode == "3D16") {
                     Status.setFlagToday("farm::accelerateLimit")
