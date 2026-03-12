@@ -659,8 +659,11 @@ class AntOcean : ModelTask() {
                             break
                         }
                     }
-                    if (canCombine && reward.optBoolean("unlock", false)) {
-                        val fishId = reward.getString("id")
+                    if (canCombine && shouldCombineFish(reward)) {
+                        val fishId = reward.opt("id")?.toString().orEmpty()
+                        if (fishId.isBlank()) {
+                            continue
+                        }
                         combineFish(fishId)
                     }
                 }
@@ -856,13 +859,16 @@ class AntOcean : ModelTask() {
                 val seaAreaVOs = jo.optJSONArray("seaAreaVOs") ?: return
                 for (i in 0 until seaAreaVOs.length()) {
                     val seaAreaVO = seaAreaVOs.optJSONObject(i) ?: continue
-                    combineCompletedFish(seaAreaVO.optJSONArray("fishVO"))
+                    combineCompletedFish(seaAreaVO.optJSONArray("fishVO") ?: seaAreaVO.optJSONArray("fishVOList"))
                     val seaAreaExtraCollectVO = seaAreaVO.optJSONObject("seaAreaExtraCollectVO")
                     if (seaAreaExtraCollectVO != null) {
                         if (isActiveExtraCollect(seaAreaExtraCollectVO)) {
                             hasOpenedUnfinishedExtraCollect = true
                         }
-                        combineCompletedFish(seaAreaExtraCollectVO.optJSONArray("fishVO"))
+                        combineCompletedFish(
+                            seaAreaExtraCollectVO.optJSONArray("fishVO")
+                                ?: seaAreaExtraCollectVO.optJSONArray("fishVOList")
+                        )
                     }
                 }
                 var hasWaitForUnlockSeaArea = false
@@ -891,13 +897,60 @@ class AntOcean : ModelTask() {
         }
         for (j in 0 until fishVOs.length()) {
             val fishVO = fishVOs.optJSONObject(j) ?: continue
-            if (!fishVO.optBoolean("unlock") && fishVO.optString("status") == "COMPLETED") {
-                val fishId = fishVO.optString("id")
-                if (fishId.isNotBlank()) {
-                    combineFish(fishId)
-                }
+            if (!shouldCombineFish(fishVO)) {
+                continue
+            }
+            val fishId = fishVO.opt("id")?.toString().orEmpty()
+            if (fishId.isNotBlank()) {
+                combineFish(fishId)
             }
         }
+    }
+
+    private fun shouldCombineFish(fish: JSONObject): Boolean {
+        if (fish.optBoolean("unlock", false)) {
+            return false
+        }
+        if (fish.optBoolean("isCombine", false)) {
+            return true
+        }
+
+        val status = fish.optString("status")
+        if (
+            status.equals("COMPLETED", ignoreCase = true) ||
+            status.equals("CAN_COMBINE", ignoreCase = true) ||
+            status.equals("COMBINABLE", ignoreCase = true)
+        ) {
+            return true
+        }
+
+        val pieces = fish.optJSONArray("pieces")
+        if (pieces != null && pieces.length() > 0) {
+            var completedPieceCount = 0
+            for (i in 0 until pieces.length()) {
+                if (pieces.optJSONObject(i)?.optInt("num", 0) ?: 0 > 0) {
+                    completedPieceCount++
+                }
+            }
+            if (completedPieceCount >= pieces.length()) {
+                return true
+            }
+            val obtainedPieces = fish.optInt("obtainedPieces", -1)
+            if (obtainedPieces >= pieces.length()) {
+                return true
+            }
+        }
+
+        val attachRewardBOList = fish.optJSONArray("attachRewardBOList")
+        if (attachRewardBOList != null && attachRewardBOList.length() > 0) {
+            for (i in 0 until attachRewardBOList.length()) {
+                if (attachRewardBOList.optJSONObject(i)?.optInt("count", 0) ?: 0 <= 0) {
+                    return false
+                }
+            }
+            return true
+        }
+        return false
     }
 
     @Suppress("ReturnCount")

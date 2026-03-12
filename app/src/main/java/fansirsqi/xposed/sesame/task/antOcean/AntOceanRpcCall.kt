@@ -149,7 +149,7 @@ object AntOceanRpcCall {
     fun querySeaAreaDetailList(): String {
         return RequestManager.requestString(
             "alipay.antocean.ocean.h5.querySeaAreaDetailList",
-            "[{\"seaAreaCode\":\"\",\"source\":\"$SOURCE_FOREST\",\"targetUserId\":\"\",\"uniqueId\":\"${getUniqueId()}\"}]"
+            "[{\"seaAreaCode\":\"\",\"source\":\"$SOURCE_APP_CENTER\",\"targetUserId\":\"\",\"uniqueId\":\"${getUniqueId()}\"}]"
         )
     }
     
@@ -180,7 +180,7 @@ object AntOceanRpcCall {
         }
         val payload = JSONObject().apply {
             put("queryBizTypes", queryBizTypes)
-            put("source", SOURCE_FOREST)
+            put("source", SOURCE_APP_CENTER)
             put("uniqueId", getUniqueId())
             if (includeEmergency) {
                 put(
@@ -225,7 +225,7 @@ object AntOceanRpcCall {
     fun combineFish(fishId: String): String {
         return RequestManager.requestString(
             "alipay.antocean.ocean.h5.combineFish",
-            "[{\"fishId\":\"$fishId\",\"source\":\"$SOURCE_FOREST\",\"uniqueId\":\"${getUniqueId()}\"}]"
+            "[{\"fishId\":\"$fishId\",\"source\":\"$SOURCE_APP_CENTER\",\"uniqueId\":\"${getUniqueId()}\"}]"
         )
     }
     

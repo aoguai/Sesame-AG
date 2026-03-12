@@ -15,6 +15,8 @@ import java.util.UUID
  */
 object AntForestRpcCall {
     private const val DEFAULT_SOURCE = "chInfo_ch_appcenter__chsub_9patch"
+    private const val PROTECT_BUBBLE_SOURCE = "chInfo_ch_appid-60000002"
+    private const val PROTECT_BUBBLE_VERSION = "20230501"
     private var VERSION = "20250818"
     private var HOME_PAGE_VERSION = "20250818"
     private var TASK_LIST_VERSION = "20250821"
@@ -716,7 +718,7 @@ object AntForestRpcCall {
     fun protectBubble(targetUserId: String): String {
         return RequestManager.requestString(
             "alipay.antforest.forest.h5.protectBubble",
-            "[{\"source\":\"ANT_FOREST_H5\",\"targetUserId\":\"$targetUserId\",\"version\":\"$VERSION\"}]"
+            "[{\"source\":\"$PROTECT_BUBBLE_SOURCE\",\"targetUserId\":\"$targetUserId\",\"version\":\"$PROTECT_BUBBLE_VERSION\"}]"
         )
     }
 
