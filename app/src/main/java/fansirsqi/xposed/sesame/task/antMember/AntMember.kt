@@ -15,6 +15,7 @@ import fansirsqi.xposed.sesame.hook.internal.LocationHelper.requestLocationSuspe
 import fansirsqi.xposed.sesame.hook.internal.SecurityBodyHelper.getSecurityBodyData
 import fansirsqi.xposed.sesame.model.ModelFields
 import fansirsqi.xposed.sesame.model.ModelGroup
+import fansirsqi.xposed.sesame.model.withDesc
 import fansirsqi.xposed.sesame.model.modelFieldExt.BooleanModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.SelectModelField
 import fansirsqi.xposed.sesame.util.TaskBlacklist.autoAddToBlacklist
@@ -107,10 +108,14 @@ class AntMember : ModelTask() {
 
     override fun getFields(): ModelFields {
         val modelFields = ModelFields()
-        modelFields.addField(BooleanModelField("memberSign", "会员签到", false).also {
+        modelFields.addField(BooleanModelField("memberSign", "会员签到", false).withDesc(
+            "执行会员中心每日签到并领取会员积分。"
+        ).also {
             memberSign = it
         })
-        modelFields.addField(BooleanModelField("memberTask", "会员任务", false).also {
+        modelFields.addField(BooleanModelField("memberTask", "会员任务", false).withDesc(
+            "执行会员中心每日任务，完成后统一领取会员积分。"
+        ).also {
             memberTask = it
         })
 
@@ -119,7 +124,7 @@ class AntMember : ModelTask() {
         modelFields.addField(
             BooleanModelField(
                 "memberPointExchangeBenefit", "会员积分 | 兑换权益", false
-            ).also { memberPointExchangeBenefit = it })
+            ).withDesc("按下方兑换列表自动尝试兑换会员权益或道具。").also { memberPointExchangeBenefit = it })
         modelFields.addField(
             SelectModelField(
                 "memberPointExchangeBenefitList",
@@ -127,13 +132,13 @@ class AntMember : ModelTask() {
                 LinkedHashSet<String?>()
             ) {
                 MemberBenefit.getList()
-            }.also { memberPointExchangeBenefitList = it })
+            }.withDesc("勾选允许自动兑换的会员权益，未勾选项目不会处理。").also { memberPointExchangeBenefitList = it })
 
 
         modelFields.addField(
             BooleanModelField(
                 "sesameGrainExchange", "芝麻信用 | 芝麻粒兑换道具", false
-            ).also { sesameGrainExchange = it })
+            ).withDesc("使用芝麻粒兑换已勾选的道具，适合长期清理库存。").also { sesameGrainExchange = it })
 
         // 使用 SesameGiftMap 来存储和回显商品名称
         modelFields.addField(
@@ -143,26 +148,30 @@ class AntMember : ModelTask() {
                 LinkedHashSet<String?>()
             ) {
                 SesameGift.getList()
-            }.also { sesameGrainExchangeList = it })
+            }.withDesc("勾选允许自动兑换的芝麻粒商品，按列表逐项尝试。").also { sesameGrainExchangeList = it })
 
         modelFields.addField(
             BooleanModelField(
                 "sesameTask", "芝麻信用|芝麻粒信用任务", false
-            ).also { sesameTask = it })
-        modelFields.addField(BooleanModelField("collectSesame", "芝麻信用|芝麻粒领取", false).also {
+            ).withDesc("执行芝麻信用的涨分进度与芝麻粒相关每日任务。").also { sesameTask = it })
+        modelFields.addField(BooleanModelField("collectSesame", "芝麻信用|芝麻粒领取", false).withDesc(
+            "统一领取芝麻粒、阶段奖励和其他可收取的芝麻相关奖励。"
+        ).also {
             collectSesame = it
         })
         modelFields.addField(
             BooleanModelField(
                 "collectSesameWithOneClick", "芝麻信用|芝麻粒领取使用一键收取", false
-            ).also { collectSesameWithOneClick = it })
+            ).withDesc("优先走一键收取接口领取芝麻粒，速度更快但依赖页面状态。").also { collectSesameWithOneClick = it })
         // 芝麻炼金
         modelFields.addField(
             BooleanModelField(
                 "sesameAlchemy", "芝麻炼金", false
-            ).also { sesameAlchemy = it })
+            ).withDesc("执行芝麻粒炼金的签到、任务和时段奖励领取。").also { sesameAlchemy = it })
         // 芝麻树
-        modelFields.addField(BooleanModelField("enableZhimaTree", "芝麻信用|芝麻树", false).also {
+        modelFields.addField(BooleanModelField("enableZhimaTree", "芝麻信用|芝麻树", false).withDesc(
+            "执行芝麻树相关签到、任务和奖励领取。"
+        ).also {
             enableZhimaTree = it
         })
 
@@ -176,11 +185,11 @@ class AntMember : ModelTask() {
         modelFields.addField(
             BooleanModelField(
                 "enableGoldTicket", "黄金票签到", false
-            ).also { enableGoldTicket = it })
+            ).withDesc("执行黄金票首页签到与日常收取，持续累积黄金票。").also { enableGoldTicket = it })
         modelFields.addField(
             BooleanModelField(
                 "enableGoldTicketConsume", "黄金票提取(兑换黄金)", false
-            ).also { enableGoldTicketConsume = it })
+            ).withDesc("黄金票达到提取条件后自动兑换或提取黄金。").also { enableGoldTicketConsume = it })
         modelFields.addField(BooleanModelField("enableGameCenter", "游戏中心签到", false).also {
             enableGameCenter = it
         })

@@ -8,6 +8,10 @@
     <!-- 引入 Semi Design CSS -->
     <link rel="stylesheet" href="./css/semi.min.css" />
     <style>
+        html {
+            font-size: 100%;
+        }
+
         body {
             background-color: var(--semi-color-bg-0);
             margin: 0;
@@ -16,22 +20,22 @@
         }
 
         .container {
-            max-width: 600px;
+            max-width: 37.5rem;
             margin: 0 auto;
             background: var(--semi-color-bg-1);
             min-height: 100vh;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
-            padding-bottom: 40px;
+            box-shadow: 0 0 1.25rem rgba(0, 0, 0, 0.05);
+            padding-bottom: 2.5rem;
         }
 
         .header {
-            padding: 16px;
+            padding: 1rem;
             background: var(--semi-color-bg-2);
-            border-bottom: 1px solid var(--semi-color-border);
+            border-bottom: 0.0625rem solid var(--semi-color-border);
             position: sticky;
             top: 0;
             z-index: 10;
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(0.625rem);
             background-color: rgba(255, 255, 255, 0.8);
         }
 
@@ -42,9 +46,10 @@
         .field-row {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--semi-color-border);
+            align-items: flex-start;
+            padding: 0.75rem 0;
+            border-bottom: 0.0625rem solid var(--semi-color-border);
+            gap: 0.75rem;
         }
 
         .field-row:last-child {
@@ -52,20 +57,34 @@
         }
 
         .field-label {
-            font-size: 14px;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            padding-right: 0.75rem;
+        }
+
+        .field-name {
+            font-size: 0.875rem;
             font-weight: 600;
             color: var(--semi-color-text-0);
-            flex: 1;
-            padding-right: 12px;
+        }
+
+        .field-desc {
+            margin-top: 0.25rem;
+            font-size: 0.75rem;
+            line-height: 1.5;
+            color: var(--semi-color-text-2);
+            white-space: normal;
         }
 
         .field-control {
             flex-shrink: 0;
             max-width: 60%;
+            padding-top: 0.125rem;
         }
 
         .section-padding {
-            padding: 0 16px;
+            padding: 0 1rem;
         }
 
         /* 列表弹窗样式 */
@@ -73,8 +92,8 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--semi-color-border);
+            padding: 0.75rem 0;
+            border-bottom: 0.0625rem solid var(--semi-color-border);
         }
 
         .list-item-left {
@@ -85,8 +104,8 @@
         }
 
         .list-item-name {
-            margin-left: 10px;
-            font-size: 15px;
+            margin-left: 0.625rem;
+            font-size: 0.9375rem;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -94,15 +113,15 @@
         }
 
         .list-count-input {
-            width: 80px;
-            margin-left: 10px;
+            width: 5rem;
+            margin-left: 0.625rem;
         }
 
         .sheet-footer {
             display: flex;
             justify-content: flex-end;
-            padding-top: 16px;
-            border-top: 1px solid var(--semi-color-border);
+            padding-top: 1rem;
+            border-top: 0.0625rem solid var(--semi-color-border);
         }
     </style>
 
@@ -293,6 +312,13 @@
                 setSelectedCounts(prev => ({ ...prev, [id]: val }));
             };
 
+            const renderFieldLabel = (name, desc) => (
+                <div className="field-label">
+                    <div className="field-name">{name}</div>
+                    {desc ? <div className="field-desc">{desc}</div> : null}
+                </div>
+            );
+
             const toggleAll = () => {
                 const filteredList = sheetList.filter(item => item.name.includes(sheetSearch));
                 const allSelected = filteredList.every(item => selectedIds.has(item.id));
@@ -314,7 +340,7 @@
             const renderSheetList = () => {
                 const filtered = sheetList.filter(item => item.name.toLowerCase().includes(sheetSearch.toLowerCase()));
 
-                if (filtered.length === 0) return <div style={{ padding: 20, textAlign: 'center', color: '#999' }}>无数据</div>;
+                if (filtered.length === 0) return <div style={{ padding: '1.25rem', textAlign: 'center', color: '#999' }}>无数据</div>;
 
                 return filtered.map(item => {
                     const isChecked = selectedIds.has(item.id);
@@ -345,7 +371,7 @@
                 if (type === 'BOOLEAN') {
                     return (
                         <div className="field-row" key={code}>
-                            <div className="field-label">{name}</div>
+                            {renderFieldLabel(name, desc)}
                             <div className="field-control">
                                 <Switch checked={configValue === 'true'} onChange={(v) => handleFieldChange(modelCode, code, v)} />
                             </div>
@@ -355,7 +381,7 @@
                 if (['MULTIPLY_INTEGER', 'LIST', 'INTEGER', 'STRING', 'TEXT'].includes(type)) {
                     return (
                         <div className="field-row" key={code}>
-                            <div className="field-label">{name}</div>
+                            {renderFieldLabel(name, desc)}
                             <div className="field-control" style={{ width: '50%' }}>
                                 <Input value={configValue} onChange={(v) => handleFieldChange(modelCode, code, v)} placeholder="请输入..." />
                             </div>
@@ -365,17 +391,22 @@
                 if (type === 'URL_TEXT') {
                     return (
                         <div className="field-row" key={code}>
-                            <Text link={{ href: configValue }}>{name}</Text>
+                            <div style={{ flex: 1 }}>
+                                {renderFieldLabel(name, desc)}
+                                <Text link={{ href: configValue }}>{configValue}</Text>
+                            </div>
                         </div>
                     );
                 }
                 if (type === 'CHOICE') {
                     return (
-                        <div style={{ padding: '12px 0', borderBottom: '1px solid var(--semi-color-border)' }} key={code}>
-                            <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 14, color: 'var(--semi-color-text-0)' }}>{name}</div>
-                            <RadioGroup type="button" value={Number(configValue)} onChange={(e) => handleFieldChange(modelCode, code, e.target.value)}>
-                                {expandKey && expandKey.map((label, idx) => (<Radio value={idx} key={idx}>{label}</Radio>))}
-                            </RadioGroup>
+                        <div style={{ padding: '0.75rem 0', borderBottom: '0.0625rem solid var(--semi-color-border)' }} key={code}>
+                            {renderFieldLabel(name, desc)}
+                            <div style={{ marginTop: '0.5rem' }}>
+                                <RadioGroup type="button" value={Number(configValue)} onChange={(e) => handleFieldChange(modelCode, code, e.target.value)}>
+                                    {expandKey && expandKey.map((label, idx) => (<Radio value={idx} key={idx}>{label}</Radio>))}
+                                </RadioGroup>
+                            </div>
                         </div>
                     );
                 }
@@ -387,7 +418,7 @@
                     } catch (e) { }
                     return (
                         <div className="field-row" key={code}>
-                            <div className="field-label">{name}</div>
+                            {renderFieldLabel(name, desc)}
                             <div className="field-control">
                                 <Button theme='solid' type='secondary' onClick={() => openListSheet(modelCode, item)}>
                                     已选 {count} 项
@@ -404,7 +435,7 @@
                     <div className="header">
                         <Title heading={2} style={{ margin: 0 }}>Sesame-AG 设置</Title>
                         <Button disabled theme="borderless">项目仓库主页</Button>
-                        <Text style={{ marginRight: 15 }} link={{ href: 'https://github.com/aoguai/Sesame-AG' }}> ➤GitHub </Text>
+                        <Text style={{ marginRight: '0.9375rem' }} link={{ href: 'https://github.com/aoguai/Sesame-AG' }}> ➤GitHub </Text>
                         <Button style={{}} onClick={switchMode} > 切换主题 </Button>
                     </div>
 
@@ -420,7 +451,7 @@
                                         {modelsMap[tab.modelCode] ? (
                                             modelsMap[tab.modelCode].map(field => renderFieldItem(tab.modelCode, field))
                                         ) : (
-                                            <div style={{ padding: 20, textAlign: 'center' }}>加载中...</div>
+                                            <div style={{ padding: '1.25rem', textAlign: 'center' }}>加载中...</div>
                                         )}
                                     </div>
                                 </Collapse.Panel>
@@ -428,7 +459,7 @@
                         </Collapse>
                     </div>
 
-                    <div style={{ padding: 20, textAlign: 'center' }}>
+                    <div style={{ padding: '1.25rem', textAlign: 'center' }}>
                         <Button
                             theme='solid'
                             type='danger'
@@ -445,40 +476,40 @@
                         >
                             退出并保存
                         </Button>
-                        <Text style={{ marginTop: 15, color: '#999', fontSize: 12 }}> GitHub </Text>
-                        <div style={{ marginTop: 5, color: '#999', fontSize: 14 }}>Power by <Text link={{ href: 'https://semi.design/' }}>Semi.Design</Text></div>
-                        <div style={{ marginTop: 5, color: '#999', fontSize: 14 }}>Ver: {window.HOOK.getBuildInfo()}</div>
+                        <Text style={{ marginTop: '0.9375rem', color: '#999', fontSize: '0.75rem' }}> GitHub </Text>
+                        <div style={{ marginTop: '0.3125rem', color: '#999', fontSize: '0.875rem' }}>Power by <Text link={{ href: 'https://semi.design/' }}>Semi.Design</Text></div>
+                        <div style={{ marginTop: '0.3125rem', color: '#999', fontSize: '0.875rem' }}>Ver: {window.HOOK.getBuildInfo()}</div>
                     </div>
 
                     {/* 侧边列表弹窗 */}
                     <SideSheet
-                        title={<span style={{ fontSize: 16, fontWeight: 600 }}>{sheetConfig.title}</span>}
+                        title={<span style={{ fontSize: '1rem', fontWeight: 600 }}>{sheetConfig.title}</span>}
                         visible={sheetVisible}
                         onCancel={() => setSheetVisible(false)}
                         width="100%"
                         placement="right"
-                        bodyStyle={{ padding: 10 }}
+                        bodyStyle={{ padding: '0.625rem' }}
                     >
-                        <Text>{sheetConfig.desc}</Text>
-                        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--semi-color-border)' }}>
+                        {sheetConfig.desc ? <Text>{sheetConfig.desc}</Text> : null}
+                        <div style={{ padding: '0.625rem 1rem', borderBottom: '0.0625rem solid var(--semi-color-border)' }}>
                             <Input
                                 prefix={<IconSearch />}
                                 placeholder="搜索名称..."
                                 value={sheetSearch}
                                 onChange={setSheetSearch}
                             />
-                            <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ marginTop: '0.625rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <Checkbox onChange={toggleAll} checked={false}>
                                     全选/反选 (当前可见)
                                 </Checkbox>
                                 <Text size="small" type="secondary">已选: {selectedIds.size}</Text>
                             </div>
                         </div>
-                        <div style={{ padding: '0 16px', overflowY: 'auto', height: 'calc(100vh - 180px)' }}>
+                        <div style={{ padding: '0 1rem', overflowY: 'auto', height: 'calc(100vh - 11.25rem)' }}>
                             {renderSheetList()}
                         </div>
-                        <div className="sheet-footer" style={{ padding: '16px', justifyContent: 'space-around', position: 'absolute', bottom: 0, width: '100%', background: 'var(--semi-color-bg-1)' }}>
-                            <Button style={{ marginRight: 10 }} onClick={() => setSheetVisible(false)}>取消</Button>
+                        <div className="sheet-footer" style={{ padding: '1rem', justifyContent: 'space-around', position: 'absolute', bottom: 0, width: '100%', background: 'var(--semi-color-bg-1)' }}>
+                            <Button style={{ marginRight: '0.625rem' }} onClick={() => setSheetVisible(false)}>取消</Button>
                             <Button theme="solid" onClick={saveSheet}>保存</Button>
                         </div>
                     </SideSheet>

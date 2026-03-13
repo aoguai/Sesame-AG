@@ -7,6 +7,7 @@ import fansirsqi.xposed.sesame.entity.AlipayUser
 import fansirsqi.xposed.sesame.hook.internal.SecurityBodyHelper
 import fansirsqi.xposed.sesame.model.ModelFields
 import fansirsqi.xposed.sesame.model.ModelGroup
+import fansirsqi.xposed.sesame.model.withDesc
 import fansirsqi.xposed.sesame.model.modelFieldExt.BooleanModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.ChoiceModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.IntegerModelField
@@ -70,29 +71,41 @@ class AntOrchard : ModelTask() {
                 "种植模式",
                 PlantModeType.MAIN,
                 PlantModeType.nickNames,
-                "选择森林自动种植的优先策略"
+                "选择优先推进果树、摇钱树或先摇钱树后果树的混合策略。"
             ).also { plantModeField = it }
         )
 
         modelFields.addField(
-            IntegerModelField("executeInterval", "执行间隔(毫秒)", 500).also { executeInterval = it }
+            IntegerModelField("executeInterval", "执行间隔(毫秒)", 500).withDesc(
+                "单次农场操作之间的等待时间，过小可能增加风控。"
+            ).also { executeInterval = it }
         )
         modelFields.addField(
-            BooleanModelField("receiveSevenDayGift", "收取七日礼包", true).also { receiveSevenDayGift = it }
+            BooleanModelField("receiveSevenDayGift", "收取七日礼包", true).withDesc(
+                "自动领取芭芭农场七日礼包奖励。"
+            ).also { receiveSevenDayGift = it }
         )
         modelFields.addField(
-            BooleanModelField("receiveOrchardTaskAward", "收取农场任务奖励", false).also { receiveOrchardTaskAward = it }
+            BooleanModelField("receiveOrchardTaskAward", "收取农场任务奖励", false).withDesc(
+                "自动领取芭芭农场任务奖励，包括肥料等常规收益。"
+            ).also { receiveOrchardTaskAward = it }
         )
         // {{ 修改：添加果树和摇钱树的独立设置项 }}
         modelFields.addField(
-            IntegerModelField("orchardSpreadManureCount", "果树每日施肥次数", 0).also { orchardSpreadManureCountMain = it }
+            IntegerModelField("orchardSpreadManureCount", "果树每日施肥次数", 0).withDesc(
+                "每日给果树施肥的次数；施肥可推进成熟并产出庄园食材。"
+            ).also { orchardSpreadManureCountMain = it }
         )
         modelFields.addField(
-            IntegerModelField("orchardSpreadManureCountYeb", "摇钱树每日施肥次数", 0).also { orchardSpreadManureCountYeb = it }
+            IntegerModelField("orchardSpreadManureCountYeb", "摇钱树每日施肥次数", 0).withDesc(
+                "每日给摇钱树施肥的次数；0 表示不处理摇钱树。"
+            ).also { orchardSpreadManureCountYeb = it }
         )
 
         modelFields.addField(
-            SelectModelField("assistFriendList", "助力好友列表", LinkedHashSet(), AlipayUser::getList).also { assistFriendList = it }
+            SelectModelField("assistFriendList", "助力好友列表", LinkedHashSet(), AlipayUser::getList).withDesc(
+                "仅对选中的好友执行助力流程。"
+            ).also { assistFriendList = it }
         )
 
         return modelFields

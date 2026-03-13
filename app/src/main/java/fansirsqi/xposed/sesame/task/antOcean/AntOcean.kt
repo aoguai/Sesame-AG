@@ -8,6 +8,7 @@ import fansirsqi.xposed.sesame.hook.Toast
 import fansirsqi.xposed.sesame.model.BaseModel
 import fansirsqi.xposed.sesame.model.ModelFields
 import fansirsqi.xposed.sesame.model.ModelGroup
+import fansirsqi.xposed.sesame.model.withDesc
 import fansirsqi.xposed.sesame.model.modelFieldExt.BooleanModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.ChoiceModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.SelectAndCountModelField
@@ -156,10 +157,14 @@ class AntOcean : ModelTask() {
     override fun getFields(): ModelFields {
         val modelFields = ModelFields()
         modelFields.addField(
-            BooleanModelField("dailyOceanTask", "海洋任务", false).also { dailyOceanTask = it }
+            BooleanModelField("dailyOceanTask", "海洋任务", false).withDesc(
+                "完成并领取神奇海洋每日任务奖励，为清理和合成提供碎片。"
+            ).also { dailyOceanTask = it }
         )
         modelFields.addField(
-            BooleanModelField("cleanOcean", "清理 | 开启", false).also { cleanOcean = it }
+            BooleanModelField("cleanOcean", "清理 | 开启", false).withDesc(
+                "执行清理自己和好友海域垃圾的主流程。"
+            ).also { cleanOcean = it }
         )
         modelFields.addField(
             ChoiceModelField(
@@ -167,7 +172,7 @@ class AntOcean : ModelTask() {
                 "清理 | 动作",
                 CleanOceanType.DONT_CLEAN,
                 CleanOceanType.nickNames
-            ).also { cleanOceanType = it }
+            ).withDesc("决定列表中的好友是清理还是跳过。").also { cleanOceanType = it }
         )
         modelFields.addField(
             SelectModelField(
@@ -175,13 +180,17 @@ class AntOcean : ModelTask() {
                 "清理 | 好友列表",
                 LinkedHashSet(),
                 AlipayUser::getListAsMapperEntity
-            ).also { cleanOceanList = it }
+            ).withDesc("配置要参与清理规则的好友列表。").also { cleanOceanList = it }
         )
         modelFields.addField(
-            BooleanModelField("exchangeProp", "神奇海洋 | 制作万能拼图", false).also { exchangeProp = it }
+            BooleanModelField("exchangeProp", "神奇海洋 | 制作万能拼图", false).withDesc(
+                "把重复碎片制作成万能拼图。"
+            ).also { exchangeProp = it }
         )
         modelFields.addField(
-            BooleanModelField("usePropByType", "神奇海洋 | 使用万能拼图", false).also { usePropByType = it }
+            BooleanModelField("usePropByType", "神奇海洋 | 使用万能拼图", false).withDesc(
+                "在可合成目标鱼类时自动消耗万能拼图。"
+            ).also { usePropByType = it }
         )
         modelFields.addField(
             ChoiceModelField(
@@ -189,7 +198,7 @@ class AntOcean : ModelTask() {
                 "保护 | 类型",
                 ProtectType.DONT_PROTECT,
                 ProtectType.nickNames
-            ).also { userprotectType = it }
+            ).withDesc("控制哪些海域或沙滩不参与自动推进。").also { userprotectType = it }
         )
         modelFields.addField(
             SelectAndCountModelField(
@@ -197,10 +206,12 @@ class AntOcean : ModelTask() {
                 "保护 | 海洋列表",
                 LinkedHashMap(),
                 AlipayBeach::getListAsMapperEntity
-            ).also { protectOceanList = it }
+            ).withDesc("配置需要保护的海域列表及对应数量配置。").also { protectOceanList = it }
         )
         modelFields.addField(
-            BooleanModelField("PDL_task", "潘多拉任务", false).also { PDL_task = it }
+            BooleanModelField("PDL_task", "潘多拉任务", false).withDesc(
+                "执行潘多拉活动系列的独立任务与奖励领取。"
+            ).also { PDL_task = it }
         )
         return modelFields
     }

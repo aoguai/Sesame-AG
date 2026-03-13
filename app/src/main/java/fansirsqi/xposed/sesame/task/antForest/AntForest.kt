@@ -25,6 +25,7 @@ import fansirsqi.xposed.sesame.hook.rpc.intervallimit.RpcIntervalLimit.addInterv
 import fansirsqi.xposed.sesame.model.BaseModel
 import fansirsqi.xposed.sesame.model.ModelFields
 import fansirsqi.xposed.sesame.model.ModelGroup
+import fansirsqi.xposed.sesame.model.withDesc
 import fansirsqi.xposed.sesame.model.modelFieldExt.BooleanModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.ChoiceModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.IntegerModelField
@@ -332,19 +333,19 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 "collectEnergy",
                 "收集能量 | 开关",
                 false
-            ).also { collectEnergy = it })
+            ).withDesc("收取自己和好友可见能量球。").also { collectEnergy = it })
         modelFields.addField(
             BooleanModelField(
                 "batchRobEnergy",
                 "一键收取 | 开关",
                 false
-            ).also { batchRobEnergy = it })
+            ).withDesc("优先使用一键收取入口处理好友森林能量。").also { batchRobEnergy = it })
         modelFields.addField(
             BooleanModelField(
                 "pkEnergy",
                 "Pk榜收取 | 开关",
                 false
-            ).also { pkEnergy = it })
+            ).withDesc("赛季期间收取能量 PK 榜好友的能量。").also { pkEnergy = it })
         // 在 ModelFields 定义中修改
         modelFields.addField(
             ChoiceModelField(
@@ -352,46 +353,46 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 "🎮 6秒拼手速 | 运行模式",
                 0, // 默认值为 0 (关闭)
                 whackMoleModeNames
-            ).also { whackMoleMode = it }
+            ).withDesc("控制 6 秒拼手速玩法的运行模式。").also { whackMoleMode = it }
         )
         modelFields.addField(
             IntegerModelField(
                 "whackMoleGames",
                 "🎮 6秒拼手速 | 激进模式局数",
                 5,
-            ).also { whackMoleGames = it })
+            ).withDesc("激进模式下每天挑战的局数上限。").also { whackMoleGames = it })
         modelFields.addField(
             IntegerModelField(
                 "whackMoleMoleCount",
                 "🎮 6秒拼手速 | 兼容模式击打数",
                 15,
-            ).also { whackMoleMoleCount = it })
+            ).withDesc("兼容模式下每局目标击打数量，用于保守刷奖励。").also { whackMoleMoleCount = it })
         modelFields.addField(
             StringModelField(
                 "whackMoleTime",
                 "🎮 6秒拼手速 | 执行时间",
                 "0820"
-            ).also { whackMoleTime = it }
+            ).withDesc("限制 6 秒拼手速开始执行的时间。").also { whackMoleTime = it }
         )
         modelFields.addField(
             BooleanModelField(
                 "energyRain",
                 "能量雨 | 开关",
                 false
-            ).also { energyRain = it })
+            ).withDesc("自动进入能量雨并完成收集。").also { energyRain = it })
         modelFields.addField(
             StringModelField(
                 "energyRainTime",
                 "能量雨 | 默认8点10分后执行",
                 "0810"
-            ).also { energyRainTime = it })
+            ).withDesc("限制能量雨开始时间。").also { energyRainTime = it })
         modelFields.addField(
             ChoiceModelField(
                 "CollectSelfEnergyType",
                 "收自己单个能量球 | 方式",
                 CollectSelfType.ALL,
                 CollectSelfType.nickNames
-            ).also { collectSelfEnergyType = it }
+            ).withDesc("控制是否收自己的单个能量球及收取策略。").also { collectSelfEnergyType = it }
         )
         modelFields.addField(
             IntegerModelField(
@@ -400,7 +401,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 0,
                 0,
                 10000
-            ).also { collectSelfEnergyThreshold = it }
+            ).withDesc("当单个自家能量球达到该值时才收取。").also { collectSelfEnergyThreshold = it }
         )
         modelFields.addField(
             IntegerModelField(
@@ -426,7 +427,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 "dontCollectList",
                 "不收能量 | 配置列表",
                 LinkedHashSet<String?>()
-            ) { AlipayUser.getList() }.also {
+            ) { AlipayUser.getList() }.withDesc("这些好友不参与自动收取能量。").also {
                 dontCollectList = it
             })
         modelFields.addField(
@@ -434,7 +435,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 "giveEnergyRainList",
                 "赠送能量雨 | 配置列表",
                 LinkedHashSet<String?>()
-            ) { AlipayUser.getList() }.also {
+            ) { AlipayUser.getList() }.withDesc("能量雨机会赠送给这些好友。").also {
                 giveEnergyRainList = it
             })
         modelFields.addField(
@@ -442,7 +443,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 "energyRainChance",
                 "兑换使用能量雨次卡 | 开关",
                 false
-            ).also { energyRainChance = it })
+            ).withDesc("自动兑换并使用能量雨次卡。").also { energyRainChance = it })
         modelFields.addField(
             BooleanModelField(
                 "collectWateringBubble",
@@ -455,19 +456,19 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 "双击卡开关 | 消耗类型",
                 ApplyPropType.CLOSE,
                 ApplyPropType.nickNames
-            ).also { doubleCard = it })
+            ).withDesc("配置双击卡的自动使用策略。").also { doubleCard = it })
         modelFields.addField(
             IntegerModelField(
                 "doubleCountLimit",
                 "双击卡 | 使用次数",
                 6
-            ).also { doubleCountLimit = it })
+            ).withDesc("每天最多使用双击卡的次数。").also { doubleCountLimit = it })
         modelFields.addField(
             ListJoinCommaToStringModelField(
                 "doubleCardTime", "双击卡 | 使用时间/范围", ListUtil.newArrayList(
                     "0700", "0730", "1200", "1230", "1700", "1730", "2000", "2030", "2359"
                 )
-            ).also { doubleCardTime = it })
+            ).withDesc("仅在这些时间点或时间范围内尝试使用双击卡。").also { doubleCardTime = it })
         // 双击卡永动机
         modelFields.addField(
             BooleanModelField(
@@ -480,7 +481,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 "加速器开关 | 消耗类型",
                 ApplyPropType.CLOSE,
                 ApplyPropType.nickNames
-            ).also { bubbleBoostCard = it })
+            ).withDesc("配置时光加速器的自动使用策略。").also { bubbleBoostCard = it })
         modelFields.addField(
             ListJoinCommaToStringModelField(
                 "bubbleBoostTime", "加速器 | 使用时间/不能范围", ListUtil.newArrayList(
@@ -497,7 +498,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 "保护罩开关 | 消耗类型",
                 ApplyPropType.CLOSE,
                 ApplyPropType.nickNames
-            ).also { shieldCard = it })
+            ).withDesc("配置能量保护罩的自动使用策略。").also { shieldCard = it })
         modelFields.addField(
             BooleanModelField(
                 "shieldCardConstant",
@@ -572,13 +573,13 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 LinkedHashMap<String?, Int?>(),
                 { AlipayUser.getList() },
                 "记得设置浇水次数"
-            ).also { waterFriendList = it })
+            ).withDesc("配置需要浇水的好友及每日浇水次数。").also { waterFriendList = it })
         modelFields.addField(
             IntegerModelField(
                 "waterFriendCount",
                 "浇水 | 克数(10 18 33 66)",
                 66
-            ).also { waterFriendCount = it })
+            ).withDesc("每次给好友浇水的克数。").also { waterFriendCount = it })
         modelFields.addField(
             BooleanModelField(
                 "notifyFriend",
@@ -590,7 +591,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 "giveProp",
                 "赠送道具",
                 false
-            ).also { giveProp = it })
+            ).withDesc("自动把可赠送的森林道具送给好友。").also { giveProp = it })
         modelFields.addField(
             SelectModelField(
                 "whoYouWantToGiveTo",
@@ -598,26 +599,26 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 LinkedHashSet<String?>(),
                 { AlipayUser.getList() },
                 "所有可赠送的道具将全部赠"
-            ).also { whoYouWantToGiveTo = it })
+            ).withDesc("选择允许接收森林道具的好友。").also { whoYouWantToGiveTo = it })
         modelFields.addField(
             BooleanModelField(
                 "collectProp",
                 "收集道具",
                 false
-            ).also { collectProp = it })
+            ).withDesc("自动领取森林背包或活动发放的道具。").also { collectProp = it })
         modelFields.addField(
             ChoiceModelField(
                 "helpFriendCollectType",
                 "复活能量 | 选项",
                 HelpFriendCollectType.NONE,
                 HelpFriendCollectType.nickNames
-            ).also { helpFriendCollectType = it })
+            ).withDesc("控制是否帮好友复活过期能量以及名单的解释方式。").also { helpFriendCollectType = it })
         modelFields.addField(
             SelectModelField(
                 "helpFriendCollectList",
                 "复活能量 | 好友列表",
                 LinkedHashSet<String?>()
-            ) { AlipayUser.getList() }.also {
+            ) { AlipayUser.getList() }.withDesc("配置允许复活能量的好友名单。").also {
                 helpFriendCollectList = it
             })
         modelFields.addField(
@@ -629,21 +630,35 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 100000
             ).also { helpFriendCollectListLimit = it }
         )
-        modelFields.addField(BooleanModelField("vitalityExchange", "活力值 | 兑换开关", false).also { vitalityExchange = it })
+        modelFields.addField(BooleanModelField("vitalityExchange", "活力值 | 兑换开关", false).withDesc(
+            "自动用活力值兑换已配置的道具或皮肤。"
+        ).also { vitalityExchange = it })
         modelFields.addField(
             SelectAndCountModelField(
                 "vitalityExchangeList", "活力值 | 兑换列表", LinkedHashMap<String?, Int?>(),
                 VitalityStore::list,
                 "记得填兑换次数..亲爱的"
-            ).also { vitalityExchangeList = it })
-        modelFields.addField(BooleanModelField("userPatrol", "保护地巡护", false).also { userPatrol = it })
-        modelFields.addField(BooleanModelField("combineAnimalPiece", "合成动物碎片", false).also { combineAnimalPiece = it })
-        modelFields.addField(BooleanModelField("consumeAnimalProp", "派遣动物伙伴", false).also { consumeAnimalProp = it })
-        modelFields.addField(BooleanModelField("receiveForestTaskAward", "森林任务", false).also { receiveForestTaskAward = it })
+            ).withDesc("配置活力值商店兑换项及每日兑换次数。").also { vitalityExchangeList = it })
+        modelFields.addField(BooleanModelField("userPatrol", "保护地巡护", false).withDesc(
+            "执行保护地巡护，消耗步数机会获取动物碎片。"
+        ).also { userPatrol = it })
+        modelFields.addField(BooleanModelField("combineAnimalPiece", "合成动物碎片", false).withDesc(
+            "自动合成保护地动物碎片。"
+        ).also { combineAnimalPiece = it })
+        modelFields.addField(BooleanModelField("consumeAnimalProp", "派遣动物伙伴", false).withDesc(
+            "派遣动物伙伴出战，领取额外能量收益。"
+        ).also { consumeAnimalProp = it })
+        modelFields.addField(BooleanModelField("receiveForestTaskAward", "森林任务", false).withDesc(
+            "执行并领取森林每日任务奖励。"
+        ).also { receiveForestTaskAward = it })
 
-        modelFields.addField(BooleanModelField("forestChouChouLe", "森林寻宝任务", false).also { forestChouChouLe = it })
+        modelFields.addField(BooleanModelField("forestChouChouLe", "森林寻宝任务", false).withDesc(
+            "执行森林抽抽乐或寻宝相关任务。"
+        ).also { forestChouChouLe = it })
 
-        modelFields.addField(BooleanModelField("collectGiftBox", "领取礼盒", false).also { collectGiftBox = it })
+        modelFields.addField(BooleanModelField("collectGiftBox", "领取礼盒", false).withDesc(
+            "自动领取好友种树后的礼盒奖励。"
+        ).also { collectGiftBox = it })
 
         modelFields.addField(BooleanModelField("medicalHealth", "健康医疗任务 | 开关", false).also { medicalHealth = it })
         modelFields.addField(
@@ -655,8 +670,12 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         modelFields.addField(BooleanModelField("forestMarket", "森林集市", false).also { forestMarket = it })
         modelFields.addField(BooleanModelField("youthPrivilege", "青春特权 | 森林道具", false).also { youthPrivilege = it })
         modelFields.addField(BooleanModelField("studentCheckIn", "青春特权 | 签到红包", false).also { dailyCheckIn = it })
-        modelFields.addField(BooleanModelField("ecoLife", "绿色行动 | 开关", false).also { ecoLife = it })
-        modelFields.addField(StringModelField("ecoLifeTime", "绿色行动 | 默认8点后执行", "0800").also { ecoLifeTime = it })
+        modelFields.addField(BooleanModelField("ecoLife", "绿色行动 | 开关", false).withDesc(
+            "执行绿色行动任务。"
+        ).also { ecoLife = it })
+        modelFields.addField(StringModelField("ecoLifeTime", "绿色行动 | 默认8点后执行", "0800").withDesc(
+            "限制绿色行动开始时间。"
+        ).also { ecoLifeTime = it })
         modelFields.addField(BooleanModelField("ecoLifeOpen", "绿色任务 |  自动开通", false).also { ecoLifeOpen = it })
         modelFields.addField(
             SelectModelField(

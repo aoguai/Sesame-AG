@@ -17,6 +17,7 @@ import fansirsqi.xposed.sesame.hook.rpc.intervallimit.RpcIntervalLimit.addInterv
 import fansirsqi.xposed.sesame.model.BaseModel
 import fansirsqi.xposed.sesame.model.ModelFields
 import fansirsqi.xposed.sesame.model.ModelGroup
+import fansirsqi.xposed.sesame.model.withDesc
 import fansirsqi.xposed.sesame.model.modelFieldExt.BooleanModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.ChoiceModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.IntegerModelField
@@ -284,52 +285,54 @@ class AntFarm : ModelTask() {
                 "召回小鸡",
                 RecallAnimalType.ALWAYS,
                 RecallAnimalType.nickNames
-            ).also { recallAnimalType = it })
+            ).withDesc("控制遇到小鸡外出、偷吃或饥饿时是否主动召回。").also { recallAnimalType = it })
         modelFields.addField(
             BooleanModelField(
                 "feedAnimal",
                 "自动喂小鸡",
                 false
-            ).also { feedAnimal = it })
+            ).withDesc("自动给自家小鸡喂食。").also { feedAnimal = it })
         modelFields.addField(
             BooleanModelField(
                 "doFarmTask",
                 "做饲料任务",
                 false
-            ).also { doFarmTask = it })
+            ).withDesc("执行庄园每日任务获取饲料、道具和抽奖机会。").also { doFarmTask = it })
         modelFields.addField(
             StringModelField(
                 "doFarmTaskTime",
                 "饲料任务执行时间 | 默认8:30后执行",
                 "0830"
-            ).also { doFarmTaskTime = it })
+            ).withDesc("限制开始执行饲料任务的时间，避免过早触发。").also { doFarmTaskTime = it })
 
         modelFields.addField(
             BooleanModelField(
                 "receiveFarmTaskAward",
                 "收取饲料奖励",
                 false
-            ).also { receiveFarmTaskAward = it })
+            ).withDesc("自动领取已完成饲料任务的奖励。").also { receiveFarmTaskAward = it })
         modelFields.addField(
             BooleanModelField(
                 "useBigEaterTool",
                 "加饭卡 | 使用",
                 false
-            ).also { useBigEaterTool = it })
+            ).withDesc("自动使用加饭卡，延长单次进食时长。").also { useBigEaterTool = it })
         modelFields.addField(
             BooleanModelField(
                 "useAccelerateTool",
                 "加速卡 | 使用",
                 false
-            ).also { useAccelerateTool = it })
+            ).withDesc("自动使用加速卡缩短进食时间。").also { useAccelerateTool = it })
         modelFields.addField(
             BooleanModelField(
                 "useAccelerateToolContinue",
                 "加速卡 | 连续使用",
                 false
-            ).also { useAccelerateToolContinue = it })
+            ).withDesc("满足条件时连续使用多张加速卡，快速清空库存。").also { useAccelerateToolContinue = it })
         modelFields.addField(
-            IntegerModelField("remainingTime", "饲料剩余时间大于多少时直接使用加速（分钟）（-1关闭）", 40).also { remainingTime = it }
+            IntegerModelField("remainingTime", "饲料剩余时间大于多少时直接使用加速（分钟）（-1关闭）", 40).withDesc(
+                "饲料剩余时间超过该值时才使用加速卡，-1 为关闭。"
+            ).also { remainingTime = it }
         )
         modelFields.addField(
             BooleanModelField(
@@ -348,27 +351,29 @@ class AntFarm : ModelTask() {
                 "enableChouchoule",
                 "开启小鸡抽抽乐",
                 false
-            ).also { enableChouchoule = it })
+            ).withDesc("执行庄园抽抽乐，领取抽奖次数并参与抽奖。").also { enableChouchoule = it })
         modelFields.addField(
             BooleanModelField(
                 "autoExchange",
                 "IP抽抽乐自动从高到低兑换物品",
                 false
-            ).also { autoExchange = it })
+            ).withDesc("IP 或活动抽抽乐按奖励价值从高到低自动兑换。").also { autoExchange = it })
         modelFields.addField(
             StringModelField(
                 "enableChouchouleTime",
                 "小鸡抽抽乐执行时间 | 默认9:00后执行",
                 "0900"
-            ).also { enableChouchouleTime = it })
+            ).withDesc("限制抽抽乐开始时间，避免和其他庄园流程抢时机。").also { enableChouchouleTime = it })
         modelFields.addField(
             BooleanModelField(
                 "recordFarmGame",
                 "游戏改分(星星球、登山赛、飞行赛、揍小鸡)",
                 false
-            ).also { recordFarmGame = it })
+            ).withDesc("执行庄园小游戏改分逻辑，按预估上限刷取饲料。").also { recordFarmGame = it })
         modelFields.addField(
-            IntegerModelField("gameRewardMax", "游戏改分预计最大产出饲料量(g)", 180, 0, null).also { gameRewardMax = it }
+            IntegerModelField("gameRewardMax", "游戏改分预计最大产出饲料量(g)", 180, 0, null).withDesc(
+                "游戏改分期望产出的最大饲料值，用于提前停止。"
+            ).also { gameRewardMax = it }
         )
         modelFields.addField(
             ListJoinCommaToStringModelField(
@@ -401,7 +406,7 @@ class AntFarm : ModelTask() {
                 LinkedHashMap<String?, Int?>(),
                 { AlipayUser.getList() },
                 "记得设置帮喂次数.."
-            ).also {
+            ).withDesc("配置帮喂好友及每日次数；列表中的数量表示可帮喂次数。").also {
                 feedFriendAnimalList = it
             })
         modelFields.addField(
@@ -410,7 +415,9 @@ class AntFarm : ModelTask() {
                 "打赏好友",
                 false
             ).also { rewardFriend = it })
-        modelFields.addField(BooleanModelField("getFeed", "一起拿饲料", false).also {
+        modelFields.addField(BooleanModelField("getFeed", "一起拿饲料", false).withDesc(
+            "处理“一起拿饲料”互动，可送给好友或随机送出。"
+        ).also {
             getFeed = it
         })
         modelFields.addField(
@@ -419,16 +426,18 @@ class AntFarm : ModelTask() {
                 "一起拿饲料 | 动作",
                 GetFeedType.GIVE,
                 GetFeedType.nickNames
-            ).also { getFeedType = it })
+            ).withDesc("选择一起拿饲料的赠送策略。").also { getFeedType = it })
         modelFields.addField(
             SelectModelField(
                 "getFeedlList",
                 "一起拿饲料 | 好友列表",
                 LinkedHashSet<String?>()
-            ) { AlipayUser.getList() }.also {
+            ) { AlipayUser.getList() }.withDesc("仅对选中的好友执行一起拿饲料。").also {
                 getFeedlList = it
             })
-        modelFields.addField(BooleanModelField("acceptGift", "收麦子", false).also {
+        modelFields.addField(BooleanModelField("acceptGift", "收麦子", false).withDesc(
+            "自动收取好友赠送的麦子。"
+        ).also {
             acceptGift = it
         })
         modelFields.addField(
@@ -438,7 +447,7 @@ class AntFarm : ModelTask() {
                 LinkedHashMap<String?, Int?>(),
                 { AlipayUser.getList() },
                 "设置赠送次数？？"
-            ).also {
+            ).withDesc("配置送麦子好友及每日赠送次数。").also {
                 visitFriendList = it
             })
         modelFields.addField(
@@ -446,7 +455,7 @@ class AntFarm : ModelTask() {
                 "hireAnimal",
                 "雇佣小鸡 | 开启",
                 false
-            ).also { hireAnimal = it })
+            ).withDesc("自动雇佣好友小鸡来打工赚取麦子。").also { hireAnimal = it })
         modelFields.addField(
             ChoiceModelField(
                 "hireAnimalType",
@@ -459,7 +468,7 @@ class AntFarm : ModelTask() {
                 "hireAnimalList",
                 "雇佣小鸡 | 好友列表",
                 LinkedHashSet<String?>()
-            ) { AlipayUser.getList() }.also {
+            ) { AlipayUser.getList() }.withDesc("仅在选中的好友列表内尝试雇佣小鸡。").also {
                 hireAnimalList = it
             })
         modelFields.addField(
@@ -474,9 +483,11 @@ class AntFarm : ModelTask() {
                 "sendBackAnimal",
                 "遣返 | 开启",
                 false
-            ).also { sendBackAnimal = it })
+            ).withDesc("自动遣返来偷吃或做客的小鸡。").also { sendBackAnimal = it })
         modelFields.addField(
-            IntegerModelField("timeSendBack", "投喂饲料后间隔时间赶鸡(分,<10关闭)", 0, 0, null).also { timeSendBack = it }
+            IntegerModelField("timeSendBack", "投喂饲料后间隔时间赶鸡(分,<10关闭)", 0, 0, null).withDesc(
+                "投喂后等待多少分钟再赶鸡，避免刚投喂就遣返。"
+            ).also { timeSendBack = it }
         )
         modelFields.addField(
             ChoiceModelField(
@@ -497,7 +508,7 @@ class AntFarm : ModelTask() {
                 "dontSendFriendList",
                 "遣返 | 好友列表",
                 LinkedHashSet<String?>()
-            ) { AlipayUser.getList() }.also {
+            ) { AlipayUser.getList() }.withDesc("设置遣返规则作用的好友名单。").also {
                 sendBackAnimalList = it
             })
         modelFields.addField(
@@ -526,20 +537,20 @@ class AntFarm : ModelTask() {
                 "donation",
                 "每日捐蛋 | 开启",
                 false
-            ).also { donation = it })
+            ).withDesc("自动捐赠爱心鸡蛋到公益项目。").also { donation = it })
         modelFields.addField(
             ChoiceModelField(
                 "donationCount",
                 "每日捐蛋 | 次数",
                 DonationCount.ONE,
                 DonationCount.nickNames
-            ).also { donationCount = it })
+            ).withDesc("控制每日捐蛋次数。").also { donationCount = it })
         modelFields.addField(
             BooleanModelField(
                 "useSpecialFood",
                 "使用特殊食品",
                 false
-            ).also { useSpecialFood = it })
+            ).withDesc("自动使用特殊食物，加快爱心鸡蛋进度。").also { useSpecialFood = it })
         modelFields.addField(
             BooleanModelField(
                 "useNewEggCard",
@@ -564,7 +575,9 @@ class AntFarm : ModelTask() {
                 "收获爱心鸡蛋",
                 false
             ).also { harvestProduce = it })
-        modelFields.addField(BooleanModelField("kitchen", "小鸡厨房", false).also { kitchen = it })
+        modelFields.addField(BooleanModelField("kitchen", "小鸡厨房", false).withDesc(
+            "执行小鸡厨房相关任务和做美食流程。"
+        ).also { kitchen = it })
         modelFields.addField(
             BooleanModelField(
                 "chickenDiary",
@@ -590,20 +603,22 @@ class AntFarm : ModelTask() {
                 "小鸡每日换装",
                 false
             ).also { listOrnaments = it })
-        modelFields.addField(BooleanModelField("family", "家庭 | 开启", false).also { family = it })
+        modelFields.addField(BooleanModelField("family", "家庭 | 开启", false).withDesc(
+            "执行庄园家庭相关任务。"
+        ).also { family = it })
         modelFields.addField(
             SelectModelField(
                 "familyOptions",
                 "家庭 | 选项",
                 LinkedHashSet<String?>(),
                 farmFamilyOption()
-            ).also { familyOptions = it })
+            ).withDesc("勾选允许自动执行的家庭任务类型。").also { familyOptions = it })
         modelFields.addField(
             SelectModelField(
                 "notInviteList",
                 "家庭 | 好友分享排除列表",
                 LinkedHashSet<String?>()
-            ) { AlipayUser.getList() }.also {
+            ) { AlipayUser.getList() }.withDesc("家庭分享或邀请时排除这些好友。").also {
                 notInviteList = it
             })
         //        modelFields.addField(giftFamilyDrawFragment = new StringModelField("giftFamilyDrawFragment", "家庭 | 扭蛋碎片赠送用户ID(配置目录查看)", ""));

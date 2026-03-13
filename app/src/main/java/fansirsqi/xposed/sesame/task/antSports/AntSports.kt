@@ -10,6 +10,7 @@ import fansirsqi.xposed.sesame.hook.ApplicationHook
 import fansirsqi.xposed.sesame.model.BaseModel
 import fansirsqi.xposed.sesame.model.ModelFields
 import fansirsqi.xposed.sesame.model.ModelGroup
+import fansirsqi.xposed.sesame.model.withDesc
 import fansirsqi.xposed.sesame.model.modelFieldExt.BooleanModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.ChoiceModelField
 import fansirsqi.xposed.sesame.model.modelFieldExt.IntegerModelField
@@ -120,49 +121,61 @@ class AntSports : ModelTask() {
         val modelFields = ModelFields()
 
         // 行走路线
-        modelFields.addField(BooleanModelField("walk", "行走路线 | 开启", false).also { walk = it })
+        modelFields.addField(BooleanModelField("walk", "行走路线 | 开启", false).withDesc(
+            "开启运动路线自动行走，消耗步数推进路线并领取奖励。"
+        ).also { walk = it })
         modelFields.addField(
             ChoiceModelField(
                 "walkPathTheme",
                 "行走路线 | 主题",
                 WalkPathTheme.DA_MEI_ZHONG_GUO,
                 WalkPathTheme.nickNames
-            ).also { walkPathTheme = it }
+            ).withDesc("选择运动路线主题，影响加入或继续的路线。").also { walkPathTheme = it }
         )
         modelFields.addField(
-            BooleanModelField("walkCustomPath", "行走路线 | 开启自定义路线", false).also { walkCustomPath = it }
+            BooleanModelField("walkCustomPath", "行走路线 | 开启自定义路线", false).withDesc(
+                "改为使用自定义路线代码，不再按主题自动选线。"
+            ).also { walkCustomPath = it }
         )
         modelFields.addField(
             StringModelField(
                 "walkCustomPathId",
                 "行走路线 | 自定义路线代码(debug)",
                 "p0002023122214520001"
-            ).also { walkCustomPathId = it }
+            ).withDesc("自定义路线调试代码，仅在开启自定义路线时生效。").also { walkCustomPathId = it }
         )
 
         // 旧版路线相关
         modelFields.addField(
-            BooleanModelField("openTreasureBox", "开启宝箱", false).also { openTreasureBox = it }
+            BooleanModelField("openTreasureBox", "开启宝箱", false).withDesc(
+                "路线行走后自动开启可领取的宝箱。"
+            ).also { openTreasureBox = it }
         )
 
         // 运动任务 & 能量球
         modelFields.addField(
-            BooleanModelField("sportsTasks", "开启运动任务", false).also { sportsTasksField = it }
+            BooleanModelField("sportsTasks", "开启运动任务", false).withDesc(
+                "执行运动中心每日任务并领取奖励。"
+            ).also { sportsTasksField = it }
         )
         modelFields.addField(
             BooleanModelField(
                 "sportsEnergyBubble",
                 "运动球任务(开启后有概率出现滑块验证)",
                 false
-            ).also { sportsEnergyBubble = it }
+            ).withDesc("处理首页推荐的运动球任务，可能触发滑块验证。").also { sportsEnergyBubble = it }
         )
 
         // 首页金币 & 捐步
         modelFields.addField(
-            BooleanModelField("receiveCoinAsset", "收能量🎈", false).also { receiveCoinAssetField = it }
+            BooleanModelField("receiveCoinAsset", "收能量🎈", false).withDesc(
+                "收取首页可领取的能量气球或运动币资源。"
+            ).also { receiveCoinAssetField = it }
         )
         modelFields.addField(
-            BooleanModelField("donateCharityCoin", "捐能量🎈 | 开启", false).also { donateCharityCoin = it }
+            BooleanModelField("donateCharityCoin", "捐能量🎈 | 开启", false).withDesc(
+                "自动把能量气球捐给公益项目。"
+            ).also { donateCharityCoin = it }
         )
         modelFields.addField(
             ChoiceModelField(
@@ -170,28 +183,38 @@ class AntSports : ModelTask() {
                 "捐能量🎈 | 方式",
                 DonateCharityCoinType.ONE,
                 DonateCharityCoinType.nickNames
-            ).also { donateCharityCoinType = it }
+            ).withDesc("控制只捐一个项目还是继续处理更多项目。").also { donateCharityCoinType = it }
         )
         modelFields.addField(
-            IntegerModelField("donateCharityCoinAmount", "捐能量🎈 | 数量(每次)", 100)
+            IntegerModelField("donateCharityCoinAmount", "捐能量🎈 | 数量(每次)", 100).withDesc(
+                "每次捐赠的能量气球数量。"
+            )
                 .also { donateCharityCoinAmount = it }
         )
 
         // 健康岛任务
         modelFields.addField(
-            BooleanModelField("neverlandTask", "健康岛 | 任务", false).also { neverlandTask = it }
+            BooleanModelField("neverlandTask", "健康岛 | 任务", false).withDesc(
+                "执行健康岛日常任务。"
+            ).also { neverlandTask = it }
         )
         modelFields.addField(
-            BooleanModelField("neverlandGrid", "健康岛 | 自动走路建造", false).also { neverlandGrid = it }
+            BooleanModelField("neverlandGrid", "健康岛 | 自动走路建造", false).withDesc(
+                "自动在健康岛走路建造，消耗可用步数。"
+            ).also { neverlandGrid = it }
         )
         modelFields.addField(
-            IntegerModelField("neverlandGridStepCount", "健康岛 | 今日走路最大次数", 20)
+            IntegerModelField("neverlandGridStepCount", "健康岛 | 今日走路最大次数", 20).withDesc(
+                "健康岛当天最多执行的走路建造次数。"
+            )
                 .also { neverlandGridStepCount = it }
         )
 
         // 抢好友相关
         modelFields.addField(
-            BooleanModelField("battleForFriends", "抢好友 | 开启", false).also { battleForFriends = it }
+            BooleanModelField("battleForFriends", "抢好友 | 开启", false).withDesc(
+                "执行抢好友玩法。"
+            ).also { battleForFriends = it }
         )
         modelFields.addField(
             ChoiceModelField(
@@ -199,7 +222,7 @@ class AntSports : ModelTask() {
                 "抢好友 | 动作",
                 BattleForFriendType.ROB,
                 BattleForFriendType.nickNames
-            ).also { battleForFriendType = it }
+            ).withDesc("决定列表中的好友是抢还是排除。").also { battleForFriendType = it }
         )
         modelFields.addField(
             SelectModelField(
@@ -207,33 +230,47 @@ class AntSports : ModelTask() {
                 "抢好友 | 好友列表",
                 LinkedHashSet(),
                 AlipayUser::getList
-            ).also { originBossIdList = it }
+            ).withDesc("配置抢好友规则作用的好友名单。").also { originBossIdList = it }
         )
 
         // 训练好友相关
         modelFields.addField(
-            BooleanModelField("trainFriend", "训练好友 | 开启", false).also { trainFriend = it }
+            BooleanModelField("trainFriend", "训练好友 | 开启", false).withDesc(
+                "自动训练好友获取金币等奖励。"
+            ).also { trainFriend = it }
         )
         modelFields.addField(
-            IntegerModelField("zeroCoinLimit", "训练好友 | 0金币上限次数当天关闭", 5)
+            IntegerModelField("zeroCoinLimit", "训练好友 | 0金币上限次数当天关闭", 5).withDesc(
+                "当天连续遇到 0 金币达到次数后停止训练好友。"
+            )
                 .also { zeroCoinLimit = it }
         )
 
         // 文体中心 & 捐步 & 步数同步
-        modelFields.addField(BooleanModelField("tiyubiz", "文体中心", false).also { tiyubiz = it })
+        modelFields.addField(BooleanModelField("tiyubiz", "文体中心", false).withDesc(
+            "执行文体中心相关任务。"
+        ).also { tiyubiz = it })
         modelFields.addField(
-            IntegerModelField("minExchangeCount", "最小捐步步数", 0).also { minExchangeCount = it }
+            IntegerModelField("minExchangeCount", "最小捐步步数", 0).withDesc(
+                "只有当步数达到该值后才执行捐步或兑换流程。"
+            ).also { minExchangeCount = it }
         )
         modelFields.addField(
-            IntegerModelField("earliestSyncStepTime", "同步步数 | 最早同步时间(24小时制)", 6, 0, 23)
+            IntegerModelField("earliestSyncStepTime", "同步步数 | 最早同步时间(24小时制)", 6, 0, 23).withDesc(
+                "允许开始同步自定义步数的最早时间。"
+            )
                 .also { earliestSyncStepTime = it }
         )
         modelFields.addField(
-            IntegerModelField("latestExchangeTime", "最晚捐步时间(24小时制)", 22)
+            IntegerModelField("latestExchangeTime", "最晚捐步时间(24小时制)", 22).withDesc(
+                "允许执行捐步或兑换的最晚时间。"
+            )
                 .also { latestExchangeTime = it }
         )
         modelFields.addField(
-            IntegerModelField("syncStepCount", "自定义同步步数", 22000).also { syncStepCount = it }
+            IntegerModelField("syncStepCount", "自定义同步步数", 22000).withDesc(
+                "自定义同步到支付宝的步数目标值。"
+            ).also { syncStepCount = it }
         )
 
         // 本地字段：能量兑换双击卡
@@ -241,7 +278,7 @@ class AntSports : ModelTask() {
             "coinExchangeDoubleCard",
             "能量🎈兑换限时能量双击卡",
             false
-        )
+        ).withDesc("用能量气球兑换限时双击卡。")
         modelFields.addField(coinExchangeDoubleCard)
 
         return modelFields

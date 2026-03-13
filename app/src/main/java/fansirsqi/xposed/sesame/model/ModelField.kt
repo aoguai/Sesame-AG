@@ -286,3 +286,10 @@ open class ModelField<T> : Serializable {
         }
     }
 }
+
+/**
+ * 链式设置字段描述，便于在字段声明处按需补充说明文案。
+ */
+fun <F : ModelField<*>> F.withDesc(desc: String?): F = apply {
+    this.desc = desc?.trim().orEmpty()
+}
