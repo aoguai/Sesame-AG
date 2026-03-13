@@ -339,13 +339,17 @@ class AntFarm : ModelTask() {
                 "useAccelerateToolWhenMaxEmotion",
                 "加速卡 | 仅在满状态时使用",
                 false
-            ).also { useAccelerateToolWhenMaxEmotion = it })
+            ).withDesc("仅在小鸡心情值满状态时才使用加速卡。需开启“加速卡 | 使用”。").also {
+                useAccelerateToolWhenMaxEmotion = it
+            })
         modelFields.addField(
             BooleanModelField(
                 "ignoreAcceLimit",
                 "按设置的时间进行游戏改分和抽抽乐",
                 false
-            ).also { ignoreAcceLimit = it })
+            ).withDesc("开启后，游戏改分和抽抽乐只按设定时间执行，不再等待加速卡或游戏改分前置流程。").also {
+                ignoreAcceLimit = it
+            })
         modelFields.addField(
             BooleanModelField(
                 "enableChouchoule",
@@ -380,25 +384,27 @@ class AntFarm : ModelTask() {
                 "farmGameTime",
                 "小鸡游戏时间(范围)",
                 ListUtil.newArrayList("2200-2400")
-            ).also { farmGameTime = it })
+            ).withDesc("仅在这些时间段内执行游戏改分，可配置多个范围，如 2200-2400。").also {
+                farmGameTime = it
+            })
         modelFields.addField(
             BooleanModelField(
                 "enableDdrawGameCenterAward",
                 "开宝箱",
                 false
-            ).also { enableDdrawGameCenterAward = it })
+            ).withDesc("自动领取庄园游戏中心可开启的宝箱奖励。").also { enableDdrawGameCenterAward = it })
         modelFields.addField(
             StringModelField(
                 "sleepTime",
                 "小鸡睡觉时间(关闭:-1)",
                 "2330"
-            ).also { sleepTime = it })
+            ).withDesc("设置自动让小鸡睡觉的时间，填 -1 关闭睡觉定时。").also { sleepTime = it })
         modelFields.addField(
             StringModelField(
                 "wakeupTime",
                 "小鸡起床时间(关闭:-1)",
                 "0530"
-            ).also { wakeUpTime = it })
+            ).withDesc("设置自动让小鸡起床的时间，填 -1 关闭起床定时。").also { wakeUpTime = it })
         modelFields.addField(
             SelectAndCountModelField(
                 "feedFriendAnimalList",
@@ -414,7 +420,7 @@ class AntFarm : ModelTask() {
                 "rewardFriend",
                 "打赏好友",
                 false
-            ).also { rewardFriend = it })
+            ).withDesc("自动处理可打赏的好友奖励。").also { rewardFriend = it })
         modelFields.addField(BooleanModelField("getFeed", "一起拿饲料", false).withDesc(
             "处理“一起拿饲料”互动，可送给好友或随机送出。"
         ).also {
@@ -447,7 +453,7 @@ class AntFarm : ModelTask() {
                 LinkedHashMap<String?, Int?>(),
                 { AlipayUser.getList() },
                 "设置赠送次数？？"
-            ).withDesc("配置送麦子好友及每日赠送次数。").also {
+            ).withDesc("配置送麦子好友及每日赠送次数。需开启“到访小鸡送礼”。").also {
                 visitFriendList = it
             })
         modelFields.addField(
@@ -462,7 +468,9 @@ class AntFarm : ModelTask() {
                 "雇佣小鸡 | 动作",
                 HireAnimalType.DONT_HIRE,
                 HireAnimalType.nickNames
-            ).also { hireAnimalType = it })
+            ).withDesc("选择名单模式：仅雇佣选中好友，或排除选中好友。需开启“雇佣小鸡 | 开启”。").also {
+                hireAnimalType = it
+            })
         modelFields.addField(
             SelectModelField(
                 "hireAnimalList",
@@ -477,7 +485,9 @@ class AntFarm : ModelTask() {
                 "雇佣NPC小鸡(满产自动重雇)",
                 NpcConfig.NONE.ordinal,
                 NpcConfig.nickNames
-            ).also { npcAnimalType = it })
+            ).withDesc("选择自动雇佣并在满产后重雇的 NPC 小鸡；选“关闭”则不处理。").also {
+                npcAnimalType = it
+            })
         modelFields.addField(
             BooleanModelField(
                 "sendBackAnimal",
@@ -495,14 +505,18 @@ class AntFarm : ModelTask() {
                 "遣返 | 方式",
                 SendBackAnimalWay.NORMAL,
                 SendBackAnimalWay.nickNames
-            ).also { sendBackAnimalWay = it })
+            ).withDesc("选择遣返方式：攻击或常规赶回。需开启“遣返 | 开启”。").also {
+                sendBackAnimalWay = it
+            })
         modelFields.addField(
             ChoiceModelField(
                 "sendBackAnimalType",
                 "遣返 | 动作",
                 SendBackAnimalType.NOT_BACK,
                 SendBackAnimalType.nickNames
-            ).also { sendBackAnimalType = it })
+            ).withDesc("选择名单模式：仅遣返选中好友，或遣返未选中的好友。需开启“遣返 | 开启”。").also {
+                sendBackAnimalType = it
+            })
         modelFields.addField(
             SelectModelField(
                 "dontSendFriendList",
@@ -516,20 +530,22 @@ class AntFarm : ModelTask() {
                 "notifyFriend",
                 "通知赶鸡 | 开启",
                 false
-            ).also { notifyFriend = it })
+            ).withDesc("自动通知好友赶回来偷吃的小鸡。").also { notifyFriend = it })
         modelFields.addField(
             ChoiceModelField(
                 "notifyFriendType",
                 "通知赶鸡 | 动作",
                 NotifyFriendType.NOTIFY,
                 NotifyFriendType.nickNames
-            ).also { notifyFriendType = it })
+            ).withDesc("选择通知名单模式：仅通知选中好友，或排除选中好友。需开启“通知赶鸡 | 开启”。").also {
+                notifyFriendType = it
+            })
         modelFields.addField(
             SelectModelField(
                 "notifyFriendList",
                 "通知赶鸡 | 好友列表",
                 LinkedHashSet<String?>()
-            ) { AlipayUser.getList() }.also {
+            ) { AlipayUser.getList() }.withDesc("设置通知规则作用的好友名单。需开启“通知赶鸡 | 开启”。").also {
                 notifyFriendList = it
             })
         modelFields.addField(
@@ -556,25 +572,27 @@ class AntFarm : ModelTask() {
                 "useNewEggCard",
                 "使用新蛋卡",
                 false
-            ).also { useNewEggCard = it })
+            ).withDesc("自动使用新蛋卡，切换到新的产蛋进度。").also { useNewEggCard = it })
         modelFields.addField(
             BooleanModelField(
                 "signRegardless",
                 "庄园签到忽略饲料余量",
                 true
-            ).also { signRegardless = it })
+            ).withDesc("开启后签到时不再严格检查饲料槽空余，直接尝试领取签到饲料。").also {
+                signRegardless = it
+            })
         modelFields.addField(
             BooleanModelField(
                 "receiveFarmToolReward",
                 "收取道具奖励",
                 false
-            ).also { receiveFarmToolReward = it })
+            ).withDesc("自动领取庄园任务或活动中的道具类奖励。").also { receiveFarmToolReward = it })
         modelFields.addField(
             BooleanModelField(
                 "harvestProduce",
                 "收获爱心鸡蛋",
                 false
-            ).also { harvestProduce = it })
+            ).withDesc("有可收取的爱心鸡蛋时自动收取。").also { harvestProduce = it })
         modelFields.addField(BooleanModelField("kitchen", "小鸡厨房", false).withDesc(
             "执行小鸡厨房相关任务和做美食流程。"
         ).also { kitchen = it })
@@ -583,26 +601,28 @@ class AntFarm : ModelTask() {
                 "chickenDiary",
                 "小鸡日记",
                 false
-            ).also { chickenDiary = it })
+            ).withDesc("执行小鸡日记相关流程。开启后下面的贴贴和点赞配置才会生效。").also { chickenDiary = it })
         modelFields.addField(
             BooleanModelField(
                 "diaryTietze",
                 "小鸡日记 | 贴贴",
                 false
-            ).also { diaryTietie = it })
+            ).withDesc("进入小鸡日记后自动执行贴贴操作。需开启“小鸡日记”。").also { diaryTietie = it })
         modelFields.addField(
             ChoiceModelField(
                 "collectChickenDiary",
                 "小鸡日记 | 点赞",
-                collectChickenDiaryType.ONCE,
+                collectChickenDiaryType.CLOSE,
                 collectChickenDiaryType.nickNames
-            ).also { collectChickenDiary = it })
+            ).withDesc("设置小鸡日记点赞范围：不开启、一次、当月或所有。需开启“小鸡日记”。").also {
+                collectChickenDiary = it
+            })
         modelFields.addField(
             BooleanModelField(
                 "listOrnaments",
                 "小鸡每日换装",
                 false
-            ).also { listOrnaments = it })
+            ).withDesc("每天随机切换一套已拥有的小鸡装扮。").also { listOrnaments = it })
         modelFields.addField(BooleanModelField("family", "家庭 | 开启", false).withDesc(
             "执行庄园家庭相关任务。"
         ).also { family = it })
@@ -627,13 +647,13 @@ class AntFarm : ModelTask() {
                 "paradiseCoinExchangeBenefit",
                 "小鸡乐园 | 兑换权益",
                 false
-            ).also { paradiseCoinExchangeBenefit = it })
+            ).withDesc("自动使用小鸡乐园币兑换选中的权益。").also { paradiseCoinExchangeBenefit = it })
         modelFields.addField(
             SelectModelField(
                 "paradiseCoinExchangeBenefitList",
                 "小鸡乐园 | 权益列表",
                 LinkedHashSet<String?>()
-            ) { ParadiseCoinBenefit.getList() }.also {
+            ) { ParadiseCoinBenefit.getList() }.withDesc("仅兑换列表中的小鸡乐园权益。需开启“小鸡乐园 | 兑换权益”。").also {
                 paradiseCoinExchangeBenefitList = it
             })
         modelFields.addField(
@@ -641,19 +661,23 @@ class AntFarm : ModelTask() {
                 "visitAnimal",
                 "到访小鸡送礼",
                 false
-            ).also { visitAnimal = it })
+            ).withDesc("处理到访小鸡送礼，并按“送麦子好友列表”配置给好友送麦子。").also { visitAnimal = it })
         modelFields.addField(
             BooleanModelField(
                 "useSmartSchedulerManager",
                 "使用SmartSchedulerManager定时蹲点任务",
                 false
-            ).also { useSmartSchedulerManager = it })
+            ).withDesc("蹲点投喂、定时赶鸡等子任务优先使用 SmartSchedulerManager 调度。").also {
+                useSmartSchedulerManager = it
+            })
         modelFields.addField(
             BooleanModelField(
                 "doChouChouLeDonationTask",
                 "抽抽乐捐赠任务(禁止开启)",
                 false
-            ).also { doChouChouLeDonationTask = it })
+            ).withDesc("控制是否执行抽抽乐中的捐赠类任务；默认关闭以避免额外捐赠。需开启“小鸡抽抽乐”。").also {
+                doChouChouLeDonationTask = it
+            })
         return modelFields
     }
 
@@ -1030,50 +1054,53 @@ class AntFarm : ModelTask() {
 
     private fun animalSleepAndWake() {
         try {
-            val sleepTimeStr = sleepTime!!.value
-            if ("-1" == sleepTimeStr) {
-                Log.record(TAG, "当前已关闭小鸡睡觉")
-                return
-            }
             val now = TimeUtil.getNow()
-            val animalSleepTimeCalendar = TimeUtil.getTodayCalendarByTimeStr(sleepTimeStr)
-            if (animalSleepTimeCalendar == null) {
+            val sleepTimeStr = sleepTime!!.value
+            val animalSleepTimeCalendar = if ("-1" == sleepTimeStr) {
+                Log.record(TAG, "当前已关闭小鸡睡觉")
+                null
+            } else {
+                TimeUtil.getTodayCalendarByTimeStr(sleepTimeStr)
+            }
+            if (sleepTimeStr != "-1" && animalSleepTimeCalendar == null) {
                 Log.record(TAG, "小鸡睡觉时间格式错误，请重新设置")
-                return
             }
 
             val wakeUpTimeStr = wakeUpTime!!.value
-            if ("-1" == wakeUpTimeStr) {
+            var animalWakeUpTimeCalendar = if ("-1" == wakeUpTimeStr) {
                 Log.record(TAG, "当前已关闭小鸡起床")
+                null
+            } else {
+                TimeUtil.getTodayCalendarByTimeStr(wakeUpTimeStr)
             }
-
-            var animalWakeUpTimeCalendar = TimeUtil.getTodayCalendarByTimeStr(wakeUpTimeStr)
-            if(animalWakeUpTimeCalendar == null) {
-                Log.record(TAG, "小鸡起床时间格式错误，请重新设置，否则默认关闭")
+            if (wakeUpTimeStr != "-1" && animalWakeUpTimeCalendar == null) {
+                Log.record(TAG, "小鸡起床时间格式错误，请重新设置，否则默认06:00")
                 animalWakeUpTimeCalendar = TimeUtil.getTodayCalendarByTimeStr("0600")
+            }
+            if (animalSleepTimeCalendar == null && animalWakeUpTimeCalendar == null) {
+                return
             }
             val sixAmToday = TimeUtil.getTodayCalendarByTimeStr("0600") ?: return
             if (now.after(sixAmToday)) {
                 animalWakeUpTimeCalendar?.add(Calendar.DAY_OF_MONTH, 1)
             }
 
-            val animalWakeUpTimeCalendarNotNull = animalWakeUpTimeCalendar ?: return
-            val animalWakeUpTime = animalWakeUpTimeCalendarNotNull.timeInMillis
-            val animalSleepTime = animalSleepTimeCalendar.timeInMillis
-            val afterSleepTime = now > animalSleepTimeCalendar
-            val afterWakeUpTime = now > animalWakeUpTimeCalendarNotNull
+            val animalWakeUpTime = animalWakeUpTimeCalendar?.timeInMillis
+            val animalSleepTime = animalSleepTimeCalendar?.timeInMillis
+            val afterSleepTime = animalSleepTimeCalendar?.let { now > it } ?: false
+            val afterWakeUpTime = animalWakeUpTimeCalendar?.let { now > it } ?: false
             val afterSixAm = now >= sixAmToday
 
-            if (afterSleepTime && afterWakeUpTime) {
+            if (animalSleepTimeCalendar != null && animalWakeUpTimeCalendar != null && afterSleepTime && afterWakeUpTime) {
                 if (!Status.canAnimalSleep()) {
                     return
                 }
                 Log.record(TAG, "已错过小鸡今日睡觉时间")
                 return
             }
-            val sleepTaskId = "AS|$animalSleepTime"
-            val wakeUpTaskId = "AW|$animalWakeUpTime"
-            if (!hasChildTask(sleepTaskId) && !afterSleepTime) {
+            val sleepTaskId = animalSleepTime?.let { "AS|$it" }
+            val wakeUpTaskId = animalWakeUpTime?.let { "AW|$it" }
+            if (animalSleepTime != null && sleepTaskId != null && !hasChildTask(sleepTaskId) && !afterSleepTime) {
                 addChildTask(
                     ChildModelTask(
                         sleepTaskId,
@@ -1093,7 +1120,7 @@ class AntFarm : ModelTask() {
                     ) + "]执行"
                 )
             }
-            if (!hasChildTask(wakeUpTaskId) && !afterWakeUpTime) {
+            if (animalWakeUpTime != null && wakeUpTaskId != null && !hasChildTask(wakeUpTaskId) && !afterWakeUpTime) {
                 addChildTask(
                     ChildModelTask(
                         wakeUpTaskId,
@@ -1109,12 +1136,12 @@ class AntFarm : ModelTask() {
                     ) + "]执行"
                 )
             }
-            if (afterSleepTime) {
+            if (animalSleepTimeCalendar != null && afterSleepTime) {
                 if (Status.canAnimalSleep()) {
                     animalSleepNow()
                 }
             }
-            if (afterWakeUpTime && !afterSixAm) {
+            if (animalWakeUpTimeCalendar != null && afterWakeUpTime && !afterSixAm) {
                 if (Status.canAnimalSleep()) {
                     animalWakeUpNow()
                 }
@@ -4469,9 +4496,9 @@ class AntFarm : ModelTask() {
     interface collectChickenDiaryType {
         companion object {
             const val CLOSE: Int = 0
-            const val ONCE: Int = 0
-            const val MONTH: Int = 1
-            const val ALL: Int = 2
+            const val ONCE: Int = 1
+            const val MONTH: Int = 2
+            const val ALL: Int = 3
             val nickNames: Array<String?> = arrayOf<String?>("不开启", "一次", "当月", "所有")
         }
     }
