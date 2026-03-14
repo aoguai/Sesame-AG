@@ -75,6 +75,7 @@ import fansirsqi.xposed.sesame.util.Notify.updateStatusText
 import fansirsqi.xposed.sesame.util.PermissionUtil
 import fansirsqi.xposed.sesame.util.PermissionUtil.checkBatteryPermissions
 import fansirsqi.xposed.sesame.util.TimeUtil
+import fansirsqi.xposed.sesame.util.WorkflowRootGuard
 import fansirsqi.xposed.sesame.util.maps.UserMap
 import fansirsqi.xposed.sesame.util.maps.UserMap.currentUid
 import io.github.libxposed.api.XposedInterface
@@ -595,11 +596,19 @@ class ApplicationHook {
                                         record(TAG, "❌ 无效的任务指令: $taskName")
                                     }
                                 }
+                                if (!WorkflowRootGuard.hasRoot(forceRefresh = true, reason = "manual_task")) {
+                                    record(TAG, "⛔ 未检测到 Root 权限，忽略手动任务指令: $taskName")
+                                    return@execute
+                                }
                                 ManualTask.runSingle(task, extraParams)
                             } catch (e: Exception) {
                                 record(TAG, "❌ 无效的任务指令: $taskName -> ${e.message}")
                             }
                         } else {
+                            if (!WorkflowRootGuard.hasRoot(forceRefresh = true, reason = "manual_task_model")) {
+                                record(TAG, "⛔ 未检测到 Root 权限，忽略手动模型任务指令")
+                                return@execute
+                            }
                             for (model in Model.modelArray) {
                                 if (model is ManualTaskModel) {
                                     model.startTask(true, 1)
@@ -730,6 +739,9 @@ class ApplicationHook {
         private var pendingInitReason: String? = null
 
         @Volatile
+        private var rootCheckInProgress = false
+
+        @Volatile
         var dayCalendar: Calendar?
 
         @Volatile
@@ -744,7 +756,7 @@ class ApplicationHook {
         var mainTask: MainTask? = null
 
         internal fun isReadyForExec(): Boolean {
-            return init && Config.isLoaded() && service != null
+            return init && Config.isLoaded() && service != null && WorkflowRootGuard.hasGrantedRoot()
         }
 
         @Volatile
@@ -793,6 +805,12 @@ class ApplicationHook {
             try {
                 TaskLock().use { _ ->
                     if (!init || !Config.isLoaded()) return@withContext
+                    if (!WorkflowRootGuard.hasRoot(forceRefresh = true, reason = "main_task")) {
+                        record(TAG, "⛔ Root 权限不可用，终止主任务执行")
+                        ApplicationHookConstants.clearPendingTriggers("root_denied")
+                        destroyHandler()
+                        return@withContext
+                    }
 
                     val trigger = ApplicationHookConstants.consumePendingTrigger()
                     record(TAG, "🎯 本次执行触发: ${trigger?.summary() ?: "<none>"}")
@@ -926,6 +944,9 @@ class ApplicationHook {
 
                 HookUtil.hookUser(classLoader!!)
                 record(TAG, "芝麻粒-AG 开始初始化...")
+                if (!ensureRootAccessForWorkflow(reason)) {
+                    return false
+                }
 
                 Config.load(userId)
                 if (!Config.isLoaded()) return false
@@ -1003,6 +1024,7 @@ class ApplicationHook {
                 init = false
                 pendingInit = false
                 pendingInitReason = null
+                rootCheckInProgress = false
                 lastExecTime = 0
                 try {
                     fansirsqi.xposed.sesame.util.DataStore.shutdown()
@@ -1034,9 +1056,52 @@ class ApplicationHook {
                     }
                     stopAllTask()
                 }
+
+                WorkflowRootGuard.invalidate()
             } catch (th: Throwable) {
                 printStackTrace(TAG, "stopHandler err:", th)
             }
+        }
+
+        private fun ensureRootAccessForWorkflow(reason: String): Boolean {
+            if (WorkflowRootGuard.hasGrantedRoot()) {
+                pendingInit = false
+                pendingInitReason = null
+                return true
+            }
+
+            pendingInit = true
+            pendingInitReason = reason
+            if (rootCheckInProgress) {
+                return false
+            }
+
+            rootCheckInProgress = true
+            record(TAG, "⏳ 正在检查 Root 权限，暂不启动工作流: $reason")
+            execute {
+                try {
+                    val granted = WorkflowRootGuard.hasRoot(forceRefresh = true, reason = reason)
+                    if (!granted) {
+                        updateStatusText("未检测到 Root 权限，已禁止工作流")
+                        ApplicationHookConstants.clearPendingTriggers("root_denied")
+                        return@execute
+                    }
+
+                    val retryReason = pendingInitReason ?: reason
+                    rootCheckInProgress = false
+                    if (service != null && !init) {
+                        record(TAG, "✅ Root 权限检查通过，继续初始化: $retryReason")
+                        if (initHandler(retryReason)) {
+                            init = true
+                        }
+                    }
+                } catch (th: Throwable) {
+                    printStackTrace(TAG, "checkRootPermission", th)
+                } finally {
+                    rootCheckInProgress = false
+                }
+            }
+            return false
         }
 
         private fun stopHandler() {

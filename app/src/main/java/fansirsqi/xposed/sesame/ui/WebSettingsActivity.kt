@@ -27,6 +27,7 @@ import com.fasterxml.jackson.core.type.TypeReference
 import fansirsqi.xposed.sesame.BuildConfig
 import fansirsqi.xposed.sesame.R
 import fansirsqi.xposed.sesame.data.Config
+import fansirsqi.xposed.sesame.data.Status
 import fansirsqi.xposed.sesame.entity.AlipayUser
 import fansirsqi.xposed.sesame.hook.ApplicationHookConstants
 import fansirsqi.xposed.sesame.model.Model
@@ -134,6 +135,7 @@ class WebSettingsActivity : BaseActivity() {
                 IdMapManager.getInstance(ReserveaMap::class.java).load()
                 IdMapManager.getInstance(BeachMap::class.java).load()
 
+                userId?.let { Status.load(it) }
                 Config.load(userId)
 
                 runOnUiThread {
@@ -273,7 +275,7 @@ class WebSettingsActivity : BaseActivity() {
             for (modelConfig in modelConfigCollection) {
                 val modelFields = ArrayList<ModelFieldShowDto>()
                 for (modelField in modelConfig.fields.values) {
-                    modelFields.add(ModelFieldShowDto.toShowDto(modelField))
+                    modelFields.add(ModelFieldShowDto.toShowDto(modelConfig.code, modelConfig.fields, modelField))
                 }
                 modelDtoList.add(ModelDto(modelConfig.code, modelConfig.name, modelConfig.icon, groupCode, modelFields))
             }
@@ -304,7 +306,7 @@ class WebSettingsActivity : BaseActivity() {
             val modelFields: ModelFields = modelConfig.fields
             val list = ArrayList<ModelFieldShowDto>()
             for (modelField: ModelField<*> in modelFields.values) {
-                list.add(ModelFieldShowDto.toShowDto(modelField))
+                list.add(ModelFieldShowDto.toShowDto(modelConfig.code, modelFields, modelField))
             }
             return JsonUtil.formatJson(list, false)
         }
@@ -474,4 +476,3 @@ class WebSettingsActivity : BaseActivity() {
         private const val TAG = "WebSettingsActivity"
     }
 }
-

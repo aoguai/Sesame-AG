@@ -56,6 +56,31 @@
             border-bottom: none;
         }
 
+        .field-choice-row {
+            padding: 0.75rem 0;
+            border-bottom: 0.0625rem solid var(--semi-color-border);
+        }
+
+        .field-row-inactive {
+            background: var(--semi-color-fill-0);
+            border-radius: 0.75rem;
+            margin: 0 -0.5rem;
+            padding: 0.75rem;
+        }
+
+        .field-choice-row.field-row-inactive {
+            padding: 0.75rem;
+        }
+
+        .field-row-inactive .field-label {
+            opacity: 0.82;
+        }
+
+        .field-row-inactive .field-control {
+            opacity: 1;
+            filter: none;
+        }
+
         .field-label {
             display: flex;
             flex-direction: column;
@@ -74,6 +99,14 @@
             font-size: 0.75rem;
             line-height: 1.5;
             color: var(--semi-color-text-2);
+            white-space: normal;
+        }
+
+        .field-status {
+            margin-top: 0.375rem;
+            font-size: 0.75rem;
+            line-height: 1.5;
+            color: var(--semi-color-warning);
             white-space: normal;
         }
 
@@ -219,7 +252,7 @@
 
             const handleFieldChange = (modelCode, fieldCode, newValue) => {
                 setModelsMap(prev => {
-                    const currentFields = [...prev[modelCode]];
+                    let currentFields = [...prev[modelCode]];
                     const fieldIndex = currentFields.findIndex(f => f.code === fieldCode);
                     if (fieldIndex > -1) {
                         currentFields[fieldIndex] = { ...currentFields[fieldIndex], configValue: String(newValue) };
@@ -228,6 +261,10 @@
                     currentFields.forEach(f => { savePayload[f.code] = { configValue: f.configValue }; });
                     if (window.HOOK && window.HOOK.setModel) {
                         window.HOOK.setModel(modelCode, JSON.stringify(savePayload));
+                        const refreshedFields = getModelData(modelCode);
+                        if (Array.isArray(refreshedFields) && refreshedFields.length > 0) {
+                            currentFields = refreshedFields;
+                        }
                     }
                     return { ...prev, [modelCode]: currentFields };
                 });
@@ -312,10 +349,11 @@
                 setSelectedCounts(prev => ({ ...prev, [id]: val }));
             };
 
-            const renderFieldLabel = (name, desc) => (
+            const renderFieldLabel = (name, desc, todayInactive, todayInactiveReason) => (
                 <div className="field-label">
                     <div className="field-name">{name}</div>
                     {desc ? <div className="field-desc">{desc}</div> : null}
+                    {todayInactive ? <div className="field-status">{todayInactiveReason || '今日已停止执行'}</div> : null}
                 </div>
             );
 
@@ -367,11 +405,13 @@
 
             // --- 渲染主界面配置项 ---
             const renderFieldItem = (modelCode, item) => {
-                const { type, name, code, configValue, desc, expandKey } = item;
+                const { type, name, code, configValue, desc, expandKey, todayInactive, todayInactiveReason } = item;
+                const rowClassName = todayInactive ? 'field-row field-row-inactive' : 'field-row';
+                const choiceRowClassName = todayInactive ? 'field-choice-row field-row-inactive' : 'field-choice-row';
                 if (type === 'BOOLEAN') {
                     return (
-                        <div className="field-row" key={code}>
-                            {renderFieldLabel(name, desc)}
+                        <div className={rowClassName} key={code}>
+                            {renderFieldLabel(name, desc, todayInactive, todayInactiveReason)}
                             <div className="field-control">
                                 <Switch checked={configValue === 'true'} onChange={(v) => handleFieldChange(modelCode, code, v)} />
                             </div>
@@ -380,8 +420,8 @@
                 }
                 if (['MULTIPLY_INTEGER', 'LIST', 'INTEGER', 'STRING', 'TEXT'].includes(type)) {
                     return (
-                        <div className="field-row" key={code}>
-                            {renderFieldLabel(name, desc)}
+                        <div className={rowClassName} key={code}>
+                            {renderFieldLabel(name, desc, todayInactive, todayInactiveReason)}
                             <div className="field-control" style={{ width: '50%' }}>
                                 <Input value={configValue} onChange={(v) => handleFieldChange(modelCode, code, v)} placeholder="请输入..." />
                             </div>
@@ -390,9 +430,9 @@
                 }
                 if (type === 'URL_TEXT') {
                     return (
-                        <div className="field-row" key={code}>
+                        <div className={rowClassName} key={code}>
                             <div style={{ flex: 1 }}>
-                                {renderFieldLabel(name, desc)}
+                                {renderFieldLabel(name, desc, todayInactive, todayInactiveReason)}
                                 <Text link={{ href: configValue }}>{configValue}</Text>
                             </div>
                         </div>
@@ -400,8 +440,8 @@
                 }
                 if (type === 'CHOICE') {
                     return (
-                        <div style={{ padding: '0.75rem 0', borderBottom: '0.0625rem solid var(--semi-color-border)' }} key={code}>
-                            {renderFieldLabel(name, desc)}
+                        <div className={choiceRowClassName} key={code}>
+                            {renderFieldLabel(name, desc, todayInactive, todayInactiveReason)}
                             <div style={{ marginTop: '0.5rem' }}>
                                 <RadioGroup type="button" value={Number(configValue)} onChange={(e) => handleFieldChange(modelCode, code, e.target.value)}>
                                     {expandKey && expandKey.map((label, idx) => (<Radio value={idx} key={idx}>{label}</Radio>))}
@@ -417,8 +457,8 @@
                         count = Array.isArray(parsed) ? parsed.length : Object.keys(parsed).length;
                     } catch (e) { }
                     return (
-                        <div className="field-row" key={code}>
-                            {renderFieldLabel(name, desc)}
+                        <div className={rowClassName} key={code}>
+                            {renderFieldLabel(name, desc, todayInactive, todayInactiveReason)}
                             <div className="field-control">
                                 <Button theme='solid' type='secondary' onClick={() => openListSheet(modelCode, item)}>
                                     已选 {count} 项

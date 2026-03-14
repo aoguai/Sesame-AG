@@ -43,7 +43,13 @@ fun ServicesStatusCard(
             .padding(horizontal = 8.dp, vertical = 4.dp), // 稍微调整间距
         colors = CardDefaults.elevatedCardColors(
             containerColor = when (status) {
-                is ServiceStatus.Active -> MaterialTheme.colorScheme.primary
+                is ServiceStatus.Active -> {
+                    if (status.type == "Root") {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.errorContainer
+                    }
+                }
                 is ServiceStatus.Inactive -> MaterialTheme.colorScheme.errorContainer
                 is ServiceStatus.Loading -> MaterialTheme.colorScheme.surfaceVariant
                 else -> {
@@ -59,12 +65,29 @@ fun ServicesStatusCard(
             ) {
                 when (status) {
                     is ServiceStatus.Active -> {
-                        Icon(Icons.Outlined.CheckCircle, "已授权")
+                        val isRootReady = status.type == "Root"
+                        Icon(
+                            if (isRootReady) Icons.Outlined.CheckCircle else Icons.Outlined.Warning,
+                            if (isRootReady) "已授权" else "权限不足"
+                        )
                         Column(Modifier.padding(start = 20.dp)) {
-                            Text(text = "Shell 服务正常", style = MaterialTheme.typography.titleMedium)
-                            Text(text = "授权方式: ${status.type}", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                text = if (isRootReady) "Root 服务正常" else "仅检测到 Shizuku",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = if (isRootReady) "自动工作流已解锁" else "当前版本仅 Root 可启用工作流",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
                             Spacer(Modifier.height(4.dp))
-                            Text(text = "部分辅助功能需要此权限", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                text = if (isRootReady) {
+                                    "已检测到 Root 权限，当前配置允许生效"
+                                } else {
+                                    "Shizuku 状态仅供诊断，当前配置不会生效"
+                                },
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                     }
 
@@ -102,10 +125,11 @@ fun ServicesStatusCard(
                     Text(text = "授权指南", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "本模块需要后台执行 Shell 命令来提供部分辅助能力。\n\n" +
-                                "可选方案：\n" +
-                                "1. Shizuku (推荐)：免 Root，需安装 Shizuku APP 并激活。\n" +
-                                "2. Root：如果你已 Root，请授予本应用 Root 权限。",
+                        text = "当前版本仅在检测到 Root 权限后才会启动工作流并使配置生效。\n\n" +
+                                "说明：\n" +
+                                "1. Shizuku 状态仅用于排障与状态展示，不会解锁自动任务。\n" +
+                                "2. 请先确认设备已 Root，并在 Root 管理器中授予本应用 Root 权限。\n" +
+                                "3. 返回首页后等待状态刷新为 Root。",
                         style = MaterialTheme.typography.bodyMedium,
                         lineHeight = 20.sp
                     )

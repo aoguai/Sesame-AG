@@ -81,9 +81,7 @@ fun HomeContent(
                 status = serviceStatus,
                 expanded = isServiceCardExpanded,
                 onClick = {
-                    if (serviceStatus is ServiceStatus.Inactive) {
-                        isServiceCardExpanded = !isServiceCardExpanded //此处不可省略
-                    }
+                    isServiceCardExpanded = !isServiceCardExpanded // 此处不可省略
                 }
             )
         }

@@ -6,6 +6,7 @@ import fansirsqi.xposed.sesame.task.antFarm.AntFarm
 import fansirsqi.xposed.sesame.task.antForest.AntForest
 import fansirsqi.xposed.sesame.util.GlobalThreadPools
 import fansirsqi.xposed.sesame.util.Log
+import fansirsqi.xposed.sesame.util.WorkflowRootGuard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -49,6 +50,11 @@ object ManualTask {
 
         if (tasks.isEmpty()) {
             Log.record("ManualTask", "⚠️ 未选中任何子任务")
+            return
+        }
+
+        if (!WorkflowRootGuard.hasRoot(forceRefresh = true, reason = "manual_task_run")) {
+            Log.record("ManualTask", "⛔ 未检测到 Root 权限，手动任务不会执行")
             return
         }
 
