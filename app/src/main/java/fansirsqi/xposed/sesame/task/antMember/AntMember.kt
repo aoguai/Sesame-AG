@@ -132,7 +132,7 @@ class AntMember : ModelTask() {
                 LinkedHashSet<String?>()
             ) {
                 MemberBenefit.getList()
-            }.withDesc("勾选允许自动兑换的会员权益，未勾选项目不会处理。").also { memberPointExchangeBenefitList = it })
+            }.withDesc("勾选允许自动兑换的会员权益，需同时开启上方兑换开关才会处理。").also { memberPointExchangeBenefitList = it })
 
 
         modelFields.addField(
@@ -148,7 +148,7 @@ class AntMember : ModelTask() {
                 LinkedHashSet<String?>()
             ) {
                 SesameGift.getList()
-            }.withDesc("勾选允许自动兑换的芝麻粒商品，按列表逐项尝试。").also { sesameGrainExchangeList = it })
+            }.withDesc("勾选允许自动兑换的芝麻粒商品，需同时开启上方兑换开关才会逐项尝试。").also { sesameGrainExchangeList = it })
 
         modelFields.addField(
             BooleanModelField(
@@ -162,7 +162,7 @@ class AntMember : ModelTask() {
         modelFields.addField(
             BooleanModelField(
                 "collectSesameWithOneClick", "芝麻信用|芝麻粒领取使用一键收取", false
-            ).withDesc("优先走一键收取接口领取芝麻粒，速度更快但依赖页面状态。").also { collectSesameWithOneClick = it })
+            ).withDesc("需同时开启芝麻粒领取，优先走一键收取接口领取芝麻粒，速度更快但依赖页面状态。").also { collectSesameWithOneClick = it })
         // 芝麻炼金
         modelFields.addField(
             BooleanModelField(
@@ -179,7 +179,7 @@ class AntMember : ModelTask() {
         modelFields.addField(
             BooleanModelField(
                 "collectInsuredGold", "蚂蚁保|保障金领取", false
-            ).also { collectInsuredGold = it })
+            ).withDesc("领取蚂蚁保页面可收取的签到保障金和活动保障金。").also { collectInsuredGold = it })
 
         // 黄金票配置
         modelFields.addField(
@@ -190,31 +190,33 @@ class AntMember : ModelTask() {
             BooleanModelField(
                 "enableGoldTicketConsume", "黄金票提取(兑换黄金)", false
             ).withDesc("黄金票达到提取条件后自动兑换或提取黄金。").also { enableGoldTicketConsume = it })
-        modelFields.addField(BooleanModelField("enableGameCenter", "游戏中心签到", false).also {
+        modelFields.addField(BooleanModelField("enableGameCenter", "游戏中心签到", false).withDesc(
+            "执行游戏中心签到、平台任务，并领取可收取的玩乐豆奖励。"
+        ).also {
             enableGameCenter = it
         })
         modelFields.addField(
             BooleanModelField(
                 "merchantSign", "商家服务|签到", false
-            ).also { merchantSign = it })
+            ).withDesc("执行商家服务每日签到，包含可领取时会顺带处理招财金签到积分。").also { merchantSign = it })
         modelFields.addField(
             BooleanModelField(
                 "merchantKmdk", "商家服务|开门打卡", false
-            ).also { merchantKmdk = it })
+            ).withDesc("执行商家服务开门打卡的报名与上午签到，需在可用时段内运行。").also { merchantKmdk = it })
         modelFields.addField(
             BooleanModelField(
                 "merchantMoreTask", "商家服务|积分任务", false
-            ).also {
+            ).withDesc("执行商家服务积分任务，并顺带领取任务产出的积分球奖励。").also {
                 merchantMoreTask = it
             })
         modelFields.addField(
             BooleanModelField(
                 "beanSignIn", "安心豆签到", false
-            ).also { beanSignIn = it })
+            ).withDesc("执行安心豆每日签到，领取当天可得的安心豆奖励。").also { beanSignIn = it })
         modelFields.addField(
             BooleanModelField(
                 "beanExchangeBubbleBoost", "安心豆兑换时光加速器", false
-            ).also { beanExchangeBubbleBoost = it })
+            ).withDesc("在安心豆余额足够时自动兑换时光加速器。").also { beanExchangeBubbleBoost = it })
        /* modelFields.addField(
             BooleanModelField(
                 "annualReview", "年度回顾", false
@@ -222,7 +224,9 @@ class AntMember : ModelTask() {
 
 
         modelFields.addField(
-            BooleanModelField("CollectStickers", "领取贴纸", false).also { collectStickers = it }
+            BooleanModelField("CollectStickers", "领取贴纸", false).withDesc(
+                "扫描并领取当前账单周期内可领取的贴纸奖励。"
+            ).also { collectStickers = it }
         )
 
 
