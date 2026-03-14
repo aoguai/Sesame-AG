@@ -6,6 +6,7 @@ import fansirsqi.xposed.sesame.entity.ReserveEntity
 import fansirsqi.xposed.sesame.model.BaseModel
 import fansirsqi.xposed.sesame.model.ModelFields
 import fansirsqi.xposed.sesame.model.ModelGroup
+import fansirsqi.xposed.sesame.model.withDesc
 import fansirsqi.xposed.sesame.model.modelFieldExt.SelectAndCountModelField
 import fansirsqi.xposed.sesame.task.ModelTask
 import fansirsqi.xposed.sesame.task.TaskCommon
@@ -30,7 +31,16 @@ class Reserve : ModelTask() {
 
     override fun getFields(): ModelFields {
         val modelFields = ModelFields()
-        modelFields.addField(SelectAndCountModelField("reserveList", "保护地列表", LinkedHashMap(), ReserveEntity::getListAsMapperEntity).also { reserveList = it })
+        modelFields.addField(
+            SelectAndCountModelField(
+                "reserveList",
+                "保护地列表",
+                LinkedHashMap(),
+                ReserveEntity::getListAsMapperEntity
+            ).withDesc("选择要自动申请的保护地及每日申请次数；数量大于 0 才会执行，对应条目填 0 或不选则跳过。").also {
+                reserveList = it
+            }
+        )
         return modelFields
     }
 
@@ -70,6 +80,11 @@ class Reserve : ModelTask() {
     private suspend fun animalReserve() {
         try {
             Log.record(TAG, "开始执行-${getName()}")
+            val configuredReserveMap = getConfiguredReserveMap()
+            if (configuredReserveMap.isEmpty()) {
+                Log.record(TAG, "保护地列表未配置有效申请项，跳过执行")
+                return
+            }
             var s: String? = ReserveRpcCall.queryTreeItemsForExchange()
             if (s == null) {
                 delay(RandomUtil.delay().toLong())
@@ -91,9 +106,8 @@ class Reserve : ModelTask() {
                     }
                     val projectId = item.getString("itemId")
                     val itemName = item.getString("itemName")
-                    val map = reserveList?.value ?: continue
-                    val value = map[projectId]
-                    if (value != null && value > 0 && Status.canReserveToday(projectId, value)) {
+                    val value = configuredReserveMap[projectId] ?: continue
+                    if (Status.canReserveToday(projectId, value)) {
                         exchangeTree(projectId, itemName, value)
                     }
                 }
@@ -106,6 +120,20 @@ class Reserve : ModelTask() {
         } finally {
             Log.record(TAG, "结束执行-${getName()}")
         }
+    }
+
+    private fun getConfiguredReserveMap(): Map<String, Int> {
+        val configuredMap = reserveList?.value ?: return emptyMap()
+        if (configuredMap.isEmpty()) {
+            return emptyMap()
+        }
+        val enabledReserveMap = LinkedHashMap<String, Int>()
+        configuredMap.forEach { (projectId, count) ->
+            if (!projectId.isNullOrBlank() && (count ?: 0) > 0) {
+                enabledReserveMap[projectId] = count ?: return@forEach
+            }
+        }
+        return enabledReserveMap
     }
 
     private fun queryTreeForExchange(projectId: String): Boolean {
