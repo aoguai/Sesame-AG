@@ -1803,6 +1803,10 @@ class AntOrchard : ModelTask() {
             }
 
             val friendSet = assistFriendList.value ?: emptySet()
+            if (friendSet.isEmpty()) {
+                Log.record(TAG, "未设置农场助力好友列表，跳过农场助力")
+                return
+            }
             for (uid in friendSet) {
                 if (Status.hasFlagToday("orchard::assistRelationInvalid::$uid")) {
                     Log.record(TAG, "农场助力⏭️[${UserMap.getMaskName(uid)}]今日关系已判定无效，跳过")
