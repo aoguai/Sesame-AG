@@ -39,11 +39,13 @@ object LsposedServiceManager {
 
         val listener = object : XposedServiceHelper.OnServiceListener {
             override fun onServiceBind(boundService: XposedService) {
+                val frameworkName = runCatching { boundService.frameworkName }.getOrDefault("Xposed")
+                val frameworkVersion = runCatching { boundService.frameworkVersion }.getOrDefault("")
                 if (isModuleActivated) {
-                    Log.record(TAG, "Another Xposed service tried to connect: ${boundService.frameworkName}. Ignoring.")
+                    Log.record(TAG, "Another Xposed service tried to connect: $frameworkName. Ignoring.")
                     return
                 }
-                Log.record(TAG, "LSPosed service connected: ${boundService.frameworkName} v${boundService.frameworkVersion}")
+                Log.record(TAG, "LSPosed service connected: $frameworkName v$frameworkVersion")
                 updateState(ConnectionState.Connected(boundService))
             }
 

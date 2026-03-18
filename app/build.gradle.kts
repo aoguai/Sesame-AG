@@ -180,10 +180,9 @@ dependencies {
     implementation(libs.webkit)                     // WebView 组件
 
     // 仅编译时依赖 - Xposed 相关
-    compileOnly(files("libs/api-82.jar"))          // Xposed API 82
-    compileOnly(files("libs/api-100.aar"))         // Xposed API 100 https://github.com/libxposed/api
-    implementation(files("libs/interface-100.aar")) // Xposed 模块接口 https://github.com/libxposed/api
-    implementation(files("libs/service-100-1.0.0.aar"))  // https://github.com/libxposed/service
+    compileOnly(files("libs/api-82.jar"))          // 仅提供 XposedHelpers/XposedBridge 等旧 helper 的编译期符号，非 82 运行入口
+    compileOnly(libs.libxposed.api)                // Xposed API 101 https://github.com/libxposed/api
+    implementation(libs.libxposed.service)         // https://github.com/libxposed/service
 
     // 代码生成和工具库
     implementation(libs.okhttp)                    // OkHttp 网络请求库

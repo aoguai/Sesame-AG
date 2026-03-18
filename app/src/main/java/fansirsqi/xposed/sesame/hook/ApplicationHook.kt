@@ -18,7 +18,6 @@ import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
-import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam
 import fansirsqi.xposed.sesame.BuildConfig
 import fansirsqi.xposed.sesame.SesameApplication
 import fansirsqi.xposed.sesame.data.Config
@@ -82,6 +81,7 @@ import fansirsqi.xposed.sesame.util.maps.UserMap
 import fansirsqi.xposed.sesame.util.maps.UserMap.currentUid
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
+import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam
 import java.io.File
 import java.lang.AutoCloseable
 import java.lang.reflect.InvocationTargetException
@@ -121,18 +121,26 @@ class ApplicationHook {
     // --- 入口方法 ---
     fun loadPackage(lpparam: PackageLoadedParam) {
         if (General.PACKAGE_NAME != lpparam.packageName) return
+        val packageClassLoader = extractLegacyPackageClassLoader(lpparam) ?: run {
+            record(TAG, "跳过 onPackageLoaded：当前回调未提供可用的 app classloader")
+            return
+        }
         handleHookLogic(
-            lpparam.classLoader,
+            packageClassLoader,
             lpparam.packageName,
             lpparam.applicationInfo.sourceDir,
             lpparam
         )
     }
 
-    fun loadPackageCompat(lpparam: LoadPackageParam) {
+    fun loadPackage(lpparam: PackageReadyParam) {
         if (General.PACKAGE_NAME != lpparam.packageName) return
-        val apkPath: String = (if (lpparam.appInfo != null) lpparam.appInfo.sourceDir else null)!!
-        handleHookLogic(lpparam.classLoader, lpparam.packageName, apkPath, lpparam)
+        handleHookLogic(
+            lpparam.classLoader,
+            lpparam.packageName,
+            lpparam.applicationInfo.sourceDir,
+            lpparam
+        )
     }
 
     @SuppressLint("PrivateApi")
@@ -166,11 +174,17 @@ class ApplicationHook {
     }
 
     private fun resolveProcessName(rawParam: Any?) {
-        if (rawParam is LoadPackageParam) {
-            finalProcessName = rawParam.processName
-        } else if (rawParam is PackageLoadedParam) {
+        if (rawParam is PackageLoadedParam || rawParam is PackageReadyParam) {
             finalProcessName = processName
         }
+    }
+
+    private fun extractLegacyPackageClassLoader(param: PackageLoadedParam): ClassLoader? {
+        return runCatching {
+            param.javaClass.methods
+                .firstOrNull { it.name == "getClassLoader" && it.parameterCount == 0 }
+                ?.invoke(param) as? ClassLoader
+        }.getOrNull()
     }
 
     private fun shouldHookProcess(): Boolean {

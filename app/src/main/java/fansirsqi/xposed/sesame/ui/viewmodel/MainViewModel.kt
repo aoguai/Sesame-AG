@@ -116,10 +116,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val lspState = LsposedServiceManager.connectionState
 
         if (lspState is ConnectionState.Connected) {
+            val service = lspState.service
             _moduleStatus.value = ModuleStatus.Activated(
-                frameworkName = lspState.service.frameworkName,
-                frameworkVersion = lspState.service.frameworkVersion,
-                apiVersion = lspState.service.apiVersion
+                frameworkName = runCatching { service.frameworkName }.getOrDefault("Xposed"),
+                frameworkVersion = runCatching { service.frameworkVersion }.getOrDefault(""),
+                apiVersion = runCatching { service.apiVersion }.getOrDefault(100)
             )
         } else {
             _moduleStatus.value = ModuleStatus.NotActivated

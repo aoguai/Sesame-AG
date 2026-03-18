@@ -25,8 +25,8 @@ lombok = "1.18.42"
 okhttp = "5.3.2"
 jackson = "2.20.1"
 jackson-annotations = "2.20"
-xposed-api = "100"
-xposed-service = "100-1.0.0"
+xposed-api = "101.0.0"
+xposed-service = "101.0.0"
 
 #noinspection GradleDependency
 jackson-compatible = "2.13.5"
@@ -81,6 +81,8 @@ okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson-annotations" }
+libxposed-api = { group = "io.github.libxposed", name = "api", version.ref = "xposed-api" }
+libxposed-service = { group = "io.github.libxposed", name = "service", version.ref = "xposed-service" }
 
 dexkit = { module = "org.luckypray:dexkit", version.ref = "dexkit" }
 desugar = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar" }
