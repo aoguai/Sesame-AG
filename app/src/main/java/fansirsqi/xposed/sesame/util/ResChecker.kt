@@ -16,13 +16,28 @@ object ResChecker {
         "400000012",
         "2600000014",
         "400000040",
-		"NEED_UPGRADE_VILLAGE",
-		"FAMILY12"
+        "NEED_UPGRADE_VILLAGE",
+        "FAMILY12",
+        "391",
+        "G03",
+        "600000010",
+        "600000031",
+        "B000000008",
+        "NO_ACTIVE_PATROL",
+        "CAN_CLEAN_STATUS_CHANGE",
+        "HELP_CLEAN_ALL_FRIEND_LIMIT",
+        "PROMISE_TODAY_FINISH_TIMES_LIMIT",
+        "ROB_EXPAND_CARD_IN_USE"
     )
     private val silentFailureKeywords = listOf(
         "权益获取次数超过上限",
         "抽奖活动已结束",
-        "不支持rpc调用"
+        "不支持rpc调用",
+        "无状态转换处理",
+        "垃圾刚被别人收走了",
+        "清理次数已达20次上限",
+        "保护地“休养生息”中",
+        "你现在已经在用收好友能量翻倍卡了"
     )
     private data class CheckFailedWindowStat(
         var windowStartMs: Long,

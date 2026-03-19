@@ -316,7 +316,7 @@ class ForestChouChouLe {
                 true
             } else {
                 val count = taskTryCount.computeIfAbsent(type) { AtomicInteger(0) }.incrementAndGet()
-                Log.error(TAG, "${s.name} 任务失败($count): $name")
+                Log.record(TAG, "${s.name} 任务待重试($count): $name")
                 false
             }
         } else {

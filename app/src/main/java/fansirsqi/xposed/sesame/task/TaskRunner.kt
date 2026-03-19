@@ -8,7 +8,11 @@ import fansirsqi.xposed.sesame.model.BaseModel
 import fansirsqi.xposed.sesame.model.CustomSettings
 import fansirsqi.xposed.sesame.model.Model
 import fansirsqi.xposed.sesame.task.antFarm.AntFarm
+import fansirsqi.xposed.sesame.task.antForest.AntForest
+import fansirsqi.xposed.sesame.task.antMember.AntMember
+import fansirsqi.xposed.sesame.task.antOcean.AntOcean
 import fansirsqi.xposed.sesame.task.antOrchard.AntOrchard
+import fansirsqi.xposed.sesame.task.antSports.AntSports
 import fansirsqi.xposed.sesame.task.customTasks.ManualTask
 import fansirsqi.xposed.sesame.util.Log
 import fansirsqi.xposed.sesame.util.TimeUtil
@@ -168,21 +172,52 @@ class CoroutineTaskRunner(allModels: List<Model>) {
     }
 
     private fun buildExecutionBatches(tasks: List<ModelTask>): List<List<ModelTask>> {
-        val hasOrchardTask = tasks.any { it is AntOrchard }
-        val hasFarmTask = tasks.any { it is AntFarm }
-        if (!hasOrchardTask || !hasFarmTask) {
-            return listOf(tasks)
+        if (tasks.isEmpty()) {
+            return emptyList()
         }
 
-        // 已知跨模块依赖：芭芭农场施肥可能产出庄园厨房食材，需要在庄园前先完成农场。
-        val orchardTasks = tasks.filterIsInstance<AntOrchard>()
-        val remainingTasks = tasks.filterNot { it is AntOrchard }
-        return buildList {
-            if (orchardTasks.isNotEmpty()) {
-                add(orchardTasks)
+        val remainingTasks = tasks.toMutableList()
+        fun takeBatch(predicate: (ModelTask) -> Boolean): List<ModelTask> {
+            val matched = remainingTasks.filter(predicate)
+            if (matched.isNotEmpty()) {
+                remainingTasks.removeAll(matched)
             }
+            return matched
+        }
+
+        return buildList {
+            // 1) 运动先跑：步数改动需要尽早落地，供后续联动模块消费。
+            takeBatch { it is AntSports }
+                .takeIf { it.isNotEmpty() }
+                ?.let(::add)
+
+            // 2) 森林 作为联动前置批次。
+            takeBatch { it is AntForest }
+                .takeIf { it.isNotEmpty() }
+                ?.let(::add)
+
+            // 3) 海洋尽量承接前面模块已完成的联动任务状态，减少碎片奖励漏领。
+            takeBatch { it is AntOcean }
+                .takeIf { it.isNotEmpty() }
+                ?.let(::add)
+
+            // 4) 芭芭农场先跑：施肥会先产出庄园做美食所需食材。
+            takeBatch { it is AntOrchard }
+                .takeIf { it.isNotEmpty() }
+                ?.let(::add)
+
+            // 5) 庄园尽量承接前面模块已完成的联动任务状态，减少碎片奖励漏领。
+            takeBatch { it is AntFarm }
+                .takeIf { it.isNotEmpty() }
+                ?.let(::add)
+
+            // 6) 会员放在联动行为之后，避免芝麻涨分进度球过早收尾。
+            takeBatch { it is AntMember }
+                .takeIf { it.isNotEmpty() }
+                ?.let(::add)
+
             if (remainingTasks.isNotEmpty()) {
-                add(remainingTasks)
+                add(remainingTasks.toList())
             }
         }
     }

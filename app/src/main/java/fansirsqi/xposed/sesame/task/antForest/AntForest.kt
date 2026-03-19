@@ -3585,7 +3585,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     private fun isForestTaskAlreadyHandled(response: JSONObject): Boolean {
         val code = response.optString("code")
         val desc = response.optString("desc")
-        return code == "400000030" || desc.contains("任务已完结")
+        return code == "400000030" ||
+            code == "B000000008" ||
+            desc.contains("任务已完结") ||
+            desc.contains("无状态转换处理")
     }
 
     private fun parseTaskBizInfo(taskBaseInfo: JSONObject): JSONObject {

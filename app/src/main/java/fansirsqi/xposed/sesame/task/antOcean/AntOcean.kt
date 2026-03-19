@@ -141,6 +141,7 @@ class AntOcean : ModelTask() {
     private var currentOceanUserId: String? = null
     private var lastKnownRubbishNumber: Int = -1
     private var selfOceanCleanRetried = false
+    private var noticeLinkedRefreshNeeded = false
 
     override fun getName(): String {
         return "海洋"
@@ -243,6 +244,7 @@ class AntOcean : ModelTask() {
             currentOceanUserId = null
             lastKnownRubbishNumber = -1
             selfOceanCleanRetried = false
+            noticeLinkedRefreshNeeded = false
 
             if (!queryOceanStatus()) {
                 return
@@ -270,6 +272,12 @@ class AntOcean : ModelTask() {
 
             if (PDL_task?.value == true) {
                 doOceanPDLTask() // 潘多拉任务领取
+            }
+            if (dailyOceanTask?.value == true && noticeLinkedRefreshNeeded) {
+                // 公告提示到存在待完成/待领取任务时，再做一次晚刷新，
+                // 尽量承接前置模块已完成后的联动状态，减少同轮碎片漏领。
+                receiveTaskAward()
+                querySeaAreaDetailList()
             }
         } catch (e: CancellationException) {
             Log.runtime(TAG, "AntOcean 协程被取消")
@@ -1295,6 +1303,7 @@ class AntOcean : ModelTask() {
                         val todoTaskNum = extendInfo?.optInt("todoTaskNum", 0) ?: 0
                         val taskCanReceiveRewardNum = extendInfo?.optInt("taskCanReceiveRewardNum", 0) ?: 0
                         if (haveNotice || todoTaskNum > 0 || taskCanReceiveRewardNum > 0) {
+                            noticeLinkedRefreshNeeded = true
                             Log.record(TAG, "海洋任务🌊[待完成:$todoTaskNum,待领取:$taskCanReceiveRewardNum]")
                         }
                     }
@@ -1309,6 +1318,7 @@ class AntOcean : ModelTask() {
                     "INDEX_GAME_ENTRY_NOTICE" -> {
                         if (haveNotice) {
                             val todoTaskNum = extendInfo?.optInt("todoTaskNum", 0) ?: 0
+                            noticeLinkedRefreshNeeded = true
                             Log.record(TAG, "海洋任务🌊[游戏入口待处理:$todoTaskNum]")
                             needQueryPopup = true
                         }
@@ -1316,6 +1326,7 @@ class AntOcean : ModelTask() {
 
                     "INTERACT_RECEIVE_PIECE" -> {
                         if (haveNotice) {
+                            noticeLinkedRefreshNeeded = true
                             Log.record(TAG, "海洋拼图🌊[存在可领取互动拼图]")
                         }
                     }
