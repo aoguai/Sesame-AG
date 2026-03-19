@@ -816,6 +816,11 @@ class AntFarm : ModelTask() {
                 visit()
                 tc.countDebug("送麦子")
             }
+            // 家庭任务中的帮喂优先于普通好友帮喂
+            if (family?.value == true) {
+                AntFarmFamily.run(familyOptions!!, notInviteList!!)
+                tc.countDebug("家庭任务")
+            }
             // 帮好友喂鸡
             feedFriend()
             tc.countDebug("帮好友喂鸡")
@@ -835,12 +840,6 @@ class AntFarm : ModelTask() {
             if (getFeed?.value == true) {
                 letsGetChickenFeedTogether()
                 tc.countDebug("一起拿饲料")
-            }
-            //家庭
-            if (family?.value == true) {
-                //                family();
-                AntFarmFamily.run(familyOptions!!, notInviteList!!)
-                tc.countDebug("家庭任务")
             }
             // 开宝箱
             if (enableDdrawGameCenterAward?.value == true) {
@@ -2867,7 +2866,10 @@ class AntFarm : ModelTask() {
     private suspend fun feedFriend() {
         try {
             val feedFriendAnimalMap: Map<String?, Int?> = feedFriendAnimalList?.value ?: emptyMap()
-            for (entry in feedFriendAnimalMap.entries) {
+            val feedFriendEntries = feedFriendAnimalMap.entries
+                .toList()
+                .sortedByDescending { AntFarmFamily.isFamilyMember(it.key) }
+            for (entry in feedFriendEntries) {
                 val userId = entry.key?.trim().orEmpty()
                 val maxDailyCount = entry.value ?: 0
                 if (userId.isBlank() || maxDailyCount <= 0) {
@@ -3114,7 +3116,7 @@ class AntFarm : ModelTask() {
                         else -> manurePotNumRaw
                     }
 
-                    if (manurePotNum > 1.0) {
+                    if (manurePotNum >= 3.0) {
                         val manurePotNO = manurePot.optString("manurePotNO")
                         if (manurePotNO.isBlank()) {
                             continue
@@ -4720,7 +4722,6 @@ class AntFarm : ModelTask() {
             var jo = JSONObject(AntFarmRpcCall.enterFamily())
             if (!ResChecker.checkRes(TAG, jo)) return
             familyGroupId = jo.getString("groupId")
-            val familyAwardNum = jo.getInt("familyAwardNum")
             val familySignTips = jo.getBoolean("familySignTips")
             //顶梁柱
             jo.getJSONObject("assignFamilyMemberInfo")
@@ -4741,7 +4742,7 @@ class AntFarm : ModelTask() {
             if (familySignTips && familyOptionSet.contains("familySign")) {
                 familySign()
             }
-            if (familyAwardNum > 0 && familyOptionSet.contains("familyClaimReward")) {
+            if (familyOptionSet.contains("familyClaimReward")) {
                 familyClaimRewardList()
             }
 

@@ -17,6 +17,7 @@ object AntForestRpcCall {
     private const val DEFAULT_SOURCE = "chInfo_ch_appcenter__chsub_9patch"
     private const val PROTECT_BUBBLE_SOURCE = "chInfo_ch_appid-60000002"
     private const val PROTECT_BUBBLE_VERSION = "20230501"
+    const val OPEN_GREEN_RIGHTS_SOURCE = "chInfo_ch_appid-60000002"
     private var VERSION = "20250818"
     private var HOME_PAGE_VERSION = "20250818"
     private var TASK_LIST_VERSION = "20250821"
@@ -1027,6 +1028,34 @@ object AntForestRpcCall {
         }
         Log.record("AntForestRpcCall", "receiveTaskAwardopengreen - 任务: $taskType, source: $source")
         return RequestManager.requestString("com.alipay.antieptask.receiveTaskAwardopengreen", "[$requestData]")
+    }
+
+    @JvmStatic
+    @Throws(JSONException::class)
+    fun batchQueryAndTouchOpenGreen(
+        sceneCode: String,
+        touchIds: Collection<String>,
+        source: String = DEFAULT_SOURCE
+    ): String {
+        if (touchIds.isEmpty()) {
+            return ""
+        }
+        val paramMap = JSONObject().apply {
+            touchIds.filter { it.isNotBlank() }.forEach { touchId ->
+                put(touchId, JSONObject())
+            }
+        }
+        val requestData = JSONObject().apply {
+            put("paramMap", paramMap)
+            put("requestType", "RPC")
+            put("sceneCode", sceneCode)
+            put("source", source)
+        }
+        Log.record(
+            "AntForestRpcCall",
+            "batchQueryAndTouchOpenGreen - sceneCode: $sceneCode, source: $source, touchIds: ${touchIds.joinToString()}"
+        )
+        return RequestManager.requestString("com.alipay.antieprights.batchQueryAndTouchopengreen", "[$requestData]")
     }
 
     @JvmStatic

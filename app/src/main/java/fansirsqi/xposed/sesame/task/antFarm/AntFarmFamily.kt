@@ -20,6 +20,7 @@ import kotlin.math.abs
 
 data object AntFarmFamily {
     private const val TAG = "小鸡家庭"
+    private const val FLAG_FAMILY_FEED_DONE = "farm::familyFeedFriendAnimalDone"
 
     /**
      * 家庭ID
@@ -91,6 +92,11 @@ data object AntFarmFamily {
         }
     }
 
+    fun isFamilyMember(userId: String?): Boolean {
+        val normalizedUserId = userId?.trim().orEmpty()
+        return normalizedUserId.isNotBlank() && familyUserIds.contains(normalizedUserId)
+    }
+
     private fun refreshFamilyBaseInfoFromQueryFamilyInfo() {
         try {
             val queryRes = JSONObject(AntFarmRpcCall.queryFamilyInfo())
@@ -139,6 +145,12 @@ data object AntFarmFamily {
      */
     fun enterFamily(familyOptions: SelectModelField, notInviteList: SelectModelField) {
         try {
+            groupId = ""
+            groupName = ""
+            familyAnimals = JSONArray()
+            familyUserIds = mutableListOf()
+            familyInteractActions = JSONArray()
+            eatTogetherConfig = JSONObject()
             runCatching {
                 AntFarmRpcCall.refinedOperation("ENTERFAMILY")
             }
@@ -146,7 +158,6 @@ data object AntFarmFamily {
             if (ResChecker.checkRes(TAG, enterRes)) {
                 groupId = enterRes.optString("groupId")
                 groupName = enterRes.optString("groupName", enterRes.optString("familyName"))
-                val familyAwardNum: Int = enterRes.optInt("familyAwardNum", 0)//奖励数量
                 val familySignTips: Boolean = enterRes.optBoolean("familySignTips", false)//签到
                 val assignFamilyMemberInfo: JSONObject? = enterRes.optJSONObject("assignFamilyMemberInfo")//分配成员信息-顶梁柱
                 familyAnimals = enterRes.optJSONArray("animals") ?: JSONArray()//家庭动物列表
@@ -185,7 +196,7 @@ data object AntFarmFamily {
                     }
                 }
 
-                if (hasFamilyOption(familyOptions, "familyClaimReward") && familyAwardNum > 0) {
+                if (hasFamilyOption(familyOptions, "familyClaimReward")) {
                     familyClaimRewardList()
                 }
 
@@ -297,6 +308,10 @@ data object AntFarmFamily {
      */
     fun familyFeedFriendAnimal(animals: JSONArray) {
         try {
+            if (Status.hasFlagToday(FLAG_FAMILY_FEED_DONE)) {
+                Log.record(TAG, "家庭任务帮喂今日已完成，跳过重复请求")
+                return
+            }
             for (i in 0 until animals.length()) {
                 val animal = animals.getJSONObject(i)
                 val status = animal.getJSONObject("animalStatusVO")
@@ -335,9 +350,13 @@ data object AntFarmFamily {
                     if (code == "391") {
                         // 记录该用户今日不能再喂
                         Status.setFlagToday(flagKey)
+                        Status.setFlagToday(FLAG_FAMILY_FEED_DONE)
                         Log.record("[$userId] 今日帮喂次数已达上限🥣，已记录为当日限制")
                     } else {
                         Log.error(TAG, "喂食失败 user=$userId code=$code msg=${jo.optString("memo")}")
+                    }
+                    if (Status.hasFlagToday(FLAG_FAMILY_FEED_DONE)) {
+                        return
                     }
                     continue
                 }
@@ -345,7 +364,9 @@ data object AntFarmFamily {
                 // 正常成功
                 val foodStock = jo.optInt("foodStock")
                 val maskName = UserMap.getMaskName(userId) ?: userId
+                Status.setFlagToday(FLAG_FAMILY_FEED_DONE)
                 Log.farm("家庭任务🏠帮喂小鸡🥣[$maskName]180g #剩余${foodStock}g")
+                return
             }
 
         } catch (t: Throwable) {

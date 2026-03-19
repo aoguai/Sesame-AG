@@ -93,12 +93,12 @@ class AntOrchard : ModelTask() {
         // {{ 修改：添加果树和摇钱树的独立设置项 }}
         modelFields.addField(
             IntegerModelField("orchardSpreadManureCount", "果树每日施肥次数", 0).withDesc(
-                "每日给果树施肥的次数；施肥可推进成熟并产出庄园食材。"
+                "每日给果树施肥的次数；施肥可推进成熟并产出庄园食材。-1 表示施肥到当日上限。"
             ).also { orchardSpreadManureCountMain = it }
         )
         modelFields.addField(
             IntegerModelField("orchardSpreadManureCountYeb", "摇钱树每日施肥次数", 0).withDesc(
-                "每日给摇钱树施肥的次数；0 表示不处理摇钱树。"
+                "每日给摇钱树施肥的次数；0 表示不处理摇钱树，-1 表示施肥到当日上限。"
             ).also { orchardSpreadManureCountYeb = it }
         )
 
@@ -198,7 +198,7 @@ class AntOrchard : ModelTask() {
 
             // 施肥逻辑
             // {{ 修改：调用新的施肥分发逻辑 }}
-            if ((orchardSpreadManureCountMain.value ?: 0) > 0 || (orchardSpreadManureCountYeb.value ?: 0) > 0) {
+            if ((orchardSpreadManureCountMain.value ?: 0) != 0 || (orchardSpreadManureCountYeb.value ?: 0) != 0) {
                 CoroutineUtils.sleepCompat(200)
                 orchardSpreadManure()
                 // 施肥后刷新并尝试领取丰收奖励（例如：施肥满5次可领）
@@ -232,14 +232,14 @@ class AntOrchard : ModelTask() {
 
             // 1. 如果是 摇钱树模式(YEB) 或者 混合模式(HYBRID)
             if (modeSet == PlantModeType.YEB || modeSet == PlantModeType.HYBRID) {
-                if (targetLimitYeb > 0) {
+                if (targetLimitYeb != 0) {
                     waterTree("yeb", targetLimitYeb)
                 }
             }
 
             // 2. 如果是 果树模式(MAIN) 或者 混合模式(HYBRID)
             if (modeSet == PlantModeType.MAIN || modeSet == PlantModeType.HYBRID) {
-                if (targetLimitMain > 0) {
+                if (targetLimitMain != 0) {
                     waterTree("main", targetLimitMain)
                 }
             }
@@ -251,18 +251,26 @@ class AntOrchard : ModelTask() {
 
     private fun waterTree(targetScene: String, targetLimit: Int) {
         val isMain = targetScene == "main"
+        val waterToLimit = targetLimit == -1
         val sceneName = if (isMain) "种果树" else "种摇钱树"
         // 独立计数：果树使用原Flag，摇钱树使用新Key
         val statusKey = if (isMain) StatusFlags.FLAG_ANTORCHARD_SPREAD_MANURE_COUNT else STATUS_YEB_WATER_COUNT
 
         var totalWatered = Status.getIntFlagToday(statusKey) ?: 0
 
-        if (totalWatered >= targetLimit) {
+        if (!waterToLimit && totalWatered >= targetLimit) {
             Log.record(TAG, "$sceneName: 今日已完成施肥目标 $totalWatered/$targetLimit")
             return
         }
 
-        Log.record(TAG, "开始 $sceneName 任务，当前进度: $totalWatered")
+        Log.record(
+            TAG,
+            if (waterToLimit) {
+                "开始 $sceneName 任务，当前进度: $totalWatered，目标: 施肥到当日上限"
+            } else {
+                "开始 $sceneName 任务，当前进度: $totalWatered"
+            }
+        )
 
         // 切换场景
         try {
@@ -398,9 +406,16 @@ class AntOrchard : ModelTask() {
             } finally {
                 CoroutineUtils.sleepCompat(executeIntervalInt.toLong())
             }
-        } while (totalWatered < targetLimit)
+        } while (waterToLimit || totalWatered < targetLimit)
 
-        Log.record(TAG, "$sceneName 施肥结束，最终累计: $totalWatered")
+        Log.record(
+            TAG,
+            if (waterToLimit) {
+                "$sceneName 施肥结束，已按当日上限模式停止，最终累计: $totalWatered"
+            } else {
+                "$sceneName 施肥结束，最终累计: $totalWatered"
+            }
+        )
     }
 
     // ... 其余方法保持不变 ...
@@ -955,9 +970,7 @@ class AntOrchard : ModelTask() {
             )
         }
 
-        if (taskMap.isEmpty()) {
-            collectYebExpGoldTasks(fallbackQueryResponse, taskMap)
-        }
+        collectYebExpGoldTasks(fallbackQueryResponse, taskMap)
         return taskMap
     }
 
