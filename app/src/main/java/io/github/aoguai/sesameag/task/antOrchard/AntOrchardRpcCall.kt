@@ -1,0 +1,329 @@
+package io.github.aoguai.sesameag.task.antOrchard
+
+import io.github.aoguai.sesameag.hook.RequestManager
+import io.github.aoguai.sesameag.util.maps.UserMap
+
+object AntOrchardRpcCall {
+    private const val VERSION = "20260204.01"
+    private const val DEFAULT_SOURCE = "ch_appcenter__chsub_9patch"
+    private const val YEB_SOURCE = "yaoqianshu_qiehuan"
+    private const val YEB_EXP_GOLD_SIGN_IN_PLAY_ID = "PLAY102253251"
+
+    fun orchardIndex(): String {
+        return RequestManager.requestString(
+            "com.alipay.antfarm.orchardIndex",
+            "[{\"commonDegradeResult\":{\"deviceLevel\":\"high\",\"resultReason\":0,\"resultType\":0},\"darwinSceneList\":[\"gameListTwoOptimize\",\"hd_mode\",\"yebTreeTalk\",\"transferPopupYebSwitchMainTree\",\"yebLotteryPlus\",\"teamPlantNewStyle\",\"taskDarwGroup2\",\"awardPreviewExp\",\"storage\",\"fertiBagAB\"],\"growthExtInfo\":\"\",\"growthTask\":\"\",\"inHomepage\":true,\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"$DEFAULT_SOURCE\",\"useWua\":\"\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    /**
+     * 获取额外信息（包含每日肥料、施肥礼盒）
+     * @param from 来源：entry(首页), water(施肥后)
+     */
+    fun extraInfoGet(from: String = "entry", source: String = DEFAULT_SOURCE): String {
+        return RequestManager.requestString(
+            "com.alipay.antorchard.extraInfoGet",
+            "[{\"from\":\"$from\",\"requestType\":\"NORMAL\",\"sceneCode\":\"FUGUO\",\"source\":\"$source\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    fun extraInfoSet(source: String = DEFAULT_SOURCE): String {
+        return RequestManager.requestString(
+            "com.alipay.antorchard.extraInfoSet",
+            "[{\"bizCode\":\"fertilizerPacket\",\"bizParam\":{\"action\":\"queryCollectFertilizerPacket\"},\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"$source\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    // 修改：增加 LIMITED_TIME_CHALLENGE 和 LOTTERY_PLUS 类型
+    fun querySubplotsActivity(treeLevel: String): String {
+        return RequestManager.requestString(
+            "com.alipay.antorchard.querySubplotsActivity",
+            "[{\"activityType\":[\"WISH\",\"BATTLE\",\"HELP_FARMER\",\"DEFOLIATION\",\"CAMP_TAKEOVER\",\"LIMITED_TIME_CHALLENGE\",\"LOTTERY_PLUS\"],\"inHomepage\":false,\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"ch_appcenter__chsub_9patch\",\"treeLevel\":\"$treeLevel\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    fun triggerSubplotsActivity(activityId: String, activityType: String, optionKey: String): String {
+        return RequestManager.requestString(
+            "com.alipay.antorchard.triggerSubplotsActivity",
+            "[{\"activityId\":\"$activityId\",\"activityType\":\"$activityType\",\"optionKey\":\"$optionKey\",\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"ch_appcenter__chsub_9patch\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    fun receiveOrchardRights(activityId: String, activityType: String): String {
+        return RequestManager.requestString(
+            "com.alipay.antorchard.receiveOrchardRights",
+            "[{\"activityId\":\"$activityId\",\"activityType\":\"$activityType\",\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"ch_appcenter__chsub_9patch\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    /* 七日礼包 */
+    fun drawLottery(): String {
+        return RequestManager.requestString(
+            "com.alipay.antorchard.drawLottery",
+            "[{\"lotteryScene\":\"receiveLotteryPlus\",\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"ch_appcenter__chsub_9patch\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    /**
+     * 切换种植场景
+     * @param plantScene main(果树) 或 yeb(摇钱树)
+     */
+    fun switchPlantScene(plantScene: String, source: String = DEFAULT_SOURCE): String {
+        return RequestManager.requestString(
+            "com.alipay.antorchard.switchPlantScene",
+            "[{\"plantScene\":\"$plantScene\",\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"$source\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    /**
+     * 施肥
+     * @param wua 用户标识
+     * @param source 来源标识，可自定义
+     * @param useBatchSpread 一键5次
+     * @param plantScene 场景：main 或 yeb
+     */
+    fun orchardSpreadManure(wua: String, source: String, useBatchSpread: Boolean = false, plantScene: String = "main"): String {
+        return RequestManager.requestString(
+            "com.alipay.antfarm.orchardSpreadManure",
+            "[{\"plantScene\":\"$plantScene\",\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"$source\",\"useBatchSpread\":$useBatchSpread,\"version\":\"$VERSION\",\"wua\":\"$wua\"}]"
+        )
+    }
+
+    fun receiveTaskAward(
+        sceneCode: String,
+        taskType: String,
+        source: String = DEFAULT_SOURCE,
+        ignoreLimit: Boolean = true
+    ): String {
+        return RequestManager.requestString(
+            "com.alipay.antiep.receiveTaskAward",
+            "[{\"ignoreLimit\":$ignoreLimit,\"requestType\":\"NORMAL\",\"sceneCode\":\"$sceneCode\",\"source\":\"$source\",\"taskType\":\"$taskType\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    fun orchardListTask(source: String = DEFAULT_SOURCE): String {
+        return RequestManager.requestString(
+            "com.alipay.antfarm.orchardListTask",
+            "[{\"addWidget\":false,\"appMode\":\"normal\",\"enableSwitchSceneList\":[\"main\",\"yeb\"],\"enableTeamType\":[\"help\",\"team\"],\"hasYebActivityEntrance\":true,\"plantHiddenMMC\":\"false\",\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"$source\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    fun orchardSign(): String {
+        return RequestManager.requestString(
+            "com.alipay.antfarm.orchardSign",
+            "[{\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"signScene\":\"ANTFARM_ORCHARD_SIGN_V2\",\"source\":\"ch_appcenter__chsub_9patch\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    /**
+     * 收取「庄园鸡屎/肥料」(芭芭农场里的肥料池)。
+     */
+    fun collectManurePot(
+        manurePotNOs: String,
+        source: String = DEFAULT_SOURCE
+    ): String {
+        return RequestManager.requestString(
+            "com.alipay.antfarm.collectManurePot",
+            "[{\"manurePotNOs\":\"$manurePotNOs\",\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"$source\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    fun finishTask(
+        userId: String,
+        sceneCode: String,
+        taskType: String,
+        source: String = DEFAULT_SOURCE
+    ): String {
+        return RequestManager.requestString(
+            "com.alipay.antiep.finishTask",
+            "[{\"outBizNo\":\"${userId}${System.currentTimeMillis()}\",\"requestType\":\"NORMAL\",\"sceneCode\":\"$sceneCode\",\"source\":\"$source\",\"taskType\":\"$taskType\",\"userId\":\"$userId\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    fun triggerTbTask(
+        taskId: String,
+        taskPlantType: String,
+        source: String = DEFAULT_SOURCE
+    ): String {
+        return RequestManager.requestString(
+            "com.alipay.antfarm.triggerTbTask",
+            "[{\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"$source\",\"taskId\":\"$taskId\",\"taskPlantType\":\"$taskPlantType\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    //砸蛋
+    fun smashedGoldenEgg(count: Int): String {
+        val jsonArgs = """
+        [
+            {
+                "batchSmashCount": $count,
+                "requestType": "NORMAL",
+                "sceneCode": "ORCHARD",
+                "source": "ch_appcenter__chsub_9patch",
+                "version": "$VERSION"
+            }
+        ]
+    """.trimIndent()
+
+        return RequestManager.requestString(
+            "com.alipay.antorchard.smashedGoldenEgg",
+            jsonArgs
+        )
+    }
+
+    /**
+     * 收取果园回访奖励
+     * @param diversionSource 引流来源（如：widget、tmall）
+     * @param source 具体来源（如：widget_shoufei、upgrade_tmall_exchange_task）
+     * @return 请求结果字符串
+     */
+    fun receiveOrchardVisitAward(
+        diversionSource: String,
+        source: String
+    ): String {
+        val requestParams = """
+        [{"diversionSource":"$diversionSource",
+          "requestType":"NORMAL",
+          "sceneCode":"ORCHARD",
+          "source":"$source",
+          "version":"$VERSION"}]
+    """.trimIndent()
+
+        return RequestManager.requestString(
+            "com.alipay.antorchard.receiveOrchardVisitAward",
+            requestParams
+        )
+    }
+
+    fun orchardSyncIndex(Wua: String): String {
+        val jsonArgs = """
+         [{
+             "requestType": "NORMAL",
+             "sceneCode": "ORCHARD",
+             "source": "ch_appcenter__chsub_9patch",
+             "syncIndexTypes": "LIMITED_TIME_CHALLENGE",
+             "useWua": true,
+             "version": "$VERSION",
+             "wua": "$Wua"
+         }]
+    """.trimIndent()
+
+        return RequestManager.requestString(
+            "com.alipay.antorchard.orchardSyncIndex",
+            jsonArgs
+        )
+    }
+
+    fun noticeGame(appId: String): String {
+        val jsonArgs = """
+          [{
+             "appId": "2021004165643274",
+             "requestType": "NORMAL",
+             "sceneCode": "ORCHARD",
+             "source": "ch_appcenter__chsub_9patch",
+             "version": "$VERSION"
+         }]
+    """.trimIndent()
+
+        return RequestManager.requestString(
+            "com.alipay.antorchard.noticeGame",
+            jsonArgs
+        )
+    }
+
+    fun achieveBeShareP2P(shareId: String): String {
+        return RequestManager.requestString(
+            "com.alipay.antiep.achieveBeShareP2P",
+            "[{\"requestType\":\"NORMAL\",\"sceneCode\":\"ANTFARM_ORCHARD_SHARE_P2P\",\"shareId\":\"$shareId\",\"source\":\"share\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    fun refinedOperation(
+        actionId: String = "ENTERORCHARD",
+        source: String = "yqs_tiyanjin"
+    ): String {
+        return RequestManager.requestString(
+            "com.alipay.antorchard.refinedOperation",
+            "[{\"actionId\":\"$actionId\",\"inHomepage\":true,\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"$source\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    fun queryYebExpGoldMain(
+        queryComplete: Boolean = false,
+        taskId: String? = null
+    ): String {
+        val taskPayload = if (taskId.isNullOrBlank()) {
+            """{"downgrade":false,"queryComplete":$queryComplete,"strategyCode":"YEB_TRIAL_ASSET_TASK_BLOCK_REC"}"""
+        } else {
+            """{"downgrade":false,"queryComplete":$queryComplete,"startTime":${System.currentTimeMillis()},"strategyCode":"YEB_TRIAL_ASSET_TASK_BLOCK_REC","taskId":"$taskId"}"""
+        }
+        return RequestManager.requestString(
+            "com.alipay.yebscenebff.needle.yebExpGold.queryMain",
+            """[{"chInfo":"ch_url-https://render.alipay.com/p/yuyan/180020010001282160/index.html","signIn":{"daysOfQuerySignInData":21,"displaySignInTextList":[{"value":"持"},{"value":"续"},{"value":"签"},{"value":"到"},{"value":"可"},{"value":"领"},{"value":""}],"downgrade":false,"todayRedDotText":"戳这里","tomorrowRedDotText":""},"task":$taskPayload}]"""
+        )
+    }
+
+    fun signInYebExpGold(signInPlayId: String = YEB_EXP_GOLD_SIGN_IN_PLAY_ID): String {
+        return RequestManager.requestString(
+            "com.alipay.yebscenebff.needle.yebExpGold.signIn",
+            """[{"signInPlayId":"$signInPlayId"}]"""
+        )
+    }
+
+    fun queryYebExpGoldTaskList(): String {
+        return RequestManager.requestString(
+            "com.alipay.yebpromobff.promosdk2024.task.query",
+            """[{"needTriggerPrize":false,"playActionCode":"TASK_LIST_CONSULT","playEntrance":"HYQ_TASK_LIST_ENTRANCE_2"}]"""
+        )
+    }
+
+    fun queryYebExpGoldTaskById(taskId: String): String {
+        return RequestManager.requestString(
+            "com.alipay.yebpromobff.promosdk2024.task.queryTaskByTaskId",
+            """[{"appName":"yebpromobff","playActionCode":"TASK_STATUS_QUERY","playEntrance":"HYQ_TASK_LIST_ENTRANCE_2","taskId":"$taskId"}]"""
+        )
+    }
+
+    fun completeYebExpGoldTask(taskId: String): String {
+        val outBizNo = "$taskId-${System.currentTimeMillis()}-"
+        return RequestManager.requestString(
+            "com.alipay.yebpromobff.promosdk2024.task.complete",
+            """[{"appName":"yebpromobff","outBizNo":"$outBizNo","playActionCode":"TASK_COMPLETE","playEntrance":"HYQ_TASK_LIST_ENTRANCE_2","taskId":"$taskId"}]"""
+        )
+    }
+
+    fun queryYebTrialAsset(): String {
+        return RequestManager.requestString(
+            "alipay.yebprod.promo.yebTrialAsset",
+            "[null]"
+        )
+    }
+
+    fun exchangeYebExpGold(
+        campId: String,
+        prizeId: String,
+        exchangeAmount: String
+    ): String {
+        val bizOrderNo = "${UserMap.currentUid.orEmpty()}${System.currentTimeMillis()}"
+        return RequestManager.requestString(
+            "com.alipay.yebscenebff.expgold.index.exchange",
+            """[{"bizOrderNo":"$bizOrderNo","campId":"$campId","exchangeAmount":"$exchangeAmount","prizeId":"$prizeId"}]"""
+        )
+    }
+
+    fun activeYebTrial(couponId: String): String {
+        return RequestManager.requestString(
+            "alipay.yebprod.promo.yebTrial.active",
+            """[{"couponId":"$couponId","equityType":"voucher","type":"YEB_TRIAL"}]"""
+        )
+    }
+
+    /* 摇钱树收余额奖励 */
+    fun moneyTreeTrigger(): String {
+        return RequestManager.requestString(
+            "com.alipay.yebbffweb.needle.yebHome.moneyTree.trigger",
+            "[{\"sceneType\":\"default\",\"type\":\"trigger\"}]"
+        )
+    }
+}
+

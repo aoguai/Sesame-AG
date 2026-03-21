@@ -1,11 +1,11 @@
-name: 🐞 Build Debug APK
-run-name: 🐞 Debug Build - ${{ github.actor }}
+name: Debug Build
+run-name: Debug Build - ${{ github.ref_name }}
 
 on:
   push:
-    branches: [ "n" ]
+    branches: ["n"]
   pull_request:
-    branches: [ "n" ]
+    branches: ["n"]
   workflow_dispatch:
 
 jobs:
@@ -13,95 +13,63 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI: "true"
+      DEBUG_DIR: app/build/outputs/apk/debug
+      DEBUG_ASSET_DIR: app/build/outputs/apk/debug-assets
 
     steps:
-      - name: ⏰ Set Timezone to Asia/Shanghai
+      - name: Set Timezone to Asia/Shanghai
+        shell: bash
         run: |
+          set -euo pipefail
           sudo timedatectl set-timezone Asia/Shanghai
           echo "Current time: $(date)"
 
-      - name: 👨🏻‍💻 Checkout
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
 
-      - name: ☕ Set up JDK
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: "17"
           distribution: "zulu"
           cache: gradle
 
-      - name: 🤝 Set up Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false
           gradle-version: wrapper
 
-      - name: ☎️ Grant execute permission for gradlew
+      - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: 🔥 Build Debug APK with Gradle
-        # 修改为 assembleDebug
-        run: ./gradlew assembleDebug -Pversion=${{ github.ref_name }}
-
-      - name: 📊 Locate Debug APKs
-        id: locate_apks
+      - name: Build Debug APKs
+        shell: bash
         run: |
-          # 路径修改为 debug 目录
-          debug_dir="app/build/outputs/apk/debug"
-          
-          # 查找各个架构的包 (如果你的 debug 配置未开启分包，可能只有 universal)
-          arm64_apk=$(find "$debug_dir" -name "*-arm64-v8a-*.apk" | head -n 1)
-          armv7_apk=$(find "$debug_dir" -name "*-armeabi-v7a-*.apk" | head -n 1)
-          x86_apk=$(find "$debug_dir" -name "*-x86-*.apk" | head -n 1)
-          x86_64_apk=$(find "$debug_dir" -name "*-x86_64-*.apk" | head -n 1)
-          # 如果没有特定架构包，通常 debug 包名为 app-debug.apk，这里尝试作为 universal 捕获
-          universal_apk=$(find "$debug_dir" -name "*-universal-*.apk" | head -n 1)
-          if [ -z "$universal_apk" ]; then
-             universal_apk=$(find "$debug_dir" -name "*debug.apk" | head -n 1)
+          set -euo pipefail
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Collect Debug APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "${DEBUG_ASSET_DIR}"
+          mkdir -p "${DEBUG_ASSET_DIR}"
+          mapfile -t apks < <(find "${DEBUG_DIR}" -maxdepth 1 -type f -name "*.apk" | sort)
+          if [[ ${#apks[@]} -eq 0 ]]; then
+            echo "No debug APKs found in ${DEBUG_DIR}" >&2
+            exit 1
           fi
+          for apk in "${apks[@]}"; do
+            cp "${apk}" "${DEBUG_ASSET_DIR}/"
+          done
 
-          echo "arm64_apk=$arm64_apk" >> $GITHUB_OUTPUT
-          echo "armv7_apk=$armv7_apk" >> $GITHUB_OUTPUT
-          echo "x86_apk=$x86_apk" >> $GITHUB_OUTPUT
-          echo "x86_64_apk=$x86_64_apk" >> $GITHUB_OUTPUT
-          echo "universal_apk=$universal_apk" >> $GITHUB_OUTPUT
-
-      # 直接上传 Artifacts，不再签名，不再发 TG
-
-      - name: 🚀 Upload Debug APK - arm64-v8a
-        if: steps.locate_apks.outputs.arm64_apk != ''
+      - name: Upload Debug APKs
         uses: actions/upload-artifact@v4
         with:
-          name: debug-apk-arm64-v8a
-          path: ${{ steps.locate_apks.outputs.arm64_apk }}
-
-      - name: 🚀 Upload Debug APK - armeabi-v7a
-        if: steps.locate_apks.outputs.armv7_apk != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-apk-armeabi-v7a
-          path: ${{ steps.locate_apks.outputs.armv7_apk }}
-
-      - name: 🚀 Upload Debug APK - x86
-        if: steps.locate_apks.outputs.x86_apk != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-apk-x86
-          path: ${{ steps.locate_apks.outputs.x86_apk }}
-
-      - name: 🚀 Upload Debug APK - x86_64
-        if: steps.locate_apks.outputs.x86_64_apk != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-apk-x86_64
-          path: ${{ steps.locate_apks.outputs.x86_64_apk }}
-
-      - name: 🚀 Upload Debug APK - Universal
-        if: steps.locate_apks.outputs.universal_apk != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-apk-universal
-          path: ${{ steps.locate_apks.outputs.universal_apk }}
+          name: debug-apks-${{ github.run_number }}
+          path: ${{ env.DEBUG_ASSET_DIR }}/*
+          if-no-files-found: error

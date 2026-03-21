@@ -1,226 +1,141 @@
-name: 📦Auto Build for N
-run-name: 📦 ${{ github.actor }} @ Github Action
+name: Release Build
+run-name: Release Build - ${{ github.event.release.tag_name || github.ref_name }}
 
 on:
-  #  push:
-  #    branches: [ "main" ]
-  #  pull_request:
-  #    branches: [ "main" ]
   release:
     types: [published]
-#  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       CI: "true"
+      RELEASE_DIR: app/build/outputs/apk/release
+      STAGING_DIR: app/build/outputs/apk/all
+      ASSET_DIR: app/build/outputs/apk/release-assets
+      RELEASE_TAG_RAW: ${{ github.event.release.tag_name || github.ref_name }}
 
     steps:
-      - name: ⏰ Set Timezone to Asia/Shanghai
+      - name: Set Timezone to Asia/Shanghai
+        shell: bash
         run: |
+          set -euo pipefail
           sudo timedatectl set-timezone Asia/Shanghai
           echo "Current time: $(date)"
 
-      - name: 👨🏻‍💻 Checkout
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
-      - name: ☕ Set up JDK
+
+      - name: Normalize Version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG_RAW#v}"
+          if [[ -z "${version}" ]]; then
+            echo "Release tag is empty after normalization" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: "17"
           distribution: "zulu"
           cache: gradle
-      - name: 🤝 Set up Gradle
+
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false
           gradle-version: wrapper
 
-      - name: ☎️ Grant execute permission for gradlew
+      - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: 🔥 Build with Gradle
-        run: ./gradlew assembleRelease -Pversion=${{ github.ref_name }}
-
-      - name: 📊 Locate APKs and Set Outputs
-        id: locate_apks
+      - name: Build Release APKs
+        shell: bash
         run: |
-          release_dir="app/build/outputs/apk/release"
-          arm64_apk=$(find "$release_dir" -name "*-arm64-v8a-*.apk" | head -n 1)
-          armv7_apk=$(find "$release_dir" -name "*-armeabi-v7a-*.apk" | head -n 1)
-          x86_apk=$(find "$release_dir" -name "*-x86-*.apk" | head -n 1)
-          x86_64_apk=$(find "$release_dir" -name "*-x86_64-*.apk" | head -n 1)
-          universal_apk=$(find "$release_dir" -name "*-universal-*.apk" | head -n 1)
-          echo "arm64_apk=$arm64_apk" >> $GITHUB_OUTPUT
-          echo "armv7_apk=$armv7_apk" >> $GITHUB_OUTPUT
-          echo "x86_apk=$x86_apk" >> $GITHUB_OUTPUT
-          echo "x86_64_apk=$x86_64_apk" >> $GITHUB_OUTPUT
-          echo "universal_apk=$universal_apk" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          ./gradlew --no-daemon assembleRelease -PappVersion="${{ steps.version.outputs.version }}"
 
-      - name: ⏳ Copy APKs to staging for signing
+      - name: Stage Unsigned APKs
+        shell: bash
         run: |
-          mkdir -p app/build/outputs/apk/all
-          cp "${{ steps.locate_apks.outputs.arm64_apk }}" app/build/outputs/apk/all/
-          cp "${{ steps.locate_apks.outputs.armv7_apk }}" app/build/outputs/apk/all/
-          cp "${{ steps.locate_apks.outputs.x86_apk }}" app/build/outputs/apk/all/
-          cp "${{ steps.locate_apks.outputs.x86_64_apk }}" app/build/outputs/apk/all/
-          cp "${{ steps.locate_apks.outputs.universal_apk }}" app/build/outputs/apk/all/
+          set -euo pipefail
+          rm -rf "${STAGING_DIR}" "${ASSET_DIR}"
+          mkdir -p "${STAGING_DIR}"
+          mapfile -t apks < <(find "${RELEASE_DIR}" -maxdepth 1 -type f -name "*.apk" | sort)
+          if [[ ${#apks[@]} -eq 0 ]]; then
+            echo "No release APKs found in ${RELEASE_DIR}" >&2
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            cp "${apk}" "${STAGING_DIR}/"
+          done
 
-      - name: 🔐 Sign APKs
+      - name: Sign APKs
         id: sign_apks
         uses: ilharp/sign-android-release@v2
         with:
-          releaseDir: app/build/outputs/apk/all
+          releaseDir: ${{ env.STAGING_DIR }}
           signingKey: ${{ secrets.ANDROID_SIGNING_KEY }}
           keyAlias: ${{ secrets.ANDROID_KEY_ALIAS }}
           keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
           buildToolsVersion: 36.0.0
 
-      - name: 📦 Extract Signed APK Paths
-        id: extract_apks
-        run: |
-          IFS=':' read -r -a files <<< "${{ steps.sign_apks.outputs.signedFiles }}"
-          for file in "${files[@]}"; do
-            if [[ "$file" == *arm64-v8a* ]]; then
-              echo "signed_arm64=$file" >> $GITHUB_OUTPUT
-            elif [[ "$file" == *armeabi-v7a* ]]; then
-              echo "signed_armv7=$file" >> $GITHUB_OUTPUT
-            elif [[ "$file" == *x86_64* ]]; then
-              echo "signed_x86_64=$file" >> $GITHUB_OUTPUT
-            elif [[ "$file" == *x86* ]]; then
-              echo "signed_x86=$file" >> $GITHUB_OUTPUT
-            elif [[ "$file" == *universal* ]]; then
-              echo "signed_universal=$file" >> $GITHUB_OUTPUT
-            fi
-          done
-
-      - name: 🚀 Upload APK - arm64-v8a
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk-arm64-v8a
-          path: ${{ steps.extract_apks.outputs.signed_arm64 }}
-
-      - name: 🚀 Upload APK - armeabi-v7a
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk-armeabi-v7a
-          path: ${{ steps.extract_apks.outputs.signed_armv7 }}
-
-      - name: 🚀 Upload APK - x86
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk-x86
-          path: ${{ steps.extract_apks.outputs.signed_x86 }}
-
-      - name: 🚀 Upload APK - x86_64
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk-x86_64
-          path: ${{ steps.extract_apks.outputs.signed_x86_64 }}
-
-      - name: 🚀 Upload APK - universal
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk-universal
-          path: ${{ steps.extract_apks.outputs.signed_universal }}
-
-      - name: 🛠️ Extract file names and version
-        id: extract_info
-        run: |
-          arm64_file=$(basename "${{ steps.extract_apks.outputs.signed_arm64 }}")
-          armv7_file=$(basename "${{ steps.extract_apks.outputs.signed_armv7 }}")
-          x86_file=$(basename "${{ steps.extract_apks.outputs.signed_x86 }}")
-          x86_64_file=$(basename "${{ steps.extract_apks.outputs.signed_x86_64 }}")
-          universal_file=$(basename "${{ steps.extract_apks.outputs.signed_universal }}")
-          version="${{ github.ref_name }}"
-          echo "arm64_file=$arm64_file" >> $GITHUB_OUTPUT
-          echo "armv7_file=$armv7_file" >> $GITHUB_OUTPUT
-          echo "x86_file=$x86_file" >> $GITHUB_OUTPUT
-          echo "x86_64_file=$x86_64_file" >> $GITHUB_OUTPUT
-          echo "universal_file=$universal_file" >> $GITHUB_OUTPUT
-          echo "version=$version" >> $GITHUB_OUTPUT
-
-      - name: 🎨 Generate APKS Checksum
-        run: |
-          sha256sum ${{ steps.extract_apks.outputs.signed_arm64 }} > CHECKSUMS-Sesame-arm64-v8a-${{ steps.extract_info.outputs.version }}.apk.sha256
-          sha256sum ${{ steps.extract_apks.outputs.signed_armv7 }} > CHECKSUMS-Sesame-armeabi-v7a-${{ steps.extract_info.outputs.version }}.apk.sha256
-          sha256sum ${{ steps.extract_apks.outputs.signed_x86 }} > CHECKSUMS-Sesame-x86-${{ steps.extract_info.outputs.version }}.apk.sha256
-          sha256sum ${{ steps.extract_apks.outputs.signed_x86_64 }} > CHECKSUMS-Sesame-x86_64-${{ steps.extract_info.outputs.version }}.apk.sha256
-          sha256sum ${{ steps.extract_apks.outputs.signed_universal }} > CHECKSUMS-Sesame-universal-${{ steps.extract_info.outputs.version }}.apk.sha256
-
-      - name: 📝 Generate Dynamic Message
-        id: commit_info
+      - name: Prepare Release Assets
+        id: prepare_assets
         shell: bash
         run: |
-          # 初始化一个临时文件名
-          MESSAGE_FILE=$(mktemp)
-
-          if [[ "${{ github.event_name }}" == "push" && -n '${{ toJSON(github.event.commits) }}' && '${{ toJSON(github.event.commits) }}' != 'null' && '${{ toJSON(github.event.commits) }}' != '[]' ]]; then
-            echo "Source: Push Event"
-            # 【修复】使用正确的 jq 语法截取 commit ID 前7个字符
-            echo '${{ toJSON(github.event.commits) }}' | jq -r '.[] | "• \(.message | split("\n")[0]) (<a href=\"\(.url)\">\(.id[0:7])</a>)"' > "$MESSAGE_FILE"
-
-          elif [[ "${{ github.event_name }}" == "pull_request" && -n '${{ toJSON(github.event.pull_request) }}' && '${{ toJSON(github.event.pull_request) }}' != 'null' ]]; then
-            echo "Source: Pull Request Event"
-            PR_TITLE="${{ github.event.pull_request.title }}"
-            PR_URL="${{ github.event.pull_request.html_url }}"
-            API_URL="${{ github.event.pull_request.commits_url }}"
-
-            # 写入 PR 标题
-            echo -e "<b>PR:</b> <a href=\"$PR_URL\">$PR_TITLE</a>\n\n<b>Commits:</b>" > "$MESSAGE_FILE"
-
-            COMMITS_JSON=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                                -H "Accept: application/vnd.github.v3+json" \
-                                "$API_URL")
-
-            # 【修复】使用正确的 jq 语法截取 commit SHA 前7个字符
-            echo "$COMMITS_JSON" | jq -r 'if type == "array" then .[] | "• \(.commit.message | split("\n")[0]) (<a href=\"\(.html_url)\">\(.sha[0:7])</a>)" else "" end' >> "$MESSAGE_FILE"
-
-          else
-            echo "Source: Manual or unknown"
-            echo "手动触发构建" > "$MESSAGE_FILE"
+          set -euo pipefail
+          mkdir -p "${ASSET_DIR}"
+          IFS=':' read -r -a files <<< "${{ steps.sign_apks.outputs.signedFiles }}"
+          copied=0
+          for file in "${files[@]}"; do
+            [[ -n "${file}" ]] || continue
+            cp "${file}" "${ASSET_DIR}/"
+            (
+              cd "${ASSET_DIR}"
+              sha256sum "$(basename "${file}")" > "CHECKSUMS-$(basename "${file}").sha256"
+            )
+            copied=$((copied + 1))
+          done
+          if [[ ${copied} -eq 0 ]]; then
+            echo "No signed APKs were produced" >&2
+            exit 1
           fi
+          echo "asset_dir=${ASSET_DIR}" >> "$GITHUB_OUTPUT"
 
-          # 使用 GitHub Actions 官方推荐的多行输出语法
-          {
-            echo "message_string<<EOF"
-            cat "$MESSAGE_FILE"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+      - name: Upload Release Assets Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ steps.version.outputs.version }}
+          path: ${{ steps.prepare_assets.outputs.asset_dir }}/*
+          if-no-files-found: error
 
-          # 清理临时文件
-          rm "$MESSAGE_FILE"
-
-      - name: 🚀 Upload Assets to Source Release
-        if: github.event_name == 'release' && github.event.action == 'published'
+      - name: Upload Assets to Source Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.event.release.tag_name || steps.extract_info.outputs.version }}
+          name: ${{ env.RELEASE_TAG_RAW }}
           files: |
-            ${{ steps.extract_apks.outputs.signed_arm64 }}
-            ${{ steps.extract_apks.outputs.signed_armv7 }}
-            ${{ steps.extract_apks.outputs.signed_x86 }}
-            ${{ steps.extract_apks.outputs.signed_x86_64 }}
-            ${{ steps.extract_apks.outputs.signed_universal }}
-            CHECKSUMS-Sesame-arm64-v8a-${{ steps.extract_info.outputs.version }}.apk.sha256
-            CHECKSUMS-Sesame-armeabi-v7a-${{ steps.extract_info.outputs.version }}.apk.sha256
-            CHECKSUMS-Sesame-x86-${{ steps.extract_info.outputs.version }}.apk.sha256
-            CHECKSUMS-Sesame-x86_64-${{ steps.extract_info.outputs.version }}.apk.sha256
-            CHECKSUMS-Sesame-universal-${{ steps.extract_info.outputs.version }}.apk.sha256
-          tag_name: ${{ steps.extract_info.outputs.version}}
+            ${{ steps.prepare_assets.outputs.asset_dir }}/*
+          tag_name: ${{ env.RELEASE_TAG_RAW }}
           draft: false
           append_body: true
           make_latest: true
           generate_release_notes: false
           body: |
-
             > [!Important]
             >
-            > ## 模块的蓬勃生机离不开社区与群组,感谢各位的贡献🎉
+            > ## 模块的蓬勃生机离不开社区与群组,感谢各位的贡献
 
             > [!NOTE]
             > 项目仓库：https://github.com/${{ github.repository }}
@@ -233,28 +148,19 @@ jobs:
             >
             > **如果不确定，请下载 `universal` 版本。**
 
-      - name: 🔁 Sync Release to Target Repository
+      - name: Sync Release to Target Repository
         uses: softprops/action-gh-release@v2
         with:
-          repository: Xposed-Modules-Repo/fansirsqi.xposed.sesame # 目标仓库的拥有者和仓库名称
-          name: ${{ github.event.release.tag_name || steps.extract_info.outputs.version }} # 发布的名称。默认为标签名称
+          repository: Xposed-Modules-Repo/io.github.aoguai.sesameag
+          name: ${{ env.RELEASE_TAG_RAW }}
           files: |
-            ${{ steps.extract_apks.outputs.signed_arm64 }}
-            ${{ steps.extract_apks.outputs.signed_armv7 }}
-            ${{ steps.extract_apks.outputs.signed_x86 }}
-            ${{ steps.extract_apks.outputs.signed_x86_64 }}
-            ${{ steps.extract_apks.outputs.signed_universal }}
-            CHECKSUMS-Sesame-arm64-v8a-${{ steps.extract_info.outputs.version }}.apk.sha256
-            CHECKSUMS-Sesame-armeabi-v7a-${{ steps.extract_info.outputs.version }}.apk.sha256
-            CHECKSUMS-Sesame-x86-${{ steps.extract_info.outputs.version }}.apk.sha256
-            CHECKSUMS-Sesame-x86_64-${{ steps.extract_info.outputs.version }}.apk.sha256
-            CHECKSUMS-Sesame-universal-${{ steps.extract_info.outputs.version }}.apk.sha256
+            ${{ steps.prepare_assets.outputs.asset_dir }}/*
           token: ${{ secrets.TARGET_REPO_PAT }}
-          tag_name: ${{ steps.extract_info.outputs.version}}
+          tag_name: ${{ env.RELEASE_TAG_RAW }}
           draft: false
           make_latest: true
           body: |
-            📦 内容同步自源仓库 [Sesame-AG](https://github.com/${{ github.repository }})
+            内容同步自源仓库 [Sesame-AG](https://github.com/${{ github.repository }})
 
             ${{ github.event.release.body }}
 

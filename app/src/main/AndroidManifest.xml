@@ -29,13 +29,14 @@
         android:name=".SesameApplication"
         android:description="@string/xposed_description"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
         <!-- 主 Activity (隐藏的，不负责显示图标) -->
         <activity
-            android:name="fansirsqi.xposed.sesame.ui.MainActivity"
+            android:name="io.github.aoguai.sesameag.ui.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -71,21 +72,7 @@
             android:name=".ui.MainActivityAlias"
             android:enabled="true"
             android:exported="true"
-            android:targetActivity="fansirsqi.xposed.sesame.ui.MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <!-- 圣诞图标 -->
-        <activity-alias
-            android:name=".ui.MainActivityAliasChristmas"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@drawable/ic_launcher_christmas"
-            android:label="@string/app_name"
-            android:targetActivity="fansirsqi.xposed.sesame.ui.MainActivity">
+            android:targetActivity="io.github.aoguai.sesameag.ui.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -96,12 +83,12 @@
         <!-- exported=true 允许跨进程绑定 -->
         <!-- process=":command" 运行在独立进程中 -->
         <service
-            android:name="fansirsqi.xposed.sesame.service.CommandService"
+            android:name="io.github.aoguai.sesameag.service.CommandService"
             android:enabled="true"
             android:exported="true"
             android:foregroundServiceType="specialUse">
             <intent-filter>
-                <action android:name="fansirsqi.xposed.sesame.action.BIND_COMMAND_SERVICE" />
+                <action android:name="io.github.aoguai.sesameag.action.BIND_COMMAND_SERVICE" />
             </intent-filter>
         </service>
 

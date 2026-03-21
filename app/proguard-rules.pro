@@ -17,7 +17,7 @@
 -dontwarn ch.qos.logback.**, org.slf4j.**
 
 # ---------- 本工程 ----------
--keep class fansirsqi.xposed.sesame.** { *; }
+-keep class io.github.aoguai.sesameag.** { *; }
 
 # ---------- Jackson（最小必要） ----------
 -keep class com.fasterxml.jackson.** { *; }

@@ -13,28 +13,29 @@ var isCIBuild: Boolean = System.getenv("CI").toBoolean()
 //isCIBuild = true // 没有c++源码时开启CI构建, push前关闭
 
 android {
-    namespace = "fansirsqi.xposed.sesame"
+    namespace = "io.github.aoguai.sesameag"
     compileSdk = 36
     packaging {
         jniLibs {
             useLegacyPackaging = true
         }
-        splits {
-            abi {
-                isEnable = true
-                reset()
-                include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-                isUniversalApk = true
-            }
+    }
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = true
         }
-
     }
     // 使用providers API来支持配置缓存
     val gitCommitCount: Int = providers.exec {
         commandLine("git", "rev-list", "--count", "HEAD")
     }.standardOutput.asText.get().trim().toIntOrNull() ?: 1
+    val appVersionName: String = providers.gradleProperty("appVersion").orElse("0.0.1").get()
     defaultConfig {
-        applicationId = "fansirsqi.xposed.sesame"
+        vectorDrawables.useSupportLibrary = true
+        applicationId = "io.github.aoguai.sesameag"
         minSdk = 29
         targetSdk = 36
 
@@ -47,7 +48,7 @@ android {
         }.format(Date())
 
         versionCode = gitCommitCount
-        versionName = "0.9.9"
+        versionName = appVersionName
 
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
         buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
@@ -56,16 +57,13 @@ android {
                 abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
             }
         }
-
-        testOptions {
-            unitTests.all {
-                it.enabled = false
-            }
-        }
     }
 
-
-
+    testOptions {
+        unitTests.all {
+            it.enabled = false
+        }
+    }
     buildFeatures {
         viewBinding = true
         buildConfig = true
@@ -104,7 +102,7 @@ android {
 
     sourceSets {
         getByName("main") {
-            jniLibs.directories.add("src/main/jniLibs")
+            jniLibs.srcDirs("src/main/jniLibs")
         }
     }
     val cmakeFile = file("src/main/cpp/CMakeLists.txt")
