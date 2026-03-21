@@ -102,7 +102,7 @@ android {
 
     sourceSets {
         getByName("main") {
-            jniLibs.srcDirs("src/main/jniLibs")
+            jniLibs.setSrcDirs(listOf("src/main/jniLibs"))
         }
     }
     val cmakeFile = file("src/main/cpp/CMakeLists.txt")
@@ -124,9 +124,17 @@ kotlin {
 }
 
 composeCompiler {
-    // AGP 9.0.x uses built-in Kotlin 2.2.10. Disable Compose mapping generation
-    // so release builds don't require compose-group-mapping during minification.
-    includeComposeMappingFile = false
+    // AGP 9.0 uses built-in Kotlin 2.2.10. Keep release builds away from
+    // Compose stack-trace/tooling metadata that triggers compose mapping generation.
+    generateFunctionKeyMetaClasses.set(false)
+    includeSourceInformation.set(false)
+    includeTraceMarkers.set(false)
+}
+
+tasks.configureEach {
+    if (name == "produceReleaseComposeMapping") {
+        enabled = false
+    }
 }
 
 dependencies {
