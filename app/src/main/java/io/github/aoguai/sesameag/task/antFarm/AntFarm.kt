@@ -2292,7 +2292,8 @@ class AntFarm : ModelTask() {
                 if (ResChecker.checkRes(TAG + "查询庄园任务失败:", jo)) {
                     val farmTaskList = jo.getJSONArray("farmTaskList")
                     val signList = jo.getJSONObject("signList")
-                    val needFarmGame = recordFarmGame?.value == true && !Status.hasFlagToday("farm::farmGameFinished")
+                    val needFarmGame = recordFarmGame?.value == true &&
+                        !Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)
                     val gameRewardMaxValue = gameRewardMax?.value ?: gameRewardMax?.defaultValue ?: 0
                     val ignoreAcceLimitEnabled = ignoreAcceLimit?.value == true
 
@@ -2704,7 +2705,7 @@ class AntFarm : ModelTask() {
                                 没有饲料奖励
                              */
                             // 判断游戏改分还没完成。按照我的设计，其实这里不用判断，因为任务顺序就是先加速->游戏改分
-                            if (!Status.hasFlagToday("farm::farmGameFinished")){
+                            if (!Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)) {
                                 val gameRewardMaxValue = gameRewardMax?.value ?: gameRewardMax?.defaultValue ?: 0
                                 if (foodStock < foodStockLimit - gameRewardMaxValue) {
                                     Log.farm("加速后已喂食，领取饲料奖励")
@@ -5255,7 +5256,7 @@ class AntFarm : ModelTask() {
         try {
             Log.record(TAG, "🚀 开始执行手动抽抽乐任务...")
             if (enterFarm() != null) {
-                ChouChouLe().run(this@AntFarm)
+                ChouChouLe().run(this@AntFarm, force = true)
                 Log.record(TAG, "✅ 手动抽抽乐任务处理完毕")
             }
         } catch (t: Throwable) {

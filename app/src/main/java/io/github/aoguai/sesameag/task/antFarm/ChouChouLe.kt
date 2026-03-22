@@ -94,8 +94,8 @@ class ChouChouLe {
         }
     }
 
-    fun run(antFarm: AntFarm) {
-        if (Status.hasFlagToday(StatusFlags.FLAG_FARM_CHOUCHOULE_FINISHED)) {
+    fun run(antFarm: AntFarm, force: Boolean = false) {
+        if (!force && Status.hasFlagToday(StatusFlags.FLAG_FARM_CHOUCHOULE_FINISHED)) {
             return
         }
 
@@ -103,6 +103,11 @@ class ChouChouLe {
         val isGameEnabled = antFarm.recordFarmGame?.value == true
         val isTimeReached = TaskTimeChecker.isTimeReached(antFarm.enableChouchouleTime?.value, "0900")
         val ignoreAcceLimitMode = !isGameEnabled || antFarm.ignoreAcceLimit?.value == true
+
+        if (force) {
+            executeAndSync(antFarm)
+            return
+        }
 
         when {
             ignoreAcceLimitMode -> {
@@ -917,10 +922,8 @@ class ChouChouLe {
                 val userId = UserMap.currentUid
                 val data = loadData(userId)
 
-                // 1. 同步物品列表到本地文件，修复重复名称
+                // 1. 同步物品列表到本地文件，常规情况下只做增量更新
                 var changed = false
-
-                // 只有当 activityId 变动时，才进行完整的 shopItems 更新，平时只在检测到新物品时追加
                 if (data.activityId != activityId) {
                     Log.record("自动兑换", "检测到活动变更 ($activityId)，重置本地兑换记录并更新商店列表")
                     data.activityId = activityId
@@ -929,6 +932,7 @@ class ChouChouLe {
                     changed = true
                 }
 
+                val latestShopItems = LinkedHashMap<String, String>()
                 for (i in 0 until itemVOList.length()) {
                     val item = itemVOList.optJSONObject(i) ?: continue
                     val skuList = item.optJSONArray("skuModelList") ?: continue
@@ -962,7 +966,7 @@ class ChouChouLe {
                             else -> spu + skuN
                         }
                         val valueStr = "$displayName|$limitCount|$cent"
-
+                        latestShopItems[skuId] = valueStr
                         if (data.shopItems[skuId] != valueStr) {
                             data.shopItems[skuId] = valueStr
                             changed = true
@@ -1004,6 +1008,7 @@ class ChouChouLe {
 
                 val finalSequence = ArrayList<JSONObject>()
                 if (isCustom) {
+                    val missingCustomSkuIds = LinkedHashSet<String>()
                     // 完全按照用户设置的顺序执行
                     customMap.entries.forEach { entry ->
                         val skuId = entry.key
@@ -1019,7 +1024,20 @@ class ChouChouLe {
                                 } else {
                                     Log.record("自动兑换", "[${sku.optString("_spuName") + sku.optString("skuName")}] 已达到自定义兑换数量($targetCount)，跳过")
                                 }
+                            } else {
+                                missingCustomSkuIds.add(skuId)
                             }
+                        }
+                    }
+                    if (missingCustomSkuIds.isNotEmpty()) {
+                        if (data.shopItems != latestShopItems) {
+                            data.shopItems.clear()
+                            data.shopItems.putAll(latestShopItems)
+                            saveData(userId, data)
+                            Log.record("自动兑换", "检测到自定义商品缺失，已按当前商店补做一次全量快照同步")
+                        }
+                        missingCustomSkuIds.forEach { skuId ->
+                            Log.record("自动兑换", "自定义商品[$skuId] 当前商店未找到，已跳过")
                         }
                     }
                 } else {
