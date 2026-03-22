@@ -6,8 +6,10 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.github.aoguai.sesameag.entity.AntFarmIPChouChouLeBenefit
 import io.github.aoguai.sesameag.data.Config
 import io.github.aoguai.sesameag.data.Status
+import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.entity.AlipayUser
 import io.github.aoguai.sesameag.entity.MapperEntity
 import io.github.aoguai.sesameag.entity.OtherEntityProvider.farmFamilyOption
@@ -39,7 +41,6 @@ import io.github.aoguai.sesameag.util.ListUtil
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.RandomUtil
 import io.github.aoguai.sesameag.util.ResChecker
-import io.github.aoguai.sesameag.util.StringUtil
 import io.github.aoguai.sesameag.util.TaskBlacklist
 import io.github.aoguai.sesameag.util.TimeCounter
 import io.github.aoguai.sesameag.util.TimeUtil
@@ -62,7 +63,7 @@ import kotlin.math.min
 
 @Suppress("unused", "EnumEntryName", "EnumEntryName", "EnumEntryName", "EnumEntryName")
 class AntFarm : ModelTask() {
-    private var ownerFarmId: String? = null
+    internal var ownerFarmId: String? = null
     private var animals: Array<Animal>? = null
     private var ownerAnimal = Animal()
     private var rewardProductNum: String? = null
@@ -180,7 +181,7 @@ class AntFarm : ModelTask() {
     /**
      * 游戏改分
      */
-    private var recordFarmGame: BooleanModelField? = null
+    internal var recordFarmGame: BooleanModelField? = null
     private var gameRewardMax: IntegerModelField? = null
 
     /**
@@ -216,7 +217,7 @@ class AntFarm : ModelTask() {
      */
     private var receiveFarmTaskAward: BooleanModelField? = null
     private var useAccelerateTool: BooleanModelField? = null
-    private var ignoreAcceLimit: BooleanModelField? = null
+    internal var ignoreAcceLimit: BooleanModelField? = null
     private var useBigEaterTool: BooleanModelField? = null // ✅ 新增加饭卡
     private var useAccelerateToolContinue: BooleanModelField? = null
     private var useAccelerateToolWhenMaxEmotion: BooleanModelField? = null
@@ -235,9 +236,11 @@ class AntFarm : ModelTask() {
     private var collectChickenDiary: ChoiceModelField? = null
     private lateinit var remainingTime: IntegerModelField
     private var enableChouchoule: BooleanModelField? = null
-    private var enableChouchouleTime: StringModelField? = null // 抽抽乐执行时间
+    internal var enableChouchouleTime: StringModelField? = null // 抽抽乐执行时间
     var autoExchange: BooleanModelField? = null
     var doChouChouLeDonationTask: BooleanModelField? = null
+    internal var exchangeDaysBeforeEndIp: IntegerModelField? = null  // IP 抽抽乐活动结束前兑换天数
+    internal var autoExchangeList: SelectAndCountModelField? = null  // IP 抽抽乐自定义兑换列表
     private var listOrnaments: BooleanModelField? = null
     private var hireAnimal: BooleanModelField? = null
     private var hireAnimalType: ChoiceModelField? = null
@@ -359,9 +362,20 @@ class AntFarm : ModelTask() {
         modelFields.addField(
             BooleanModelField(
                 "autoExchange",
-                "IP抽抽乐自动从高到低兑换物品",
+                "IP抽抽乐最优兑换商店",
                 false
             ).withDesc("IP 或活动抽抽乐按奖励价值从高到低自动兑换。").also { autoExchange = it })
+        modelFields.addField(
+            IntegerModelField("exchangeDaysBeforeEndIp", "IP抽抽乐|活动结束前几天开始兑换(0每日兑换)", 0, 0, 30).also { exchangeDaysBeforeEndIp = it }
+        )
+        modelFields.addField(
+            SelectAndCountModelField(
+                "autoExchangeList",
+                "IP抽抽乐|自定义兑换列表(无特殊需求则不设置)",
+                LinkedHashMap()
+            ) { AntFarmIPChouChouLeBenefit.getList() }.also {
+                autoExchangeList = it
+            })
         modelFields.addField(
             StringModelField.TimeStringModelField(
                 "enableChouchouleTime",
@@ -833,7 +847,7 @@ class AntFarm : ModelTask() {
             // 抽抽乐
             if (enableChouchoule?.value == true) {
                 tc.countDebug("抽抽乐")
-                handleChouChouLeLogic()
+                ChouChouLe().run(this@AntFarm)
                 refreshFarmStatus("抽抽乐流程后")
             }
 
@@ -1327,7 +1341,7 @@ class AntFarm : ModelTask() {
                 handleFarmGameLogic()
             }
             if (enableChouchoule?.value == true) {
-                handleChouChouLeLogic()
+                ChouChouLe().run(this@AntFarm)
             }
         }
 
@@ -1479,7 +1493,7 @@ class AntFarm : ModelTask() {
         }
     }
 
-    private fun syncAnimalStatus(farmId: String?) {
+    internal fun syncAnimalStatus(farmId: String?) {
         try {
             val jo = syncAnimalStatus(farmId, "SYNC_RESUME", "QUERY_ALL")
             parseSyncAnimalStatusResponse(jo!!)
@@ -2074,12 +2088,12 @@ class AntFarm : ModelTask() {
         recordFarmGame(GameType.hitGame)
         recordFarmGame(GameType.starGame)
         recordFarmGame(GameType.jumpGame)
-        Status.setFlagToday("farm::farmGameFinished")
+        Status.setFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)
         Log.farm("今日庄园游戏改分已完成")
     }
     private suspend fun handleFarmGameLogic() {
         // 1. 检查游戏改分是否已完成
-        if (Status.hasFlagToday("farm::farmGameFinished")) {
+        if (Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)) {
             Log.record("今日庄园游戏改分已完成")
             return
         }
@@ -2138,48 +2152,6 @@ class AntFarm : ModelTask() {
             isAccelEnabled && accelerateToolCount > 0 -> {
                 Log.record("加速卡有${accelerateToolCount}张，已使用${Status.INSTANCE.useAccelerateToolCount}张，" +
                         "尚未达到今日使用上限，等待加速完成后再改分")
-            }
-        }
-    }
-
-    // 抽抽乐执行
-    private fun playChouChouLe() {
-        val ccl = ChouChouLe()
-        if (ccl.chouchoule()) {
-            Status.setFlagToday("farm::chouChouLeFinished")
-            Log.farm("今日抽抽乐已完成")
-        } else {
-            Log.record(TAG, "抽抽乐尚有未完成项（请检查是否需要验证）")
-        }
-    }
-    private fun handleChouChouLeLogic() {
-        // 1. 检查抽抽乐是否已完成
-        if (Status.hasFlagToday("farm::chouChouLeFinished")) {
-            Log.record("今日抽抽乐已完成")
-            return
-        }
-        val isGameFinished = Status.hasFlagToday("farm::farmGameFinished")
-        val isGameEnabled = recordFarmGame?.value == true
-        val isTimeReached = TaskTimeChecker.isTimeReached(enableChouchouleTime?.value, "0900")
-        val ignoreAcceLimitMode = !isGameEnabled || ignoreAcceLimit?.value == true
-
-        when {
-            ignoreAcceLimitMode -> {
-                if (isTimeReached) {
-                    playChouChouLe()
-                } else {
-                    Log.record(TAG, "当前处于按时抽抽乐模式，未到设定时间，跳过")
-                }
-            }
-
-            // 游戏改分已完成直接执行抽抽乐
-            isGameFinished -> {
-                playChouChouLe()
-            }
-
-            // 游戏改分任务尚未完成
-            isGameEnabled && !isGameFinished -> {
-                Log.record("游戏改分还没有完成，暂不执行抽抽乐")
             }
         }
     }
@@ -5283,7 +5255,7 @@ class AntFarm : ModelTask() {
         try {
             Log.record(TAG, "🚀 开始执行手动抽抽乐任务...")
             if (enterFarm() != null) {
-                playChouChouLe()
+                ChouChouLe().run(this@AntFarm)
                 Log.record(TAG, "✅ 手动抽抽乐任务处理完毕")
             }
         } catch (t: Throwable) {

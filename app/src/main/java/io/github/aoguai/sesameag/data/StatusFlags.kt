@@ -112,5 +112,11 @@ object StatusFlags {
 
     /** 蚂蚁新村：今日丢肥料是否达到上限 */
     const val FLAG_ANTSTALL_THROW_MANURE_LIMIT: String = "Flag_AntStall_Throw_Manure_Limit"
+
+    /** 今日小鸡抽抽乐是否已完成 */
+    const val FLAG_FARM_CHOUCHOULE_FINISHED = "antFarm::chouChouLeFinished"
+
+    /** 今日改分/小游戏是否已完成 */
+    const val FLAG_FARM_GAME_FINISHED = "antFarm::farmGameFinished"
 }
 
