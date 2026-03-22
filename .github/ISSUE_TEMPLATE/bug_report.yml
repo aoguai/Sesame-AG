@@ -1,0 +1,163 @@
+name: 问题反馈 / Bug report
+description: 反馈你遇到的回归、崩溃、行为异常或文档问题
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间提交问题。
+
+        提交前请先阅读：
+        - [README](https://github.com/aoguai/Sesame-AG/blob/dev/README.md)
+        - [LEGAL](https://github.com/aoguai/Sesame-AG/blob/dev/LEGAL.md)
+        - [CONTRIBUTING](https://github.com/aoguai/Sesame-AG/blob/dev/CONTRIBUTING.md)
+
+        请尽量让每个回答都基于你实际观察到的现象来填写。没有复现步骤、环境信息和日志的 Issue，通常没有足够上下文被处理。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前检查
+      description: 不符合这些前提的 Issue 可能会被直接关闭。
+      options:
+        - label: 我已经阅读 README / LEGAL / CONTRIBUTING，并确认这个问题符合当前项目的学习研究定位
+          required: true
+        - label: 我已经搜索过现有 Issues / Pull Requests，没有找到相同或高度相似的问题
+          required: true
+        - label: 我已经在当前可获取的最新版本或最新提交环境中复现过这个问题
+          required: true
+        - label: 我愿意在后续继续补充日志、截图、复现信息并配合排查
+          required: true
+
+  - type: dropdown
+    id: bug_type
+    attributes:
+      label: 问题类型
+      description: 选择最接近的类别
+      options:
+        - 回归问题
+        - 崩溃 / 卡死
+        - 行为异常
+        - UI / 文档问题
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题摘要
+      description: 用 1 到 3 句话说明“什么坏了”
+      placeholder: |
+        更新到某版本后，模块可以启动，但手动任务页面点开后立即闪退。
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 提供最短、最稳定、最可重复的复现路径
+      placeholder: |
+        1. 在 LSPosed 中启用模块并重启目标应用
+        2. 打开模块设置页
+        3. 进入“手动任务”
+        4. 观察到应用闪退
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+      placeholder: 页面正常打开，并能看到手动任务列表。
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      placeholder: 页面点击后立刻闪退，返回桌面；同一环境下重复三次均可复现。
+    validations:
+      required: true
+
+  - type: input
+    id: module_version
+    attributes:
+      label: 模块版本 / 提交
+      description: 精确填写版本号、Release Tag 或 commit
+      placeholder: 123-0.0.1 / 4f2c1ab
+    validations:
+      required: true
+
+  - type: input
+    id: android_version
+    attributes:
+      label: Android 版本 / 手机系统版本
+      placeholder: Android 14 / LineageOS 21
+    validations:
+      required: true
+
+  - type: input
+    id: framework_version
+    attributes:
+      label: Xposed 框架与版本
+      placeholder: LSPosed 1.9.3
+    validations:
+      required: true
+
+  - type: input
+    id: target_app_version
+    attributes:
+      label: 目标应用版本
+      description: 当前默认作用域对应的目标应用版本
+      placeholder: 10.x.x.xxxx
+    validations:
+      required: true
+
+  - type: input
+    id: install_source
+    attributes:
+      label: 安装来源 / 构建方式
+      description: 例如 Release APK、自编译 Debug、自编译 Release、第三方分发包
+      placeholder: GitHub Release / self-built debug
+    validations:
+      required: true
+
+  - type: dropdown
+    id: privilege_mode
+    attributes:
+      label: Root / Shizuku 情况
+      description: 如果与当前问题无关，也请说明
+      options:
+        - 未使用
+        - 使用 Root
+        - 使用 Shizuku
+        - 两者都使用
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志、截图与证据
+      description: 请粘贴脱敏后的日志、报错、截图说明或录屏信息，不要只写“有报错”
+      render: shell
+      placeholder: |
+        贴上脱敏后的日志、堆栈、关键截图说明或录屏补充。
+        如涉及隐私信息，请先自行脱敏。
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_information
+    attributes:
+      label: 补充信息
+      description: 例如是否改过源码、是否只在特定配置出现、是否能回退到旧版本规避
+      placeholder: |
+        - 仅在开启某个实验性选项后复现
+        - 回退到某版本后恢复正常
+        - 使用第三方分发包时也可复现 / 不可复现

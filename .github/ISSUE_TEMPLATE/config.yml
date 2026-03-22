@@ -1,5 +1,14 @@
 blank_issues_enabled: false
 contact_links:
+  - name: 使用说明 / README
+    url: https://github.com/aoguai/Sesame-AG/blob/dev/README.md
+    about: 提交 Issue 前先阅读项目定位、兼容性、安装与构建说明。
+  - name: 法律与风险 / LEGAL
+    url: https://github.com/aoguai/Sesame-AG/blob/dev/LEGAL.md
+    about: 先确认你能接受项目的许可边界、非商业限制与免责声明。
+  - name: 贡献规范 / CONTRIBUTING
+    url: https://github.com/aoguai/Sesame-AG/blob/dev/CONTRIBUTING.md
+    about: 请按这里的规则准备 Issue / Pull Request 所需的信息。
   - name: 项目仓库主页
     url: https://github.com/aoguai/Sesame-AG
-    about: 请在项目仓库中提交 Issue / Discussion，并尽量附上日志与复现步骤。
+    about: 浏览源码、Releases 与模块元数据。

@@ -352,7 +352,6 @@ jobs:
             echo
             echo "源仓库标签：\`${RELEASE_TAG_RAW}\`"
             echo "模块仓库标签：\`${XPOSED_TAG}\`"
-            echo "源分支：\`${TARGET_SOURCE_BRANCH}\`"
             echo
             echo "${notes}"
             echo

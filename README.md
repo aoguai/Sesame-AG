@@ -9,41 +9,38 @@
 
 ## 项目说明
 
-- 本仓库是一个学习研究用途的 LSPosed 模块，当前仓库已经从历史仓库脉络中独立演进。
-- 本仓库更适合源码研究、静态分析、字段整理与逻辑补全。
+`Sesame-AG` 是一个以学习、研究、静态分析、代码整理和调试为主要目的的 Android 模块仓库。
+
+它不是单一上游仓库的线性延续，而是在 `XQuickEnergy`、`Sesame`、`Sesame-TK` 等公开维护线的基础上，结合当前仓库自己的结构调整、功能补全、调试能力和工程化改造，继续独立演进的分支。
+
+请先确认你已经接受 [LEGAL.md](LEGAL.md) 中的
+相关约束、风险与免责声明 [LEGAL.md](LEGAL.md)。
+
+当你下载、克隆、编译、安装、运行、修改、分发或以其他方式使用本项目时，即视为你已经阅读、理解并接受
 
 ---
 
 ## 研究参考与技术源流
 
 > [!NOTE]
-> 下面按时间先后顺序，只保留和当前仓库来源、位置直接相关的主干关系。
+> 下面只保留与当前仓库关系最直接的公开维护线索，用于帮助理解代码来源，不表示单一的法律继承关系。
 
 | 时期 | 代表仓库 | 与当前仓库的关系 |
 | --- | --- | --- |
-| 早期起点 | [yongjun925/autocollectenergy](https://github.com/yongjun925/autocollectenergy) | 属于更上游的历史根系。 |
-| `XQuickEnergy` 早期公开线 | [pansong291/XQuickEnergy](https://github.com/pansong291/XQuickEnergy) | 提供了最早一批公开实现思路。 |
-| `XQuickEnergy` 扩展线 | [constanline/XQuickEnergy](https://github.com/constanline/XQuickEnergy) | 是后续 `Sesame` 系列的重要工程前置。 |
-| `Sesame` 主续线 | [LazyImmortal/Sesame](https://github.com/LazyImmortal/Sesame) | 可视为公开续线中的关键节点。 |
-| `Sesame-TK` 阶段 | [TKaxv-7S/Sesame-TK](https://github.com/TKaxv-7S/Sesame-TK) | 在 `Sesame` 之后的接棒转折点； |
-| `Sesame-TK` 分叉传播线 | [Liujishou/Sesame-TK-Fork](https://github.com/Liujishou/Sesame-TK-Fork) -> [Fansirsqi/Sesame-TK](https://github.com/Fansirsqi/Sesame-TK) | 这是和当前仓库关系最近的一条 `Sesame-TK` 分叉传播线。 |
-| 后续自维护分支 | [Youyu-Github/Sesame-TK-Y](https://github.com/Youyu-Github/Sesame-TK-Y)、[iceshell/Sesame-TK3](https://github.com/iceshell/Sesame-TK3) | 提供了并行参考，但不是当前仓库唯一上游。 |
-| 当前仓库 | `Sesame-AG` | 不是单一仓库的线性继承，而是综合吸收 `constanline`、`LazyImmortal`、`TKaxv`、`Fansirsqi` 等多条公开实现思路后继续演进。 |
+| 早期起点 | [yongjun925/autocollectenergy](https://github.com/yongjun925/autocollectenergy) | 更上游的历史根系。 |
+| `XQuickEnergy` 公开线 | [pansong291/XQuickEnergy](https://github.com/pansong291/XQuickEnergy) | 早期公开实现思路的重要节点。 |
+| `XQuickEnergy` 扩展线 | [constanline/XQuickEnergy](https://github.com/constanline/XQuickEnergy) | 后续 `Sesame` 系列的重要工程前置。 |
+| `Sesame` 主续线 | [LazyImmortal/Sesame](https://github.com/LazyImmortal/Sesame) | 公开续线中的关键节点。 |
+| `Sesame-TK` 阶段 | [TKaxv-7S/Sesame-TK](https://github.com/TKaxv-7S/Sesame-TK) | `Sesame` 之后的重要接棒节点。 |
+| `Sesame-TK` 分叉传播线 | [Liujishou/Sesame-TK-Fork](https://github.com/Liujishou/Sesame-TK-Fork) / [Fansirsqi/Sesame-TK](https://github.com/Fansirsqi/Sesame-TK) | 与当前代码组织更接近的一条传播线。 |
+| 并行参考线 | [Youyu-Github/Sesame-TK-Y](https://github.com/Youyu-Github/Sesame-TK-Y) / [iceshell/Sesame-TK3](https://github.com/iceshell/Sesame-TK3) | 提供并行参考，但不是唯一上游。 |
+| 当前仓库 | `Sesame-AG` | 综合吸收多条公开实现思路后继续独立演进。 |
 
-### 一句话定位
-
-> [!TIP]
-> `Sesame-AG` 更适合被理解为：基于 `XQuickEnergy` 与 `Sesame / Sesame-TK` 多条公开维护线进行整理、迁移、重构后形成的独立分支；如果只看最接近当前代码组织方式的公开参考，优先级大致可理解为 `Fansirsqi / Youyu / LazyImmortal`，再往上追溯到 `TKaxv -> constanline -> pansong291`。
+如果你关注的是合规、许可证或附加限制，请不要只依据“历史源流”做判断，而应结合提交时期、来源仓库声明和当前仓库的 [LEGAL.md](LEGAL.md) 一并理解。
 
 ---
 
 ## 开源协议
-
-> [!IMPORTANT]
-> 本仓库的许可证文本以 [@LICENSE](./LICENSE) 为准；README 中的说明仅用于帮助理解历史来源、协议切换和项目附加约束，不能替代正式许可证文本。
-
-1. 本模块以开源形式发布，仅授予您为个人学习、研究目的而使用、修改及再发布源代码之权利。任何商业销售、收费分发、捆绑推广、增值服务或其他直接或间接盈利行为均被严格禁止。
-2. 若您并非以学习为目的，或已满足研究需求，您必须在下载或克隆本模块后 1 分钟内彻底删除本地及所有备份副本。任何超出该时限的继续存储、使用或传播均视为违反本免责声明。
 
 ### 协议说明
 
@@ -57,38 +54,11 @@
 | **2025 年 7 月 23 日** 起至 **2025 年 12 月 15 日** 之间的本仓库历史说明 | 仓库声明曾切换到 [WTFPL](https://www.wtfpl.net/)。 |
 | **2025 年 12 月 15 日** 起至当前 | 本仓库说明又切回 `GPLv3`，并继续附加“禁止商业用途、禁止二次修改后闭源发布”的项目约束。 |
 
-当前阅读本仓库时，可大致按以下原则理解：
+> [!IMPORTANT]
+> 本仓库的许可证文本以 [@LICENSE](./LICENSE) 为准；README 中的说明仅用于帮助理解历史来源、协议切换和项目附加约束，不能替代正式许可证文本。
 
-- **当前仓库现行说明**：按 `GPLv3` 理解。
-- **项目额外约束**：仓库声明继续强调“禁止商业用途、禁止二次修改后闭源发布”。
-- **历史混合代码的判断方式**：若涉及不同时期搬运或继承的代码，应优先按对应提交时期和来源仓库声明分别判断，而不要把整条历史链简单当成单一协议。
+### 相关文档
 
-### 闭源风险提示
+- [LEGAL.md](LEGAL.md)：许可、附加限制、风险提示与免责声明。
+- [CONTRIBUTING.md](CONTRIBUTING.md)：Issue / PR 规则与协作边界。
 
-> [!WARNING]
-> - 如果一个项目声称自己基于 `GPLv3` 代码继续开发，却长期只提供二进制、发布包或残缺源码，而把关键前端、界面层、业务层或集成层闭源处理，那么使用者很难确认其合规状态，也难以验证其中是否存在安全风险、后门、恶意统计、账号风控触发点或其他不可见逻辑。
-> - 出于许可证合规与自身安全考虑，**不建议优先使用闭源项目或“部分闭源”项目**；对于涉及账号、自动化、网络请求、设备权限的程序，优先选择源码完整、许可证清晰、可自行审计的实现更稳妥。
-> - 如需判断具体版本是否合规，请优先核对对应仓库声明、分发内容和 [@LICENSE](./LICENSE)，必要时再比对其是否实际提供了与发布版本相匹配的源码。
-
-### 严禁用途
-
-> [!CAUTION]
-> 严禁将本模块或其衍生版本用于以下场景：
-> - 攻击、渗透、破坏任何企业、组织或个人的系统、数据、服务。
-> - 干扰、篡改、绕过第三方软件或系统的安全机制。
-> - 任何违反中华人民共和国及使用者所在司法管辖区法律法规的行为。
-
-**违者自行承担全部法律责任，与本模块开发者无关。**
-
-本模块按“现状”提供，不作任何明示或默示保证，包括但不限于适销性、特定用途适用性、无病毒或无错误。因使用或无法使用本模块而导致的任何直接、间接、附带、特殊或后果性损害（含数据丢失、系统崩溃、设备损坏、账号封禁、商誉损失、法律追责等），开发者概不负责。若您未在前述 1 分钟内删除本模块，则视为自愿放弃向开发者追究任何赔偿之权利。
-
-本模块不会主动收集、上传或存储任何个人信息。如您在研究过程中自行输入敏感数据，请自行确保合规与安全。
-
-### 声明
-
-1. 请您在下载、克隆、编译或运行本模块前务必阅读上述条款。一旦您实施相关行为，即视为完全理解并接受本免责声明与声明的全部内容；如不同意，请立即停止使用并删除所有副本。
-2. 禁止以技术支持为由倒卖本模块以及下属分支，违者必究。
-3. 本 APP 不篡改、不修改、不主动获取任何个人信息及其目标应用信息。
-4. 本 APP 使用者因违反本声明而触犯中华人民共和国法律的，一切后果自负，作者不承担任何责任。
-5. 凡以任何方式直接、间接使用本 APP 者，均视为自愿接受本声明的约束。
-6. 本 APP 如无意中侵犯了某个媒体或个人的知识产权，请来信或来电告知，作者将立即删除。
