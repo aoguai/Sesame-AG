@@ -564,13 +564,21 @@ object AntFarmRpcCall {
     }
 
     @JvmStatic
-    fun useFarmFood(cookbookId: String?, cuisineId: String?): String {
-        return requestString(
-            "com.alipay.antfarm.useFarmFood",
-            ("[{\"cookbookId\":\"" + cookbookId + "\",\"cuisineId\":\"" + cuisineId
-                    + "\",\"requestType\":\"NORMAL\",\"sceneCode\":\"ANTFARM\",\"source\":\"chInfo_ch_appcenter__chsub_9patch\",\"useCuisine\":true,\"version\":\""
-                    + VERSION + "\"}]")
-        )
+    fun useFarmFood(cuisineList: JSONArray?): String {
+        try {
+            val args = JSONObject().apply {
+                put("cuisineList", cuisineList ?: JSONArray())
+                put("requestType", "NORMAL")
+                put("sceneCode", "ANTFARM")
+                put("canMock", true)
+                put("source", "chInfo_ch_appcenter__chsub_9patch")
+                put("version", VERSION)
+            }
+            val params = "[$args]"
+            return requestString("com.alipay.antfarm.useFarmFood", params)
+        } catch (_: JSONException) {
+            return ""
+        }
     }
 
     @JvmStatic

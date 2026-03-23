@@ -3175,46 +3175,103 @@ class AntFarm : ModelTask() {
     }
 
     /**
-     maxUsage 本次运行总计使用的美食数量。默认为美食种类数量，即每种尝试使用一个。
+     * 使用特殊美食 - 批量模式（支持连吃10个）
+     * @param cuisineList 待使用的美食列表
+     * @param maxUsage 本次运行总计使用的美食数量。-1 为尝试吃完传入列表中的指定数量。
      */
-    private fun useSpecialFood(cuisineList: JSONArray, maxUsage: Int = cuisineList.length()) {
+    internal fun useSpecialFood(cuisineList: JSONArray, maxUsage: Int = -1) {
         try {
-            var totalUsed = 0
-            val counts = IntArray(cuisineList.length()) { i ->
-                cuisineList.getJSONObject(i).optInt("count", 0)
-            }
-            val totalFoodCount = counts.sum()
-            Log.record(TAG, "美食总量为:$totalFoodCount")
+            val foodList = mutableListOf<JSONObject>()
+            var totalInventory = 0 // 统计所有美食库存总和
+            var totalToEat = 0     // 本次任务待消耗的总量
 
-            while (totalUsed < maxUsage) {
-                var usedInThisRound = false
-                for (i in 0..<cuisineList.length()) {
-                    if (totalUsed >= maxUsage) break
+            for (i in 0 until cuisineList.length()) {
+                val item = cuisineList.getJSONObject(i)
 
-                    if (counts[i] <= 0) continue
-                    val jo = cuisineList.getJSONObject(i)
-                    val cookbookId = jo.getString("cookbookId")
-                    val cuisineId = jo.getString("cuisineId")
-                    val name = jo.getString("name")
+                val stock = if (item.has("stock")) item.getInt("stock") else item.optInt("count", 0)
+                totalInventory += stock
 
-                    val res = AntFarmRpcCall.useFarmFood(cookbookId, cuisineId)
-                    val joRes = JSONObject(res)
-
-                    if (ResChecker.checkRes(TAG, joRes)) {
-                        val deltaProduce = joRes.optJSONObject("foodEffect")?.optDouble("deltaProduce", 0.0) ?: 0.0
-                        Log.farm("使用美食🍱[$name]#加速${deltaProduce}颗爱心鸡蛋")
-                        counts[i]--
-                        totalUsed++
-                        usedInThisRound = true
-                        CoroutineUtils.sleepCompat(RandomUtil.nextInt(800, 1100).toLong())
-                    } else {
-                        counts[i] = 0
-                    }
+                val count = item.optInt("count", 0)
+                if (count > 0) {
+                    foodList.add(item)
+                    totalToEat += count
                 }
-                if (!usedInThisRound) break
+            }
+
+            Log.record(TAG, "美食处理：统计到美食库共有美食 $totalInventory 个")
+
+            // 2. 确定本次实际消耗量
+            var remainingToEat = if (maxUsage == -1) totalToEat else min(maxUsage, totalToEat)
+            if (remainingToEat <= 0) return
+
+            Log.record(TAG, "美食处理：待消耗总量 $remainingToEat")
+
+            while (remainingToEat > 0 && foodList.isNotEmpty()) {
+                val batchTarget = min(remainingToEat, 10) // 每次最多吃10个
+                val currentBatchArray = JSONArray()
+                val usedNames = StringBuilder()
+
+                // 2. 策略判断：优先查找是否有单种食物满足本次 Batch 数量
+                val singleFood = foodList.find { it.optInt("count", 0) >= batchTarget }
+
+                if (singleFood != null) {
+                    // 情况 A: 单种食物充足
+                    val countToUse = batchTarget
+                    val snack = JSONObject()
+                    snack.put("cookbookId", singleFood.getString("cookbookId"))
+                    snack.put("cuisineId", singleFood.getString("cuisineId"))
+                    snack.put("count", countToUse)
+                    snack.put("useCuisine", true)
+                    currentBatchArray.put(snack)
+
+                    usedNames.append(singleFood.getString("name")).append("x").append(countToUse)
+
+                    // 更新状态
+                    val newCount = singleFood.getInt("count") - countToUse
+                    if (newCount <= 0) foodList.remove(singleFood) else singleFood.put("count", newCount)
+                    remainingToEat -= countToUse
+                } else {
+                    // 情况 B: 单种不足，进行多种混搭凑够 batchTarget
+                    var currentBatchSum = 0
+                    val iterator = foodList.iterator()
+                    while (iterator.hasNext() && currentBatchSum < batchTarget) {
+                        val food = iterator.next()
+                        val canTake = min(batchTarget - currentBatchSum, food.getInt("count"))
+
+                        val snack = JSONObject()
+                        snack.put("cookbookId", food.getString("cookbookId"))
+                        snack.put("cuisineId", food.getString("cuisineId"))
+                        snack.put("count", canTake)
+                        snack.put("useCuisine", true)
+                        currentBatchArray.put(snack)
+
+                        if (usedNames.isNotEmpty()) usedNames.append(" + ")
+                        usedNames.append(food.getString("name")).append("x").append(canTake)
+
+                        currentBatchSum += canTake
+                        val left = food.getInt("count") - canTake
+                        if (left <= 0) iterator.remove() else food.put("count", left)
+                    }
+                    remainingToEat -= currentBatchSum
+                }
+
+                // 3. 发送网络请求
+                if (currentBatchArray.length() > 0) {
+                    val res = AntFarmRpcCall.useFarmFood(currentBatchArray)
+                    val joRes = JSONObject(res)
+                    if (ResChecker.checkRes(TAG, joRes)) {
+                        val delta = joRes.optJSONObject("foodEffect")?.optDouble("deltaProduce", 0.0) ?: 0.0
+                        val formattedDelta = "%.2f".format(java.util.Locale.US, delta)
+                        Log.farm("批量使用美食🍱[$usedNames]#加速${formattedDelta}颗爱心鸡蛋")
+                    } else {
+                        Log.record(TAG, "美食使用失败，停止后续操作: ${joRes.optString("memo")}")
+                        break
+                    }
+                    CoroutineUtils.sleepCompat(RandomUtil.nextInt(1000, 2000).toLong())
+                }
             }
         } catch (t: Throwable) {
-            Log.printStackTrace(TAG, "useSpecialFood err:", t)
+            Log.printStackTrace(TAG, "useSpecialFood 批量模式 err:", t)
         }
     }
 
@@ -4960,13 +5017,9 @@ class AntFarm : ModelTask() {
             Log.printStackTrace(TAG, "manualChouChouLeLogic 异常:", t)
         }
     }
-    /**
-     * 手动使用特殊美食
-     * @param count 期望使用的总数量（必须 > 0）
-     */
+
     fun manualUseSpecialFood(count: Int) {
         try {
-            // 1. 严格校验：如果数量 <= 0，则不执行任何逻辑
             if (count <= 0) {
                 Log.record(TAG, "⚠️ 手动使用特殊美食已拦截：必须指定大于0的使用次数")
                 return
@@ -4976,6 +5029,8 @@ class AntFarm : ModelTask() {
             val jo = enterFarm()
             if (jo != null) {
                 val cuisineList = jo.getJSONArray("cuisineList")
+                AntFarmRpcCall.queryLoveCabin(UserMap.currentUid)
+                syncAnimalStatus(ownerFarmId)
 
                 if (AnimalFeedStatus.SLEEPY.name == ownerAnimal.animalFeedStatus) {
                     Log.record(TAG, "❌ 小鸡正在睡觉，无法使用美食")
@@ -4984,7 +5039,7 @@ class AntFarm : ModelTask() {
                     Log.record(TAG, "✅ 手动使用特殊美食任务处理完毕")
                 }
             } else {
-                Log.record(TAG, "❌ 进入农场失败，无法执行任务")
+                Log.record(TAG, "❌ 进入庄园失败，无法执行任务")
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "manualUseSpecialFood 异常:", t)
