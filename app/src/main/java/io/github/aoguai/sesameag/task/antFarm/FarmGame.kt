@@ -28,6 +28,11 @@ object FarmGame {
      * 外部入口：处理游戏改分逻辑
      */
     suspend fun run(antFarm: AntFarm) {
+        if (Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)) {
+            Log.record("今日庄园游戏改分已完成")
+            return
+        }
+
         val isAccelEnabled = antFarm.useAccelerateTool!!.value
         val isAccelLimitReached = Status.hasFlagToday(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT) || !Status.canUseAccelerateTool()
         val isInsideTimeRange = antFarm.farmGameTime!!.value?.any { TimeUtil.checkNowInTimeRange(it) }
@@ -36,8 +41,12 @@ object FarmGame {
         when {
             ignoreAcceLimitMode -> {
                 if (isInsideTimeRange == true) {
-                    antFarm.receiveFarmAwards()
+                    if (Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)) {
+                        antFarm.receiveFarmAwards()
+                    }
                     playAllFarmGames()
+                } else {
+                    Log.record("当前处于按时游戏改分模式，未到设定时间，跳过")
                 }
             }
             isAccelLimitReached || antFarm.accelerateToolCount <= 0 -> {
@@ -174,9 +183,11 @@ object FarmGame {
         for (i in 0 until farmTaskList.length()) {
             val task = farmTaskList.getJSONObject(i)
             val status = task.optString("taskStatus")
+            val taskId = task.optString("taskId")
+            val awardType = task.optString("awardType")
             if (TaskStatus.RECEIVED.name == status) continue
             if (TaskStatus.FINISHED.name == status) {
-                AntFarmRpcCall.receiveFarmTaskAward(task.optString("taskId"))
+                AntFarmRpcCall.receiveFarmTaskAward(taskId, awardType)
                 return true
             }
             if (TaskStatus.TODO.name == status) {

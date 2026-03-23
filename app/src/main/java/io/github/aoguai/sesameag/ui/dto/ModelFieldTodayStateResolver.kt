@@ -109,6 +109,19 @@ object ModelFieldTodayStateResolver {
             "AntStall.stallThrowManure" ->
                 flag(StatusFlags.FLAG_ANTSTALL_THROW_MANURE_LIMIT, "今日丢肥料已达上限")
 
+            "AntFarm.doFarmTask",
+            "AntFarm.doFarmTaskTime" ->
+                flag(StatusFlags.FLAG_FARM_TASK_FINISHED, "今日饲料任务已处理")
+
+            "AntFarm.useAccelerateTool",
+            "AntFarm.useAccelerateToolContinue",
+            "AntFarm.remainingTime",
+            "AntFarm.useAccelerateToolWhenMaxEmotion" ->
+                flag(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT, "今日加速卡已达上限")
+
+            "AntFarm.signRegardless" ->
+                flag(StatusFlags.FLAG_FARM_SIGNED, "今日庄园签到已处理")
+
             else -> ModelFieldTodayState()
         }
     }

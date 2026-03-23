@@ -807,18 +807,6 @@ class AntFarm : ModelTask() {
                 Log.farm("今日捐蛋完成")
             }
 
-            // 做饲料任务
-            if (doFarmTask?.value == true) {
-                // 检查是否到达执行时间
-                if (TaskTimeChecker.isTimeReached(doFarmTaskTime?.value, "0830")) {
-                    doFarmTasks()
-                    tc.countDebug("饲料任务")
-                    Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)
-                } else {
-                    Log.record(TAG, "饲料任务未到执行时间，跳过")
-                }
-            }
-
             // 收取饲料奖励（无时间限制）
             if (receiveFarmTaskAward?.value == true) {
                 receiveFarmAwards()
