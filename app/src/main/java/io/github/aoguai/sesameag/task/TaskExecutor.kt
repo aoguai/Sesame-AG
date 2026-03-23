@@ -3,6 +3,7 @@ package io.github.aoguai.sesameag.util
 import io.github.aoguai.sesameag.hook.ApplicationHook
 import io.github.aoguai.sesameag.hook.internal.AlipayMiniMarkHelper
 import io.github.aoguai.sesameag.hook.internal.AuthCodeHelper
+import kotlinx.coroutines.delay
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -18,11 +19,11 @@ enum class GameTask(
     val version: String,
     val requestsPerEgg: Int //完成1个🥚要多少次 为了防止网络崩溃 多加1次
 ) {
-    Orchard_ncscc("农场上车车", "2060170000356601", "zfb_ncscc", "ncscc_game_kaiche_every_10", "nongchangleyuan", "1.0.2", 2),
-    Farm_ddply("对对碰乐园", "2021004149679303", "zfb_ddply", "ddply_game_xiaochu_every_5", "zhuangyuan", "1.0.14", 2),
+    Orchard_ncscc("农场乐园:农场上车车", "2060170000356601", "zfb_ncscc", "ncscc_game_kaiche_every_10", "nongchangleyuan", "1.0.2", 2),
+    Farm_ddply("庄园乐园:对对碰乐园", "2021004149679303", "zfb_ddply", "ddply_game_xiaochu_every_5", "zhuangyuan", "1.0.14", 4),
 
-    Forest_slxcc("森林小车车","2060170000363691","zfb_slxcc","slxcc_game_kaiche_every_10","lianyun_senlin_leyuan","1.0.1",3),
-    Forest_sljyd("森林救援队(能量雨)", "2021005113684028", "zfb_sljydx", "sljyd_game_xiaochu_every_10", "lianyun_senlin_leyuan", "1.0.1", 3);
+    Forest_slxcc("森林乐园:森林小车车","2060170000363691","zfb_slxcc","slxcc_game_kaiche_every_10","lianyun_senlin_leyuan","1.0.1",3),
+    Forest_sljyd("森林乐园:森林救援队(能量雨)", "2021005113684028", "zfb_sljydx", "sljyd_game_xiaochu_every_10", "lianyun_senlin_leyuan", "1.0.1", 3);
 
     private var cachedToken: String? = null
 
@@ -64,7 +65,7 @@ enum class GameTask(
                // Log.record(title, "❌ 登录接口报错 (Code $respCode): $responseText")
                 null
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             //Log.record(title, "🚨 登录过程抛出异常: ${e.message}")
             null
         }
@@ -73,29 +74,25 @@ enum class GameTask(
     /**
      * 外部调用：执行上报任务
      */
-    fun report(eggCount: Int) {
-        val totalNeeded = eggCount * (requestsPerEgg+1)//正常不需要加1，多1次确保网络请求不会错误
-        Thread {
-            cachedToken = login()
-            if (cachedToken.isNullOrEmpty()) {
-                Log.record(title, "⚠️ 无法获取有效的 Token，放弃上报任务")
-                return@Thread
-            }
+    suspend fun report(eggCount: Int) {
+        val totalNeeded = (eggCount * requestsPerEgg) + 1 //正常不需要加1，多1次确保网络请求不会错误
 
-            //Log.record(title, "🚀 开始执行任务：目标 $eggCount 个蛋，需请求 $totalNeeded 次")
-            for (i in 1..totalNeeded) {
-                if (Thread.currentThread().isInterrupted) break
-                // 执行单次上报
-                if (!executeSingleReport(i, totalNeeded)) {
-                    // 具体的错误原因已在 executeSingleReport 中详细输出
-                    break
-                }
-                if (i < totalNeeded) {
-                    GlobalThreadPools.sleepCompat((1000..3000).random().toLong())
-                }
+        cachedToken = login()
+        if (cachedToken.isNullOrEmpty()) {
+            Log.record(title, "⚠️ 无法获取有效的 Token，放弃上报任务")
+            return
+        }
+
+        //Log.record(title, "🚀 开始执行任务：目标 $eggCount 个蛋，需请求 $totalNeeded 次")
+        for (i in 1..totalNeeded) {
+            // 执行单次上报
+            if (!executeSingleReport(i, totalNeeded)) {
+                // 具体的错误原因已在 executeSingleReport 中详细输出
+                break
             }
-            //Log.record(title, "🏁 任务流程运行结束")
-        }.start()
+            if (i < totalNeeded) delay((1000..3000).random().toLong())
+        }
+        //Log.record(title, "🏁 任务流程运行结束")
     }
 
     private fun executeSingleReport(current: Int, total: Int): Boolean {
@@ -126,14 +123,14 @@ enum class GameTask(
 
             val resJson = JSONObject(responseText)
             if (resJson.optInt("code") == 1) {
-                if (current % requestsPerEgg == 0) Log.other(title, "📈 进度: $current/$total (已达成 ${current/requestsPerEgg} 个蛋)")
+                if (current % requestsPerEgg == 0) Log.record(title, "📈 进度: $current/${total - 1} (已达成 ${current/requestsPerEgg} 个蛋)")
                 true
             } else {
                 // 💡 修正：这里会直接打印出服务器返回的完整错误 JSON，比如 {"code":0,"msg":"token invalid"...}
                 //Log.error(title, "⚠️ 第 $current 次上报业务失败 (HTTP $respCode): $responseText")
                 false
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
            // Log.e(title, "🚨 第 $current 次请求发生网络崩溃:",e)
             false
         }
@@ -145,4 +142,3 @@ enum class GameTask(
         return "$systemUa NebulaSDK/1.8.100112 Nebula AliApp(AP/$alipayVer) AlipayClient/$alipayVer"
     }
 }
-

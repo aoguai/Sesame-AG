@@ -32,10 +32,10 @@ import io.github.aoguai.sesameag.task.ModelTask
 import io.github.aoguai.sesameag.task.TaskStatus
 import io.github.aoguai.sesameag.task.antFarm.AntFarmFamily.familyClaimRewardList
 import io.github.aoguai.sesameag.task.antFarm.AntFarmFamily.familySign
+import io.github.aoguai.sesameag.task.antFarm.FarmGame.drawGameCenterAward
 import io.github.aoguai.sesameag.task.antForest.TaskTimeChecker
 import io.github.aoguai.sesameag.util.CoroutineUtils
 import io.github.aoguai.sesameag.util.DataStore
-import io.github.aoguai.sesameag.util.GameTask
 import io.github.aoguai.sesameag.util.JsonUtil
 import io.github.aoguai.sesameag.util.ListUtil
 import io.github.aoguai.sesameag.util.Log
@@ -59,6 +59,7 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.Objects
 import java.util.Random
+import kotlin.dec
 import kotlin.math.min
 
 @Suppress("unused", "EnumEntryName", "EnumEntryName", "EnumEntryName", "EnumEntryName")
@@ -182,12 +183,12 @@ class AntFarm : ModelTask() {
      * 游戏改分
      */
     internal var recordFarmGame: BooleanModelField? = null
-    private var gameRewardMax: IntegerModelField? = null
+    internal var gameRewardMax: IntegerModelField? = null
 
     /**
      * 小鸡游戏时间
      */
-    private var farmGameTime: ListJoinCommaToStringModelField? = null
+    internal var farmGameTime: ListJoinCommaToStringModelField? = null
 
     /**
      * 小鸡厨房
@@ -206,7 +207,7 @@ class AntFarm : ModelTask() {
     /**
      * 饲料任务
      */
-    private var doFarmTask: BooleanModelField? = null // 做饲料任务
+    internal var doFarmTask: BooleanModelField? = null // 做饲料任务
     private var doFarmTaskTime: StringModelField? = null // 饲料任务执行时间
 
     // 签到
@@ -216,7 +217,7 @@ class AntFarm : ModelTask() {
      * 收取饲料奖励（无时间限制）
      */
     private var receiveFarmTaskAward: BooleanModelField? = null
-    private var useAccelerateTool: BooleanModelField? = null
+    internal var useAccelerateTool: BooleanModelField? = null
     internal var ignoreAcceLimit: BooleanModelField? = null
     private var useBigEaterTool: BooleanModelField? = null // ✅ 新增加饭卡
     private var useAccelerateToolContinue: BooleanModelField? = null
@@ -737,12 +738,12 @@ class AntFarm : ModelTask() {
              */
             if (doFarmTask?.value == true) {
                 // 这里设置判断，如果当日完成过一次饲料任务了，就不会在这个位置再进行饲料任务了。
-                if(!Status.hasFlagToday("farm::farmTaskFinished")) {
+                if(!Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)) {
                     // 检查是否到达执行时间
                     if (TaskTimeChecker.isTimeReached(doFarmTaskTime?.value, "0830")) {
                         doFarmTasks()
                         tc.countDebug("饲料任务")
-                        Status.setFlagToday("farm::farmTaskFinished")
+                        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)
                     } else {
                         Log.record(TAG, "饲料任务未到执行时间，跳过")
                     }
@@ -766,7 +767,9 @@ class AntFarm : ModelTask() {
             }
             if (recordFarmGame?.value == true) {
                 tc.countDebug("游戏改分(星星球、登山赛、飞行赛、揍小鸡)")
-                handleFarmGameLogic()
+                if(!Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)) {
+                    FarmGame.run(this@AntFarm)
+                }
             }
 
             // 小鸡日记和贴贴
@@ -810,7 +813,7 @@ class AntFarm : ModelTask() {
                 if (TaskTimeChecker.isTimeReached(doFarmTaskTime?.value, "0830")) {
                     doFarmTasks()
                     tc.countDebug("饲料任务")
-                    Status.setFlagToday("farm::farmTaskFinished")
+                    Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)
                 } else {
                     Log.record(TAG, "饲料任务未到执行时间，跳过")
                 }
@@ -1325,7 +1328,7 @@ class AntFarm : ModelTask() {
             Log.record(
                 TAG,
                 "加速卡判断⏩[动物状态=" + toFeedStatusName(ownerAnimal.animalFeedStatus) +
-                        ", 今日封顶=" + Status.hasFlagToday("farm::accelerateLimit") + "]"
+                        ", 今日封顶=" + Status.hasFlagToday(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT) + "]"
             )
             val accelerated = useAccelerateTool()
             if (accelerated) {
@@ -1338,7 +1341,7 @@ class AntFarm : ModelTask() {
         // 在蹲点喂食逻辑中判断是否需要执行游戏改分及抽抽乐
         if (isChildTask) {
             if (recordFarmGame?.value == true) {
-                handleFarmGameLogic()
+                FarmGame.run(this@AntFarm)
             }
             if (enableChouchoule?.value == true) {
                 ChouChouLe().run(this@AntFarm)
@@ -1971,191 +1974,6 @@ class AntFarm : ModelTask() {
         }
     }
 
-
-    /**
-     * 庄园游戏改分逻辑
-     */
-    private suspend fun recordFarmGame(gameType: GameType) {
-        try {
-            while (!Thread.currentThread().isInterrupted) {
-                val initRes = AntFarmRpcCall.initFarmGame(gameType.name)
-                val joInit = JSONObject(initRes)
-                if (!ResChecker.checkRes(TAG, joInit)) break
-
-                val gameAward = joInit.optJSONObject("gameAward")
-                if (gameAward?.optBoolean("level3Get") == true) {
-                    Log.record(TAG, "庄园游戏🎮[${gameType.gameName()}]#今日奖励已领满")
-                    break
-                }
-
-                val remainingCount = joInit.optInt("remainingGameCount", 1)
-                if (remainingCount > 0) {
-                    val recordResult = AntFarmRpcCall.recordFarmGame(gameType.name)
-                    val joRecord = JSONObject(recordResult)
-                    if (ResChecker.checkRes(TAG, joRecord)) {
-                        val awardStr = parseGameAward(joRecord)
-                        Log.farm("庄园游戏🎮[${gameType.gameName()}]#$awardStr")
-
-                        if (joRecord.optInt("remainingGameCount", 0) > 0) {
-                            delay(3000)
-                            continue
-                        }
-                    } else {
-                        Log.record(TAG, "庄园游戏提交失败: $joRecord")
-                    }
-                }
-
-                // 次数用完后，尝试获取额外任务机会
-                if (handleGameTasks(gameType)) {
-                    delay(3000)
-                    continue // 任务处理成功（如领完奖励或做完任务），重新进入初始化检查次数
-                }
-
-                break
-            }
-        } catch (e: CancellationException) {
-            // 协程取消异常必须重新抛出，不能吞掉
-             Log.record(TAG, "recordFarmGame 协程被取消")
-            throw e
-        } catch (t: Throwable) {
-            Log.printStackTrace(TAG, "recordFarmGame err:",t)
-        }
-    }
-
-    /**
-     解析游戏奖励信息
-     */
-    private fun parseGameAward(jo: JSONObject): String {
-        val award = StringBuilder()
-        val awardInfos = jo.optJSONArray("awardInfos")
-        if (awardInfos != null) {
-            for (i in 0 until awardInfos.length()) {
-                val info = awardInfos.getJSONObject(i)
-                if (award.isNotEmpty()) award.append(",")
-                award.append(info.optString("awardName")).append("*").append(info.optInt("awardCount"))
-            }
-        }
-        // 统一处理饲料奖励
-        val foodCount = jo.optString("receiveFoodCount", "")
-        if (foodCount.isNotEmpty()) {
-            if (award.isNotEmpty()) award.append(";")
-            award.append("饲料*").append(foodCount)
-        }
-        return award.toString()
-    }
-
-    /**
-     * 处理飞行赛和揍小鸡的额外次数任务
-     */
-    private fun handleGameTasks(gameType: GameType): Boolean {
-        // 仅飞行赛和揍小鸡有独立任务列表
-        val listResponse = when (gameType) {
-            GameType.flyGame -> AntFarmRpcCall.FlyGameListFarmTask()
-            GameType.hitGame -> AntFarmRpcCall.HitGameListFarmTask()
-            else -> return false
-        }
-
-        if (listResponse.isNullOrEmpty()) return false
-        val taskJo = JSONObject(listResponse)
-        val farmTaskList = taskJo.optJSONArray("farmTaskList") ?: return false
-
-        for (i in 0 until farmTaskList.length()) {
-            val task = farmTaskList.getJSONObject(i)
-            val taskStatus = task.optString("taskStatus")
-            val taskId = task.optString("taskId")
-            val bizKey = task.optString("bizKey")
-            val awardType = task.optString("awardType")
-
-            if (TaskStatus.RECEIVED.name == taskStatus) continue
-
-            if (TaskStatus.FINISHED.name == taskStatus) {
-                AntFarmRpcCall.receiveFarmTaskAward(taskId, awardType)
-                return true
-            }
-
-            if (TaskStatus.TODO.name == taskStatus) {
-                val outBizNo = "${bizKey}_${System.currentTimeMillis()}_${Integer.toHexString((Math.random() * 0xFFFFFF).toInt())}"
-                AntFarmRpcCall.finishTask(bizKey, "ANTFARM_GAME_TIMES_TASK", outBizNo)
-                return true
-            }
-        }
-        return false
-    }
-
-    // 庄园游戏
-    private suspend fun playAllFarmGames() {
-        recordFarmGame(GameType.flyGame)
-        recordFarmGame(GameType.hitGame)
-        recordFarmGame(GameType.starGame)
-        recordFarmGame(GameType.jumpGame)
-        Status.setFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)
-        Log.farm("今日庄园游戏改分已完成")
-    }
-    private suspend fun handleFarmGameLogic() {
-        // 1. 检查游戏改分是否已完成
-        if (Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)) {
-            Log.record("今日庄园游戏改分已完成")
-            return
-        }
-        val isAccelEnabled = useAccelerateTool?.value == true
-        val isAccelLimitReached = Status.hasFlagToday("farm::accelerateLimit") || !Status.canUseAccelerateTool()
-        val isInsideTimeRange =
-            (farmGameTime?.value ?: emptyList()).any { TimeUtil.checkNowInTimeRange(it) }
-        val ignoreAcceLimitMode = !isAccelEnabled || ignoreAcceLimit?.value == true
-        val gameRewardMaxValue = gameRewardMax?.value ?: gameRewardMax?.defaultValue ?: 0
-
-        when {
-            // 未启用加速卡或选择按时间进行游戏改分和抽抽乐，且处于用户设定的时间段内
-            ignoreAcceLimitMode -> {
-                if (isInsideTimeRange) {
-                    if (Status.hasFlagToday("farm::farmTaskFinished")){
-                        receiveFarmAwards()
-                    }
-                    playAllFarmGames()
-                } else {
-                    Log.record("当前处于按时游戏改分模式，未到设定时间，跳过")
-                }
-            }
-
-            // 开启了使用加速卡，且加速卡已达上限或没有加速卡
-            isAccelEnabled && (isAccelLimitReached || accelerateToolCount <= 0) -> {
-                syncAnimalStatus(ownerFarmId)
-                // 饲料缺口在gameRewardMax以上时先领饲料
-                val foodStockThreshold = foodStockLimit - gameRewardMaxValue
-                if (foodStock < foodStockThreshold) {
-                    receiveFarmAwards()
-                }
-                val isSatisfied = foodStock >= foodStockThreshold
-                val isTaskEnabled = doFarmTask?.value == true
-                val isTaskFinished = Status.hasFlagToday("farm::farmTaskFinished")
-
-                when {
-                    isSatisfied -> playAllFarmGames()
-
-                    !isTaskEnabled -> {
-                        Log.record("未开启饲料任务，虽然尝试领取了奖励，但饲料缺口仍超过${gameRewardMaxValue}g，直接执行游戏")
-                        playAllFarmGames()
-                    }
-
-                    isTaskFinished -> {
-                        Log.record("已开启饲料任务且今日已完成，但领取奖励后缺口仍超过${gameRewardMaxValue}g，暂不执行游戏改分。" +
-                                "请确认饲料奖励完成情况，可以关闭设置里的“做饲料任务”选项直接进行游戏改分")
-                    }
-
-                    else -> {
-                        Log.record("已开启饲料任务但尚未完成，现有饲料缺口超过${gameRewardMaxValue}g，等待任务完成后再执行")
-                    }
-                }
-            }
-
-            // 加速卡还没用完，等待加速卡用完
-            isAccelEnabled && accelerateToolCount > 0 -> {
-                Log.record("加速卡有${accelerateToolCount}张，已使用${Status.INSTANCE.useAccelerateToolCount}张，" +
-                        "尚未达到今日使用上限，等待加速完成后再改分")
-            }
-        }
-    }
-
     /**
      * 庄园任务，目前支持i
      * 视频，杂货铺，抽抽乐，家庭，618会场，芭芭农场，小鸡厨房
@@ -2276,7 +2094,7 @@ class AntFarm : ModelTask() {
         }
     }
 
-    private suspend fun receiveFarmAwards() {
+    internal suspend fun receiveFarmAwards() {
         try {
             var doubleCheck: Boolean
             var isFeedFull = false // 添加饲料槽已满的标志
@@ -2284,7 +2102,7 @@ class AntFarm : ModelTask() {
                 doubleCheck = false
                 val response = AntFarmRpcCall.listFarmTask()
                 // 检查空响应
-                if (response.isNullOrEmpty()) {
+                if (response.isEmpty()) {
                     Log.record(TAG, "receiveFarmAwards: 收到空响应，跳过本次执行")
                     return
                 }
@@ -2292,13 +2110,10 @@ class AntFarm : ModelTask() {
                 if (ResChecker.checkRes(TAG + "查询庄园任务失败:", jo)) {
                     val farmTaskList = jo.getJSONArray("farmTaskList")
                     val signList = jo.getJSONObject("signList")
-                    val needFarmGame = recordFarmGame?.value == true &&
-                        !Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)
-                    val gameRewardMaxValue = gameRewardMax?.value ?: gameRewardMax?.defaultValue ?: 0
-                    val ignoreAcceLimitEnabled = ignoreAcceLimit?.value == true
+                    val needFarmGame = recordFarmGame!!.value == true && !Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)
 
                     // 庄园签到逻辑
-                    if (!Status.hasFlagToday("farm::signed")) {
+                    if (!Status.hasFlagToday(StatusFlags.FLAG_FARM_SIGNED)) {
                         syncAnimalStatus(ownerFarmId)
                         val timeReached = TimeUtil.isNowAfterOrCompareTimeStr("1400")
                         val foodSpace = foodStockLimit - foodStock
@@ -2317,92 +2132,129 @@ class AntFarm : ModelTask() {
                             }
                         } catch (_: Exception) { }
 
-                        val haveEnoughSpace = if (needFarmGame) foodSpace > gameRewardMaxValue else foodSpace >= awardCount
-                        val shouldSign = signRegardless?.value == true || timeReached || haveEnoughSpace
+                        val haveEnoughSpace = if (needFarmGame) foodSpace > gameRewardMax!!.value!! else foodSpace >= awardCount
+                        val shouldSign = signRegardless!!.value == true || timeReached || haveEnoughSpace
 
                         if (shouldSign) {
                             if (farmSign(signList) && foodSpace < awardCount) {
-                                Log.farm("签到实际获得饲料: ${foodSpace}g (因饲料空间不足)")
+                                Log.farm("签到实际获得饲料\uD83C\uDF6A: ${foodSpace}g (因饲料空间不足)")
                             }
                         }  else {
                             val msg = if (needFarmGame) "预留游戏改分的饲料空间，庄园暂不执行签到" else "饲料空间不足${awardCount}g，庄园暂不签到"
                             Log.record(TAG, "${msg}。14点后会强制签到；如已签到请忽略")
                         }
                     }
+
+                    val unreceivedTasks = mutableListOf<JSONObject>()
                     for (i in 0..<farmTaskList.length()) {
                         // 如果饲料槽已满，跳过后续任务的领取
                         val task = farmTaskList.getJSONObject(i)
                         val taskStatus = task.getString("taskStatus")
-                        val taskTitle = task.optString("title", "未知任务")
-                        val awardCount = task.optInt("awardCount", 0)
-                        val taskId = task.optString("taskId")
-                        val awardType = task.optString("awardType")
-
                         if (TaskStatus.FINISHED.name == taskStatus) {
-                            // 领取前先同步一次食槽状态，避免边界误差
-                            syncAnimalStatus(ownerFarmId)
-
-                            val foodStockAfter = foodStock + awardCount
-                            val isNight = TimeUtil.isNowAfterOrCompareTimeStr("2000")
-                            val foodStockLeft = foodStockLimit - foodStock
                             if ("ALLPURPOSE" == task.optString("awardType")) {
-                                /* 领取饲料前，当现有饲料>=上限时（实时只可能等于，不需要用大于等于的判断），或者在晚上20点前领取饲料后使饲料超过上限，则不领取饲料，
-                                    直接break方法。但是如果时间在20点后，这时饲料没满，比如差80g满，这时候领取90g的任务奖励虽然会超过饲料上限，但还是依然领取
-                                    饲料，这样能保证饲料第二天是满的开局。如果需要赠送饲料或厨房等会使饲料不是以90/180g减少的操作，应该不会有人在20点后还没有
-                                    完成吧？同时也避免了原逻辑的饲料差90g以内后总是领不满的问题。
-                                 */
-                                if (foodStock >= foodStockLimit) {
-                                    Log.record(TAG, "饲料[已满],暂不领取")
-                                    unreceiveTaskAward++
-                                    isFeedFull = true
+                                unreceivedTasks.add(task)
+                            }
+                        }
+                    }
+
+                    // 领取前先同步一次食槽状态，避免边界误差
+                    syncAnimalStatus(ownerFarmId)
+                    val currentFoodStockLeft = foodStockLimit - foodStock
+                    val isAscending = currentFoodStockLeft < 90
+                    if (isAscending) {
+                        unreceivedTasks.sortBy { it.optInt("awardCount", 0) }
+                    } else {
+                        unreceivedTasks.sortByDescending { it.optInt("awardCount", 0) }
+                    }
+
+                    var lastSkippedAwardCount = -1
+                    for (i in unreceivedTasks.indices) {
+                        val task = unreceivedTasks[i]
+                        val awardCount = task.optInt("awardCount", 0)
+                        val taskTitle = task.optString("title", "未知任务")
+                        val taskId = task.optString("taskId")
+
+                        val isNight = TimeUtil.isNowAfterOrCompareTimeStr("2000")
+                        val foodStockLeft = foodStockLimit - foodStock
+                        if (foodStock >= foodStockLimit) {
+                            Log.record(TAG, "饲料[已满],暂不领取")
+                            unreceiveTaskAward += (unreceivedTasks.size - i)
+                            isFeedFull = true
+                            break
+                        }
+
+                        if (!ignoreAcceLimit!!.value!! && (needFarmGame && foodStock >= (foodStockLimit - gameRewardMax!!.value!!))) {
+                            Log.record("当日游戏改分未完成，预留最多${gameRewardMax!!.value}饲料空间，现有饲料${foodStock}g，需再消耗${gameRewardMax!!.value!! -(foodStockLimit-foodStock)}g")
+                            unreceiveTaskAward += (unreceivedTasks.size - i)
+                            isFeedFull = true
+                            break
+                        }
+
+                        if (awardCount > foodStockLeft) {
+                            if (awardCount < 90) {
+                                // A: 奖励较小(<90g)，允许溢出领取，确保不漏掉小额饲料
+                                Log.record(TAG, "任务[$taskTitle]奖励 ${awardCount}g 虽超出上限，但奖励较小(<90g)，直接领取")
+                            } else if (!isNight) {
+                                // B: 20点前，大额奖励(>=90g)若超出会造成较大浪费
+                                if (awardCount != lastSkippedAwardCount) {
+                                    Log.record(TAG, "任务[$taskTitle]奖励 ${awardCount}g 会超出，跳过以寻找后续更小奖励...")
+                                    lastSkippedAwardCount = awardCount
+                                }
+                                unreceiveTaskAward++
+                                if (isAscending) {
+                                    Log.record(TAG, "已按从小到大排序，后续奖励均不满足，停止寻找。")
+                                    unreceiveTaskAward += (unreceivedTasks.size - i - 1)
                                     break
                                 }
-                                // 针对连续使用加速卡时的领取饲料逻辑，留gameRewardMax以内（含）的空间。(同时确认开启游戏改分)
-                                if (!ignoreAcceLimitEnabled && needFarmGame && (foodStock >= (foodStockLimit - gameRewardMaxValue))) {
-                                    unreceiveTaskAward++
-                                    Log.record("当日游戏改分未完成，预留最多${gameRewardMaxValue}饲料空间，现有饲料${foodStock}g")
-                                    isFeedFull = true
-                                    break
+                                continue
+                            } else {
+                                // C: 20点后，为了保底，除非空间极小且后面有小任务，否则直接溢出领取
+                                val hasSmallerTask = if (isAscending) false else unreceivedTasks.any {
+                                    it.optInt("awardCount", 0) <= 90 && unreceivedTasks.indexOf(it) > i
                                 }
-                                if (awardCount > foodStockLeft) {
-                                    if (!isNight) {
-                                        // 20点前，为了不浪费，跳过当前奖励。
-                                        if (awardCount > 90 && foodStockLeft >= 90) {
-                                            unreceiveTaskAward++
-                                            continue
-                                        }
-                                        Log.record(TAG, "领取任务：${taskTitle} 的饲料奖励 ${awardCount}g后将超过[${foodStockLimit}g]上限!终止领取。现有饲料${foodStock}g")
-                                        unreceiveTaskAward++
-                                        isFeedFull = true
-                                        break
-                                    } else {
-                                        Log.record("20点后领取任务：${taskTitle} 的饲料奖励 ${awardCount}g后饲料将超过上限，现有饲料${foodStock}g，溢出${awardCount - foodStockLeft}g")
+                                if (awardCount > 90 && foodStockLeft <= 90 && hasSmallerTask) {
+                                    if (awardCount != lastSkippedAwardCount) {
+                                        Log.record(TAG, "20点后任务[$taskTitle]奖励 ${awardCount}g 会超出且有更小任务，尝试先领小的...")
+                                        lastSkippedAwardCount = awardCount
                                     }
+                                    unreceiveTaskAward++
+                                    continue
                                 }
+                                Log.record(TAG, "20点后领取任务：${taskTitle} 的奖励 ${awardCount}g，溢出 ${awardCount - foodStockLeft}g")
                             }
-                            val receiveTaskAwardjo = JSONObject(AntFarmRpcCall.receiveFarmTaskAward(taskId, awardType))
-                            if (ResChecker.checkRes(TAG + "领取庄园任务奖励失败:", receiveTaskAwardjo)) {
-                                add2FoodStock(awardCount)
-                                Log.farm("收取庄园任务奖励[$taskTitle] # ${awardCount}g (剩余容量: ${foodStockLimit - foodStock}g)")
-                                if(foodStockAfter >= foodStockLimit){
-                                    Log.farm("领取饲料后饲料[已满]" + foodStock + "g，停止后续领取")
-                                    isFeedFull = true
-                                    break
-                                }
+                        }
+
+
+                        val receiveTaskAwardjo = JSONObject(AntFarmRpcCall.receiveFarmTaskAward(taskId))
+                        if (ResChecker.checkRes(TAG + "领取庄园任务奖励失败:", receiveTaskAwardjo)) {
+                            add2FoodStock(awardCount)
+                            Log.farm("收取庄园任务奖励[$taskTitle]🍪${awardCount}g (剩余容量: ${foodStockLimit - foodStock}g)")
+                            val nextFoodStockLeft = foodStockLimit - foodStock
+                            if (nextFoodStockLeft <= 0) {
+                                Log.farm("领取饲料后饲料[已满]$foodStock g，停止后续领取")
+                                unreceiveTaskAward += (unreceivedTasks.size - i - 1)
+                                isFeedFull = true
+                                break
+                            }
+                            if (!isAscending && nextFoodStockLeft < 90) {
+                                Log.record(TAG, "剩余空间跌至 ${nextFoodStockLeft}g，切换为从小到大领取策略")
                                 doubleCheck = true
-                                if (unreceiveTaskAward > 0) unreceiveTaskAward--
+                                break
                             }
-                            else {
-                                // 捕获饲料槽已满（331），设置满槽标记并停止后续领取
-                                val resultCode = receiveTaskAwardjo.optString("resultCode", "")
-                                val memo = receiveTaskAwardjo.optString("memo", "")
-                                if ("331" == resultCode || memo.contains("饲料槽已满")) {
-                                    Log.record(TAG, "领取失败：饲料槽已满，停止后续领取")
-                                    isFeedFull = true
-                                    break
-                                } else {
-                                    Log.error(TAG, "领取庄园任务奖励失败：$receiveTaskAwardjo")
-                                }
+                            doubleCheck = true
+                            if (unreceiveTaskAward > 0) unreceiveTaskAward--
+                        }
+                        else {
+                            // 捕获饲料槽已满（331），设置满槽标记并停止后续领取
+                            val resultCode = receiveTaskAwardjo.optString("resultCode", "")
+                            val memo = receiveTaskAwardjo.optString("memo", "")
+                            if ("331" == resultCode || memo.contains("饲料槽已满")) {
+                                Log.record(TAG, "领取失败：饲料槽已满，停止后续领取")
+                                unreceiveTaskAward += (unreceivedTasks.size - i)
+                                isFeedFull = true
+                                break
+                            } else {
+                                Log.error(TAG, "领取庄园任务奖励失败：$receiveTaskAwardjo")
                             }
                         }
                         delay(1000)
@@ -2411,7 +2263,7 @@ class AntFarm : ModelTask() {
             } while (doubleCheck && !isFeedFull) // 如果饲料槽已满，不再进行双重检查
         } catch (e: CancellationException) {
             // 协程取消异常必须重新抛出，不能吞掉
-             Log.record(TAG, "receiveFarmAwards 协程被取消")
+            Log.record(TAG, "receiveFarmAwards 协程被取消")
             throw e
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "receiveFarmAwards 错误:", t)
@@ -2420,8 +2272,7 @@ class AntFarm : ModelTask() {
 
     private fun farmSign(signList: JSONObject): Boolean {
         try {
-            val flag = "farm::signed"
-            if (Status.hasFlagToday(flag)) return false
+            if (Status.hasFlagToday(StatusFlags.FLAG_FARM_SIGNED)) return false
             val jaFarmSignList = signList.getJSONArray("signList")?: return false
             val currentSignKey = signList.getString("currentSignKey")
             for (i in 0..<jaFarmSignList.length()) {
@@ -2435,7 +2286,7 @@ class AntFarm : ModelTask() {
                         val signResponse = AntFarmRpcCall.sign()
                         if (ResChecker.checkRes(TAG, signResponse)) {
                             Log.farm("庄园签到📅获得饲料${awardCount}g,签到天数${currentContinuousCount}")
-                            Status.setFlagToday(flag)
+                            Status.setFlagToday(StatusFlags.FLAG_FARM_SIGNED)
                             return true
                         } else {
                             Log.farm("签到失败")
@@ -2443,7 +2294,7 @@ class AntFarm : ModelTask() {
                         }
                     } else {
                         Log.record(TAG,"今日已经签到了")
-                        Status.setFlagToday(flag)
+                        Status.setFlagToday(StatusFlags.FLAG_FARM_SIGNED)
                         return false
                     }
                 }
@@ -2579,7 +2430,7 @@ class AntFarm : ModelTask() {
         return findFarmTool(toolType, forceRefresh)?.toolCount ?: 0
     }
 
-    private val accelerateToolCount: Int
+    internal val accelerateToolCount: Int
         get() = farmTools.find { it.toolType == ToolType.ACCELERATETOOL }?.toolCount ?: 0
 
     /**
@@ -2593,7 +2444,7 @@ class AntFarm : ModelTask() {
             return false
         }
         // 2) 业务上限：命中“今日已达加速上限”标记则直接返回
-        if (Status.hasFlagToday("farm::accelerateLimit")) {
+        if (Status.hasFlagToday(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT)) {
             return false
         }
         val continueMode = useAccelerateToolContinue?.value == true
@@ -2663,7 +2514,7 @@ class AntFarm : ModelTask() {
             // 检查本地计数器上限，防止无限使用
             if (!Status.canUseAccelerateTool()) {
                 Log.record(TAG, "加速卡内部⏩已达到本地使用上限(8次)，停止使用")
-                Status.setFlagToday("farm::accelerateLimit")
+                Status.setFlagToday(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT)
                 exitReason = "REACHED_LIMIT"
                 break
             }
@@ -2825,7 +2676,7 @@ class AntFarm : ModelTask() {
                     }
                 }
                 if (toolType == ToolType.ACCELERATETOOL && resultCode == "3D16") {
-                    Status.setFlagToday("farm::accelerateLimit")
+                    Status.setFlagToday(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT)
                 }
                 Log.record(memo.ifBlank { "使用道具🎭[${toolType.nickName()}]失败" })
                 Log.record(s)
@@ -4152,144 +4003,6 @@ class AntFarm : ModelTask() {
             Log.printStackTrace(TAG, "handleZhimaPigeonTasks err", e)
         }
     }
-
-    private suspend fun drawGameCenterAward() {
-        try {
-            runCatching {
-                val warmup = JSONObject(AntFarmRpcCall.refinedOperation("ENTERSELFWITHOUTPOP"))
-                if (!warmup.optBoolean("success", false) && warmup.optString("resultCode") != "100") {
-                    Log.record(TAG, "庄园游戏中心预热失败，继续尝试查询游戏列表")
-                }
-            }
-            val response = AntFarmRpcCall.queryGameList()
-            val responseJo = JSONObject(response)
-            val jo = responseJo.optJSONObject("resData") ?: responseJo
-
-            if (!jo.optBoolean("success", responseJo.optBoolean("success"))) {
-                Log.record(TAG, "queryGameList 失败: $responseJo")
-                return
-            }
-
-            val currentRights = findFirstObjectByKey(jo, "gameCenterDrawRights")
-                ?: findFirstObjectByKey(jo, "gameDrawAwardActivity")
-                ?: findFirstObjectByKey(jo, "gameEntryInfo")
-            if (currentRights != null) {
-
-                // 1. 处理当前可开的宝箱 (对应你说的 canUse)
-                var quotaCanUse = currentRights.optInt(
-                    "quotaCanUse",
-                    currentRights.optInt("canUseTimes", currentRights.optInt("drawRightsTimes", 0))
-                )
-                if (quotaCanUse > 0) {
-                    Log.record(TAG, "当前有 $quotaCanUse 个宝箱待开启...")
-                    while (quotaCanUse > 0) {
-                        val batchDrawCount = quotaCanUse.coerceAtMost(10)
-                        val drawResponse = JSONObject(AntFarmRpcCall.drawGameCenterAward(batchDrawCount))
-                        val drawRes = drawResponse.optJSONObject("resData") ?: drawResponse
-                        if (drawRes.optBoolean("success", drawResponse.optBoolean("success"))) {
-                            // 领取成功后，更新剩余可领取的 quotaCanUse
-                            val nextRights = findFirstObjectByKey(drawRes, "gameCenterDrawRights")
-                                ?: findFirstObjectByKey(drawRes, "gameDrawAwardActivity")
-                                ?: findFirstObjectByKey(drawRes, "gameEntryInfo")
-                            quotaCanUse = nextRights?.optInt(
-                                "quotaCanUse",
-                                nextRights.optInt(
-                                    "canUseTimes",
-                                    drawRes.optInt("drawRightsTimes", quotaCanUse - batchDrawCount)
-                                )
-                            ) ?: (quotaCanUse - batchDrawCount)
-
-                            val awardList = findFirstArrayByKey(drawRes, "gameCenterDrawAwardList")
-                                ?: findFirstArrayByKey(drawRes, "drawAwardList")
-                            val awardStrings = mutableListOf<String>()
-                            if (awardList != null) {
-                                for (i in 0 until awardList.length()) {
-                                    val item = awardList.getJSONObject(i)
-                                    awardStrings.add("${item.optString("awardName")}*${item.optInt("awardCount")}")
-                                }
-                            }
-                            Log.farm("庄园小鸡🎁[获得奖品: ${awardStrings.joinToString(",")}]")
-                            delay(3000)
-                        } else {
-                            val desc = drawRes.optString("desc")
-                                .ifBlank { drawRes.optString("resultDesc") }
-                                .ifBlank { drawResponse.optString("desc") }
-                            Log.record(TAG, "开启宝箱失败: $desc")
-                            break
-                        }
-                    }
-                }
-
-                // 2. 处理剩余任务 (判断是否需要去刷任务)
-                val limit = currentRights.optInt("quotaLimit", currentRights.optInt("limit")) // 总上限，比如 10
-                val used = currentRights.optInt("usedQuota", currentRights.optInt("usedTimes"))   // 今日已获得的总数，比如 2
-
-                // 计算逻辑：如果 已获得 < 总上限，且当前没机会了，就去刷
-                val remainToTask = limit - used
-                if (remainToTask > 0 && quotaCanUse == 0) {
-                   // Log.record(TAG, "宝箱进度: $used/$limit，开始自动刷任务补齐...")
-                    // 根据游戏类型选择上报任务
-                    GameTask.Farm_ddply.report(remainToTask)
-                } else if (remainToTask <= 0) {
-                   // Log.record(TAG, "今日 $limit 个金蛋任务已全部满额")
-                }
-            } else {
-                Log.record(TAG, "queryGameList 未找到开宝箱权益字段，跳过开宝箱流程")
-            }
-
-        } catch (e: CancellationException) {
-            throw e
-        } catch (t: Throwable) {
-            Log.printStackTrace(TAG, "drawGameCenterAward 流程异常", t)
-        }
-    }
-
-    private fun findFirstObjectByKey(source: Any?, targetKey: String): JSONObject? {
-        return when (source) {
-            is JSONObject -> {
-                source.optJSONObject(targetKey)?.let { return it }
-                val keys = source.keys()
-                while (keys.hasNext()) {
-                    val child = source.opt(keys.next())
-                    findFirstObjectByKey(child, targetKey)?.let { return it }
-                }
-                null
-            }
-
-            is JSONArray -> {
-                for (index in 0 until source.length()) {
-                    findFirstObjectByKey(source.opt(index), targetKey)?.let { return it }
-                }
-                null
-            }
-
-            else -> null
-        }
-    }
-
-    private fun findFirstArrayByKey(source: Any?, targetKey: String): JSONArray? {
-        return when (source) {
-            is JSONObject -> {
-                source.optJSONArray(targetKey)?.let { return it }
-                val keys = source.keys()
-                while (keys.hasNext()) {
-                    val child = source.opt(keys.next())
-                    findFirstArrayByKey(child, targetKey)?.let { return it }
-                }
-                null
-            }
-
-            is JSONArray -> {
-                for (index in 0 until source.length()) {
-                    findFirstArrayByKey(source.opt(index), targetKey)?.let { return it }
-                }
-                null
-            }
-
-            else -> null
-        }
-    }
-
     // 小鸡换装
     private fun listOrnaments() {
         try {
@@ -4568,21 +4281,6 @@ class AntFarm : ModelTask() {
             )
         }
     }
-
-    enum class GameType {
-        starGame, jumpGame, flyGame, hitGame;
-
-        fun gameName(): CharSequence? {
-            return gameNames[ordinal]
-        }
-
-        companion object {
-            val gameNames: Array<CharSequence?> =
-                arrayOf<CharSequence?>("星星球", "登山赛", "飞行赛", "欢乐揍小鸡")
-        }
-    }
-
-
     @JsonIgnoreProperties(ignoreUnknown = true)
     private class Animal {
         @JsonProperty("animalId")
@@ -5165,7 +4863,7 @@ class AntFarm : ModelTask() {
     }
 
     companion object {
-        private val TAG: String = AntFarm::class.java.getSimpleName()
+        internal val TAG: String = AntFarm::class.java.getSimpleName()
         private val objectMapper = ObjectMapper()
 
         @JvmField
@@ -5175,7 +4873,7 @@ class AntFarm : ModelTask() {
          * 小鸡饲料g
          */
         @JvmField
-        var foodStock: Int = 0
+        internal var foodStock: Int = 0
 
         @JvmField
         var foodStockLimit: Int = 0
@@ -5235,12 +4933,11 @@ class AntFarm : ModelTask() {
             if (enterFarm() != null) {
                 // 同步最新状态后执行原有逻辑
                 syncAnimalStatus(ownerFarmId)
-                val gameRewardMaxValue = gameRewardMax?.value ?: gameRewardMax?.defaultValue ?: 0
-                val foodStockThreshold = foodStockLimit - gameRewardMaxValue
+                val foodStockThreshold = foodStockLimit - (gameRewardMax?.value ?: 0)
                 if (foodStock < foodStockThreshold) {
                     receiveFarmAwards()
                 }
-                playAllFarmGames()
+                FarmGame.playAllFarmGames()
                 Log.record(TAG, "手动游戏改分任务处理完毕")
             }
         } catch (t: Throwable) {

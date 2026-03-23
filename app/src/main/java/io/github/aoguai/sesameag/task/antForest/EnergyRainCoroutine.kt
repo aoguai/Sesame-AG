@@ -267,7 +267,7 @@ object EnergyRainCoroutine {
      * @return Boolean 是否还有待处理的任务
      */
     @JvmStatic
-    private fun checkAndDoEndGameTask(): Boolean {
+    private suspend fun checkAndDoEndGameTask(): Boolean {
         try {
             // 1. 查询当前是否有可接或已接的游戏任务
             val response = AntForestRpcCall.queryEnergyRainEndGameList()
