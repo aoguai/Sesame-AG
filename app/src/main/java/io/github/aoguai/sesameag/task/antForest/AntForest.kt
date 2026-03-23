@@ -5562,7 +5562,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     }
 
 
-    fun doforestgame() {
+    suspend fun doforestgame() {
         try {
             val response = AntForestRpcCall.queryGameList()
             val jo = JSONObject(response)

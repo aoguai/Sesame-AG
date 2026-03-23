@@ -118,5 +118,14 @@ object StatusFlags {
 
     /** 今日改分/小游戏是否已完成 */
     const val FLAG_FARM_GAME_FINISHED = "antFarm::farmGameFinished"
+
+    /** 今日饲料任务是否已完成 */
+    const val FLAG_FARM_TASK_FINISHED = "antFarm::farmTaskFinished"
+
+    /** 庄园：加速卡每日次数上限标记 */
+    const val FLAG_FARM_ACCELERATE_LIMIT = "antFarm::accelerateLimit"
+
+    /** 庄园：今日是否已签到 */
+    const val FLAG_FARM_SIGNED = "antFarm::signed"
 }
 
