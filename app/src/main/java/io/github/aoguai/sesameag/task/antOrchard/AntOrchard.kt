@@ -297,6 +297,7 @@ class AntOrchard : ModelTask() {
                     ?.optJSONObject("spreadManureStage")
                     ?.optInt("leftSpreadManureTimes", Int.MAX_VALUE)
                     ?: Int.MAX_VALUE
+                val batchSpreadInfo = orchardIndexData.optJSONObject("batchSpreadInfo")
 
                 // {{ 修改：适配不同场景的肥料数据结构 }}
                 val taobaoData = JSONObject(taobaoDataStr)
@@ -308,32 +309,41 @@ class AntOrchard : ModelTask() {
                     taobaoData.optJSONObject("gameInfo")?.optJSONObject("accountInfo")
                 }
 
-                if (accountInfo != null) {
-                    val happyPoint = accountInfo.optInt("happyPoint", 0)
-                    val wateringCost = 600 // 默认消耗
+                val singleWateringCost = accountInfo?.optInt("wateringCost", 600)?.takeIf { it > 0 } ?: 600
+                val happyPoint = accountInfo?.optInt("happyPoint")
+                val batchSpreadTimes = batchSpreadInfo?.optInt("batchSpreadTimes", 1)?.takeIf { it > 1 } ?: 1
+                val batchSpreadValid = batchSpreadInfo?.optBoolean("batchSpreadValid", false) == true
 
-                    if (happyPoint < wateringCost) {
-                        Log.record(TAG, "$sceneName 肥料不足: 当前 $happyPoint < 消耗 $wateringCost")
+                if (accountInfo != null) {
+                    if (happyPoint == null || happyPoint < singleWateringCost) {
+                        Log.record(TAG, "$sceneName 肥料不足: 当前 ${happyPoint ?: 0} < 消耗 $singleWateringCost")
                         return
                     }
                 }
 
-                // 核心逻辑：施肥到199次时，强制开启5连，突破200次限制到204次
-                // {{ 修改：移除 isMain 限制，让摇钱树也支持 199->204 逻辑 }}
                 var useBatchSpread = false
                 var actualWaterTimes = 1
 
-                if (totalWatered == 199) {
+                val remainingTarget = if (waterToLimit) Int.MAX_VALUE else (targetLimit - totalWatered).coerceAtLeast(0)
+                val shouldForceBreakthrough = isMain && batchSpreadValid && totalWatered == 199
+                val canBatchByTarget = shouldForceBreakthrough || waterToLimit || remainingTarget >= batchSpreadTimes
+                val batchWateringCost = singleWateringCost * batchSpreadTimes
+
+                if (isMain && batchSpreadValid && batchSpreadTimes > 1 && canBatchByTarget &&
+                    happyPoint != null && happyPoint >= batchWateringCost
+                ) {
                     useBatchSpread = true
-                    actualWaterTimes = 5 // 预期增加5次
-                    Log.record(TAG, "$sceneName 触发199次临界点，开启5连施肥模式以突破限制")
+                    actualWaterTimes = batchSpreadTimes
+                    if (shouldForceBreakthrough) {
+                        Log.record(TAG, "$sceneName 触发199次临界点，开启${batchSpreadTimes}连施肥模式以突破限制")
+                    }
                 }
 
                 val wua = SecurityBodyHelper.getSecurityBodyData(4).toString()
-                val randomSource = sourceList.random()
+                val requestSource = if (useBatchSpread) ORCHARD_SOURCE else sourceList.random()
 
                 // 执行施肥请求
-                val spreadResponse = AntOrchardRpcCall.orchardSpreadManure(wua, randomSource, useBatchSpread, targetScene)
+                val spreadResponse = AntOrchardRpcCall.orchardSpreadManure(wua, requestSource, useBatchSpread, targetScene)
                 val spreadJson = JSONObject(spreadResponse)
                 val resultCode = spreadJson.optString("resultCode")
 
@@ -348,6 +358,12 @@ class AntOrchard : ModelTask() {
                     Log.error(TAG, "$sceneName 施肥失败: ${spreadJson.optString("resultDesc")}")
                     return
                 }
+
+                actualWaterTimes = spreadJson.optJSONObject("batchSpreadInfo")
+                    ?.takeIf { it.optBoolean("useBatchSpread", false) }
+                    ?.optInt("batchSpreadTimes", actualWaterTimes)
+                    ?.coerceAtLeast(1)
+                    ?: actualWaterTimes
 
                 // 更新计数
                 val spreadTaobaoDataStr = spreadJson.optString("taobaoData")
@@ -1544,19 +1560,29 @@ class AntOrchard : ModelTask() {
 
     private fun smashedGoldenEgg(count: Int) {
         try {
-            val response = AntOrchardRpcCall.smashedGoldenEgg(count)
-            val jo = JSONObject(response)
+            var remaining = count.coerceAtLeast(0)
+            while (remaining > 0) {
+                val batchCount = remaining.coerceAtMost(10)
+                val response = AntOrchardRpcCall.smashedGoldenEgg(batchCount)
+                val jo = JSONObject(response)
 
-            if (ResChecker.checkRes(TAG, jo)) {
-                val batchSmashedList = jo.getJSONArray("batchSmashedList")
-                for (i in 0 until batchSmashedList.length()) {
-                    val smashedItem = batchSmashedList.getJSONObject(i)
-                    val manureCount = smashedItem.optInt("manureCount", 0)
-                    val jackpot = smashedItem.optBoolean("jackpot", false)
-                    Log.farm("砸出肥料 🎖️: $manureCount g" + if (jackpot) "（触发大奖）" else "")
+                if (ResChecker.checkRes(TAG, jo)) {
+                    val batchSmashedList = jo.optJSONArray("batchSmashedList") ?: JSONArray()
+                    for (i in 0 until batchSmashedList.length()) {
+                        val smashedItem = batchSmashedList.getJSONObject(i)
+                        val manureCount = smashedItem.optInt("manureCount", 0)
+                        val jackpot = smashedItem.optBoolean("jackpot", false)
+                        Log.farm("砸出肥料 🎖️: $manureCount g" + if (jackpot) "（触发大奖）" else "")
+                    }
+                } else {
+                    Log.record(TAG, jo.optString("resultDesc", "未知错误"))
+                    return
                 }
-            } else {
-                Log.record(TAG, jo.optString("resultDesc", "未知错误"))
+
+                remaining -= batchCount
+                if (remaining > 0) {
+                    CoroutineUtils.sleepCompat(executeIntervalInt.toLong())
+                }
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "smashedGoldenEgg err:", t)

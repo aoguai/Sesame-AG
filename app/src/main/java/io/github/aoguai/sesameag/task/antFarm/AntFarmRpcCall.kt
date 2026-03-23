@@ -1064,7 +1064,7 @@ object AntFarmRpcCall {
             val args = JSONObject().apply {
                 put("batchDrawCount", drawTimes.coerceAtLeast(1))
                 put("bizType", "ANTFARM")
-                put("requestType", "RPC")
+                put("requestType", "NORMAL")
                 put("sceneCode", "ANTFARM")
                 put("source", "H5")
                 put("version", GAME_CENTER_VERSION)
