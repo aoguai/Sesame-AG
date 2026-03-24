@@ -1,6 +1,7 @@
 package io.github.aoguai.sesameag.task.antMember
 
 import android.annotation.SuppressLint
+import io.github.aoguai.sesameag.data.Status
 import io.github.aoguai.sesameag.data.Status.Companion.canMemberPointExchangeBenefitToday
 import io.github.aoguai.sesameag.data.Status.Companion.canMemberSignInToday
 import io.github.aoguai.sesameag.data.Status.Companion.hasFlagToday
@@ -1787,21 +1788,32 @@ class AntMember : ModelTask() {
      * 通过 itemAttrs.checkInModuleVO.currentDateCheckInTaskVO 判断今日是否可签到
      */
     private fun doSesameZmlCheckIn() {
+        var flagState = Status.TodayFlagState.RETRY_LATER
         try {
+            if (ApplicationHookConstants.isOffline()) {
+                return
+            }
             val checkInRes = AntMemberRpcCall.zmlCheckInQueryTaskLists()
             val checkInJo = JSONObject(checkInRes)
-            if (!ResChecker.checkRes(TAG, checkInJo)) return
+            if (!ResChecker.checkRes(TAG, checkInJo)) {
+                return
+            }
             val data = checkInJo.optJSONObject("data") ?: return
             val currentDay = data.optJSONObject("currentDateCheckInTaskVO") ?: return
 
             val status = currentDay.optString("status")
             val checkInDate = currentDay.optString("checkInDate")
 
+            if ("CAN_COMPLETE" != status || checkInDate.isEmpty()) {
+                flagState = Status.TodayFlagState.NO_MORE_ACTION_TODAY
+                return
+            }
             if ("CAN_COMPLETE" == status && checkInDate.isNotEmpty()) {
                 // 信誉主页签到
                 val completeRes = AntMemberRpcCall.zmCheckInCompleteTask(checkInDate, "zml")
                 val completeJo = JSONObject(completeRes)
-                if (ResChecker.checkRes(TAG, completeJo)) {
+                val checkInSuccess = ResChecker.checkRes(TAG, completeJo)
+                if (checkInSuccess) {
                     val prize = completeJo.optJSONObject("data")
                     val num = if (prize == null) {
                         0
@@ -1813,11 +1825,14 @@ class AntMember : ModelTask() {
                 } else {
                     Log.error("$TAG.doSesameZmlCheckIn", "芝麻粒福利签到失败:$completeRes")
                 }
+                if (checkInSuccess) {
+                    flagState = Status.TodayFlagState.DONE
+                }
             }
         } catch (t: Throwable) {
             Log.printStackTrace("$TAG.doSesameZmlCheckIn", t)
         } finally {
-            setFlagToday(StatusFlags.FLAG_ANTMEMBER_ZML_CHECKIN_DONE)
+            setFlagToday(StatusFlags.FLAG_ANTMEMBER_ZML_CHECKIN_DONE, flagState)
         }
     }
 
@@ -1993,18 +2008,31 @@ class AntMember : ModelTask() {
      * @param withOneClick 启用一键收取
      */
     private suspend fun collectSesame(withOneClick: Boolean): Unit = CoroutineUtils.run {
+        var flagState = Status.TodayFlagState.RETRY_LATER
+        if (ApplicationHookConstants.isOffline()) {
+            return@run
+        }
         try {
             val items = queryUnclaimedSesameFeedbackItems("芝麻信用💳") ?: return@run
             if (items.isEmpty()) {
+                flagState = Status.TodayFlagState.NO_MORE_ACTION_TODAY
                 record(TAG, "芝麻信用💳[当前无待收取芝麻粒]")
                 return@run
             }
             collectSesameFeedbackItems(items, withOneClick, "芝麻信用💳")
+            if (ApplicationHookConstants.isOffline()) {
+                return@run
+            }
+            val remainingItems = queryUnclaimedSesameFeedbackItems("芝麻信用💳[复核]") ?: return@run
+            if (remainingItems.isEmpty()) {
+                flagState = Status.TodayFlagState.DONE
+            } else {
+                record(TAG, "芝麻信用💳[仍有${remainingItems.size}项未收取] 保留后续重试机会")
+            }
         } catch (t: Throwable) {
             Log.printStackTrace("$TAG.collectSesame", t)
         } finally {
-            // 今日仅尝试一次，避免重复请求触发风控
-            setFlagToday(StatusFlags.FLAG_ANTMEMBER_COLLECT_SESAME_DONE)
+            setFlagToday(StatusFlags.FLAG_ANTMEMBER_COLLECT_SESAME_DONE, flagState)
         }
     }
 

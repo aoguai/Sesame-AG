@@ -14,6 +14,18 @@ import java.util.Date
 
 class Status {
 
+    /**
+     * 当日 Flag 的统一落标状态：
+     * - DONE: 任务已确认完成
+     * - NO_MORE_ACTION_TODAY: 已确认今天无需再尝试（如已处理/无可执行项/时间窗已过）
+     * - RETRY_LATER: 本次执行被中断或结论不确定，保留当天后续重试机会
+     */
+    enum class TodayFlagState {
+        DONE,
+        NO_MORE_ACTION_TODAY,
+        RETRY_LATER
+    }
+
     // =========================== forest
     var waterFriendLogList: MutableMap<String, Int> = HashMap()
     var wateredFriendLogList: MutableMap<String, Int> = HashMap() // 统计“被浇水”(好友->次数)
@@ -689,6 +701,14 @@ class Status {
             if (INSTANCE.flagList.add(flag)) {
                 save()
             }
+        }
+
+        @JvmStatic
+        fun setFlagToday(flag: String, state: TodayFlagState) {
+            if (state == TodayFlagState.RETRY_LATER) {
+                return
+            }
+            setFlagToday(flag)
         }
 
         /**

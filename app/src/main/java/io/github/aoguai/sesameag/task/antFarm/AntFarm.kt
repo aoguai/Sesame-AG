@@ -741,9 +741,8 @@ class AntFarm : ModelTask() {
                 if(!Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)) {
                     // 检查是否到达执行时间
                     if (TaskTimeChecker.isTimeReached(doFarmTaskTime?.value, "0830")) {
-                        doFarmTasks()
+                        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED, doFarmTasks())
                         tc.countDebug("饲料任务")
-                        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)
                     } else {
                         Log.record(TAG, "饲料任务未到执行时间，跳过")
                     }
@@ -1968,10 +1967,12 @@ class AntFarm : ModelTask() {
      * 添加组件，雇佣，会员签到，逛咸鱼，今日头条极速版，UC浏览器
      * 一起拿饲料，到店付款，线上支付，鲸探
      */
-    private suspend fun doFarmTasks() {
+    private suspend fun doFarmTasks(): Status.TodayFlagState {
         try {
             val jo = JSONObject(AntFarmRpcCall.listFarmTask())
-            if (!ResChecker.checkRes(TAG, jo)) return
+            if (!ResChecker.checkRes(TAG, jo)) {
+                return Status.TodayFlagState.RETRY_LATER
+            }
             val farmTaskList = jo.getJSONArray("farmTaskList")
             for (i in 0 until farmTaskList.length()) {
                 val task = farmTaskList.getJSONObject(i)
@@ -2031,10 +2032,45 @@ class AntFarm : ModelTask() {
                 }
                 delay(2000) // 任务间间隔，防止频率过快
             }
+            return resolveFarmTaskFlagState()
         } catch (e: CancellationException) {
             throw e
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "doFarmTasks 错误:", t)
+            return Status.TodayFlagState.RETRY_LATER
+        }
+    }
+
+    private fun resolveFarmTaskFlagState(): Status.TodayFlagState {
+        return try {
+            val verifyJo = JSONObject(AntFarmRpcCall.listFarmTask())
+            if (!ResChecker.checkRes(TAG, verifyJo)) {
+                return Status.TodayFlagState.RETRY_LATER
+            }
+            val verifyTaskList = verifyJo.optJSONArray("farmTaskList") ?: return Status.TodayFlagState.RETRY_LATER
+            for (i in 0 until verifyTaskList.length()) {
+                val task = verifyTaskList.optJSONObject(i) ?: continue
+                val title = task.optString("title", "未知任务")
+                val bizKey = task.optString("bizKey")
+                val taskStatus = task.optString("taskStatus")
+
+                if (TaskBlacklist.isTaskInBlacklist(title) || TaskBlacklist.isTaskInBlacklist(bizKey)) {
+                    continue
+                }
+                if (Status.hasFlagToday("farm::task::limit::$bizKey")) {
+                    continue
+                }
+                if (taskStatus == TaskStatus.FINISHED.name || taskStatus == TaskStatus.RECEIVED.name) {
+                    continue
+                }
+
+                Log.record(TAG, "庄园任务[$title] 当前状态=$taskStatus，保留后续重试机会")
+                return Status.TodayFlagState.RETRY_LATER
+            }
+            Status.TodayFlagState.NO_MORE_ACTION_TODAY
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "resolveFarmTaskFlagState err:", t)
+            Status.TodayFlagState.RETRY_LATER
         }
     }
 
