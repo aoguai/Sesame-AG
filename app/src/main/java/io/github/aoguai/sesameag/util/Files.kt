@@ -4,7 +4,9 @@ package io.github.aoguai.sesameag.util
 
 import android.annotation.SuppressLint
 import android.os.Environment
+import com.fasterxml.jackson.core.type.TypeReference
 import io.github.aoguai.sesameag.data.General
+import io.github.aoguai.sesameag.entity.UserEntity
 import java.io.Closeable
 import java.io.File
 import java.io.FileWriter
@@ -207,6 +209,24 @@ object Files {
 
     @JvmStatic
     fun exportFile(file: File, hasTime: Boolean): File? {
+        val exportFile = createExportTargetFile(file, hasTime) ?: return null
+        val sensitiveKeywords = collectLogSensitiveKeywords()
+        if (sensitiveKeywords.isEmpty()) {
+            if (!copy(file, exportFile)) {
+                Log.error(TAG, "Failed to copy file: ${file.absolutePath} to ${exportFile.absolutePath}")
+                return null
+            }
+            return exportFile
+        }
+
+        if (!copyMaskedText(file, exportFile, sensitiveKeywords)) {
+            Log.error(TAG, "Failed to export masked log: ${file.absolutePath} to ${exportFile.absolutePath}")
+            return null
+        }
+        return exportFile
+    }
+
+    private fun createExportTargetFile(file: File, hasTime: Boolean): File? {
         val exportDir = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
             CONFIG_DIR_NAME
@@ -237,11 +257,124 @@ object Files {
                 return null
             }
         }
-        if (!copy(file, exportFile)) {
-            Log.error(TAG, "Failed to copy file: ${file.absolutePath} to ${exportFile.absolutePath}")
-            return null
-        }
         return exportFile
+    }
+
+    private fun copyMaskedText(source: File, dest: File, sensitiveKeywords: List<String>): Boolean {
+        val target = createFile(dest) ?: return false
+        return try {
+            source.bufferedReader(Charsets.UTF_8).use { reader ->
+                target.bufferedWriter(Charsets.UTF_8).use { writer ->
+                    var isFirstLine = true
+                    reader.forEachLine { line ->
+                        if (!isFirstLine) {
+                            writer.newLine()
+                        }
+                        writer.write(maskSensitiveText(line, sensitiveKeywords))
+                        isFirstLine = false
+                    }
+                }
+            }
+            true
+        } catch (e: Exception) {
+            if (target.exists()) {
+                target.delete()
+            }
+            Log.printStackTrace(TAG, "copyMaskedText failed", e)
+            false
+        }
+    }
+
+    private fun maskSensitiveText(text: String, sensitiveKeywords: List<String>): String {
+        var sanitized = text
+        sensitiveKeywords.forEach { keyword ->
+            sanitized = sanitized.replace(keyword, "***")
+        }
+        return sanitized
+    }
+
+    private fun collectLogSensitiveKeywords(): List<String> {
+        val keywords = linkedSetOf<String>()
+        CONFIG_DIR.listFiles()?.filter { it.isDirectory }?.forEach { userDir ->
+            collectKeywordsFromSelfFile(File(userDir, "self.json"), keywords)
+            collectKeywordsFromFriendFile(File(userDir, "friend.json"), keywords)
+        }
+        return keywords.sortedByDescending { it.length }
+    }
+
+    private fun collectKeywordsFromSelfFile(file: File, keywords: MutableSet<String>) {
+        if (!file.exists() || !file.isFile || file.length() <= 0L) return
+        try {
+            val body = readFromFile(file)
+            if (body.isBlank()) return
+            val dto: UserEntity.UserDto? = JsonUtil.parseObject(
+                body,
+                object : TypeReference<UserEntity.UserDto>() {}
+            )
+            addUserSensitiveKeywords(dto?.toEntity(), keywords)
+        } catch (e: Exception) {
+            Log.printStackTrace(TAG, "Failed to load self user info from ${file.absolutePath}", e)
+        }
+    }
+
+    private fun collectKeywordsFromFriendFile(file: File, keywords: MutableSet<String>) {
+        if (!file.exists() || !file.isFile || file.length() <= 0L) return
+        try {
+            val body = readFromFile(file)
+            if (body.isBlank()) return
+            val dtoMap: Map<String, UserEntity.UserDto>? = JsonUtil.parseObject(
+                body,
+                object : TypeReference<Map<String, UserEntity.UserDto>>() {}
+            )
+            dtoMap?.values?.forEach { dto ->
+                addUserSensitiveKeywords(dto.toEntity(), keywords)
+            }
+        } catch (e: Exception) {
+            Log.printStackTrace(TAG, "Failed to load friend user info from ${file.absolutePath}", e)
+        }
+    }
+
+    private fun addUserSensitiveKeywords(userEntity: UserEntity?, keywords: MutableSet<String>) {
+        if (userEntity == null) return
+        addSensitiveKeyword(keywords, userEntity.fullName)
+        addSensitiveKeyword(keywords, userEntity.maskName)
+        addSensitiveKeyword(keywords, userEntity.showName)
+        addSensitiveKeyword(keywords, userEntity.realName)
+        addSensitiveKeyword(keywords, userEntity.nickName)
+        addSensitiveKeyword(keywords, userEntity.remarkName)
+        addSensitiveKeyword(keywords, userEntity.account)
+        addSensitiveKeyword(keywords, userEntity.userId)
+        addDerivedSensitiveKeywords(keywords, userEntity)
+    }
+
+    private fun addDerivedSensitiveKeywords(keywords: MutableSet<String>, userEntity: UserEntity) {
+        addSensitiveKeyword(keywords, userEntity.maskName.substringAfter('|', ""))
+        addSensitiveKeyword(keywords, userEntity.fullName.substringAfter('|', ""))
+
+        addCommonMaskedVariants(keywords, userEntity.showName)
+        addCommonMaskedVariants(keywords, userEntity.realName)
+        addCommonMaskedVariants(keywords, userEntity.nickName)
+        addCommonMaskedVariants(keywords, userEntity.remarkName)
+        addCommonMaskedVariants(keywords, userEntity.account)
+    }
+
+    private fun addCommonMaskedVariants(keywords: MutableSet<String>, value: String?) {
+        val keyword = value?.trim().orEmpty()
+        if (keyword.length < 2 || keyword == "***" || keyword.contains('*')) return
+
+        addSensitiveKeyword(keywords, "*${keyword.substring(1)}")
+        addSensitiveKeyword(keywords, "${keyword.first()}${"*".repeat(keyword.length - 1)}")
+
+        if (keyword.length == 11 && keyword.all { it.isDigit() }) {
+            addSensitiveKeyword(keywords, "${keyword.take(3)}****${keyword.takeLast(4)}")
+        }
+    }
+
+    private fun addSensitiveKeyword(keywords: MutableSet<String>, value: String?) {
+        val keyword = value?.trim().orEmpty()
+        if (keyword.isEmpty() || keyword == "***") return
+        if (keyword.length < 2 && keyword.none { it.isDigit() }) return
+        keywords.add(keyword)
     }
 
     @JvmStatic
