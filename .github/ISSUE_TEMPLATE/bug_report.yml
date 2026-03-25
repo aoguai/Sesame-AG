@@ -16,6 +16,11 @@ body:
 
         请尽量让每个回答都基于你实际观察到的现象来填写。没有复现步骤、环境信息和日志的 Issue，通常没有足够上下文被处理。
 
+        日志要求：
+        - 错误日志为必填，不附错误日志的 Bug Issue 通常会被直接关闭
+        - 强烈建议同时附上“全部日志”和“对应模块日志”（如森林日志、农场日志、其他日志等）
+        - 如涉及隐私信息，请先脱敏后再提交
+
   - type: checkboxes
     id: preflight
     attributes:
@@ -27,6 +32,8 @@ body:
         - label: 我已经搜索过现有 Issues / Pull Requests，没有找到相同或高度相似的问题
           required: true
         - label: 我已经在当前可获取的最新版本或最新提交环境中复现过这个问题
+          required: true
+        - label: 我已经附上错误日志，并会尽量补充全部日志与对应模块日志
           required: true
         - label: 我愿意在后续继续补充日志、截图、复现信息并配合排查
           required: true
@@ -141,16 +148,30 @@ body:
       required: true
 
   - type: textarea
-    id: logs
+    id: error_logs
     attributes:
-      label: 日志、截图与证据
-      description: 请粘贴脱敏后的日志、报错、截图说明或录屏信息，不要只写“有报错”
+      label: 错误日志（必填）
+      description: 必须附上脱敏后的错误日志 / 异常堆栈 / 报错片段；不要只写“有报错”
       render: shell
       placeholder: |
-        贴上脱敏后的日志、堆栈、关键截图说明或录屏补充。
-        如涉及隐私信息，请先自行脱敏。
+        请至少贴出：
+        - 错误日志 / 异常堆栈
+        - 出错前后几行上下文
+        - 如能定位到模块，请一并说明对应模块名称
     validations:
       required: true
+
+  - type: textarea
+    id: extra_logs
+    attributes:
+      label: 全部日志 / 对应模块日志（强烈建议）
+      description: 请尽量补充全部日志，以及与问题相关的模块日志（如森林日志、农场日志、其他日志、抓包日志等）
+      render: shell
+      placeholder: |
+        建议补充：
+        - 全部日志
+        - 对应模块日志（例如森林日志 / 农场日志 / 其他日志）
+        - 如果没有提供，请说明原因，例如“环境已重置，无法保留完整日志”
 
   - type: textarea
     id: additional_information
