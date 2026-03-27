@@ -22,6 +22,7 @@ import io.github.aoguai.sesameag.model.modelFieldExt.SelectModelField
 import io.github.aoguai.sesameag.util.TaskBlacklist.autoAddToBlacklist
 import io.github.aoguai.sesameag.task.ModelTask
 import io.github.aoguai.sesameag.task.antOrchard.AntOrchardRpcCall.orchardSpreadManure
+import io.github.aoguai.sesameag.util.ActionDelayUtil
 import io.github.aoguai.sesameag.util.CoroutineUtils
 import io.github.aoguai.sesameag.util.GlobalThreadPools
 import io.github.aoguai.sesameag.util.Log
@@ -922,7 +923,7 @@ class AntMember : ModelTask() {
                 }
                 applied++
 
-                delay(500)
+                ActionDelayUtil.humanActionDelay(500L)
 
                 // ========== Step 2: 提交任务完成 (process) ==========
                 val processResp = AntMemberRpcCall.annualReviewProcessTask(code, recordNo)
@@ -1189,7 +1190,6 @@ class AntMember : ModelTask() {
                     signDoneToday = true
                 } else {
                     val s = AntMemberRpcCall.queryMemberSigninCalendar()
-                    delay(500)
                     val jo = JSONObject(s)
                     if (ResChecker.checkRes(TAG + "会员签到失败:", jo)) {
                         val currentSigned = jo.optBoolean("currentSigninStatus") || jo.optBoolean("autoSignInSuccess")
@@ -1226,7 +1226,6 @@ class AntMember : ModelTask() {
     private suspend fun doAllMemberAvailableTaskCompat(): Unit = CoroutineUtils.run {
         try {
             val currentTaskResponse = AntMemberRpcCall.queryMemberTaskList()
-            delay(500)
             val currentTaskObject = JSONObject(currentTaskResponse)
             val stopReason = resolveMemberTaskQueryStopReason(currentTaskObject)
             if (stopReason != null) {
@@ -1282,7 +1281,6 @@ class AntMember : ModelTask() {
     private suspend fun doAllMemberAvailableTask(): Unit = CoroutineUtils.run {
         try {
             val legacyTaskResponse = AntMemberRpcCall.queryLegacyAllStatusTaskList()
-            delay(500)
             val legacyTaskObject = JSONObject(legacyTaskResponse)
             val stopReason = resolveMemberTaskQueryStopReason(legacyTaskObject)
             if (stopReason != null) {
@@ -1504,7 +1502,6 @@ class AntMember : ModelTask() {
             }
 
             val detailResponse = AntMemberRpcCall.querySingleTaskProcessDetail(task.taskProcessId)
-            delay(500)
             val detailObject = JSONObject(detailResponse)
             if (!ResChecker.checkRes(TAG + "查询会员任务详情失败:", detailObject)) {
                 Log.error(
@@ -1627,7 +1624,6 @@ class AntMember : ModelTask() {
             while (round < sesameTaskRefreshRoundLimit) {
                 round++
                 val s = AntMemberRpcCall.queryAvailableSesameTask()
-                delay(500)
                 var jo = JSONObject(s)
                 if (jo.has("resData")) {
                     jo = jo.getJSONObject("resData")
@@ -1937,7 +1933,6 @@ class AntMember : ModelTask() {
 
     private suspend fun queryUnclaimedSesameFeedbackItems(logPrefix: String): List<SesameFeedbackItem>? {
         val resp = AntMemberRpcCall.queryCreditFeedback()
-        delay(500)
         val jo = JSONObject(resp)
         if (!ResChecker.checkRes(TAG, jo)) {
             Log.error(
@@ -1961,9 +1956,8 @@ class AntMember : ModelTask() {
         var needFallbackCollect = true
 
         if (preferOneClick) {
-            delay(2000)
+            ActionDelayUtil.humanActionDelay(2000L)
             val collectAllResp = AntMemberRpcCall.collectAllCreditFeedback()
-            delay(600)
             val collectAllJo = JSONObject(collectAllResp)
             if (ResChecker.checkRes(TAG, collectAllJo)) {
                 needFallbackCollect = false
@@ -1988,7 +1982,6 @@ class AntMember : ModelTask() {
                 continue
             }
             val collectResp = AntMemberRpcCall.collectCreditFeedback(item.creditFeedbackId)
-            delay(600)
             val collectJo = JSONObject(collectResp)
             if (!ResChecker.checkRes(TAG, collectJo)) {
                 Log.error(
@@ -2042,7 +2035,6 @@ class AntMember : ModelTask() {
     private suspend fun collectInsuredGold(): Unit = CoroutineUtils.run {
         try {
             var s = AntMemberRpcCall.queryAvailableCollectInsuredGold()
-            delay(200)
             var jo = JSONObject(s)
             if (!ResChecker.checkRes(TAG, jo)) {
                 Log.error("$TAG.collectInsuredGold.queryInsuredHome", "保障金🏥[响应失败]#$s")
@@ -2053,7 +2045,6 @@ class AntMember : ModelTask() {
             val otherBallList = jo.getJSONArray("eventToWaitDTOList")
             if (1 == signInBall.getInt("sendFlowStatus") && 1 == signInBall.getInt("sendType")) {
                 s = AntMemberRpcCall.collectInsuredGold(signInBall)
-                delay(2000)
                 jo = JSONObject(s)
                 if (!ResChecker.checkRes(TAG, jo)) {
                     Log.error("$TAG.collectInsuredGold.collectInsuredGold", "保障金🏥[响应失败]#$s")
@@ -2065,7 +2056,6 @@ class AntMember : ModelTask() {
             for (i in 0..<otherBallList.length()) {
                 val anotherBall = otherBallList.getJSONObject(i)
                 s = AntMemberRpcCall.collectInsuredGold(anotherBall)
-                delay(2000)
                 jo = JSONObject(s)
                 if (!ResChecker.checkRes(TAG, jo)) {
                     Log.error("$TAG.collectInsuredGold.collectInsuredGold", "保障金🏥[响应失败]#$s")
@@ -2121,7 +2111,6 @@ class AntMember : ModelTask() {
     private suspend fun checkMemberTaskFinished(taskId: Long): Boolean {
         return try {
             val str = AntMemberRpcCall.queryLegacyAllStatusTaskList()
-            delay(500)
             val jsonObject = JSONObject(str)
             if (!ResChecker.checkRes(TAG + "查询会员任务状态失败:", jsonObject)) {
                 Log.error(
@@ -2669,7 +2658,6 @@ class AntMember : ModelTask() {
                         record("$TAG.enableGameCenter.signIn", "游戏中心🎮[今日已签到]")
                     } else {
                         val signResp = AntMemberRpcCall.continueSignIn()
-                        delay(300)
                         val signJo = JSONObject(signResp)
                         if (!ResChecker.checkRes(TAG, signJo)) {
                             val msg = signJo.optString(
@@ -2776,7 +2764,6 @@ class AntMember : ModelTask() {
                                         // needSignUp 为 true 且是首次状态 NOT_DONE:先报名
                                         if (needSignUp && "NOT_DONE" == status) {
                                             val signUpResp = AntMemberRpcCall.doTaskSignup(taskId)
-                                            delay(300)
                                             val signUpJo = JSONObject(signUpResp)
                                             if (!ResChecker.checkRes(TAG, signUpJo)) {
                                                 val msg = signUpJo.optString(
@@ -2792,7 +2779,6 @@ class AntMember : ModelTask() {
 
                                         // 完成任务
                                         val doResp = AntMemberRpcCall.doTaskSend(taskId)
-                                        delay(300)
                                         val doJo = JSONObject(doResp)
 
                                         if (ResChecker.checkRes(TAG, doJo)) {
@@ -2865,7 +2851,6 @@ class AntMember : ModelTask() {
                         record("$TAG.enableGameCenter.point", "游戏中心🎮[暂无可领取乐豆]")
                     } else {
                         val batchResp = AntMemberRpcCall.batchReceivePointBall()
-                        delay(300)
                         val batchJo = JSONObject(batchResp)
                         if (ResChecker.checkRes(TAG, batchJo)) {
                             val batchData = batchJo.optJSONObject("data")
@@ -3156,7 +3141,7 @@ class AntMember : ModelTask() {
 
             // ================= Step 4: [新增] 任务完成后一键收取芝麻粒 =================
             record(TAG, "芝麻炼金⚗️[任务处理完毕，准备收取芝麻粒]")
-            delay(2000) // 稍作等待，确保任务奖励到账
+            ActionDelayUtil.humanActionDelay(2000L) // 稍作等待，确保任务奖励到账
 
             val feedbackItems = queryUnclaimedSesameFeedbackItems("芝麻炼金⚗️")
             if (feedbackItems == null) {
@@ -3250,7 +3235,7 @@ class AntMember : ModelTask() {
                         recordId = joinData.optString("recordId")
                     }
                     record(TAG, "任务领取成功: $title")
-                    delay(1000)
+                    ActionDelayUtil.humanActionDelay(1000L)
                 } else {
                     Log.error(
                         TAG, "任务领取失败: " + title + " - " + joinJo.optString("resultView", joinRes)
@@ -3725,7 +3710,6 @@ class AntMember : ModelTask() {
         private suspend fun queryPointCert(page: Int, pageSize: Int) {
             try {
                 var s = AntMemberRpcCall.queryPointCertV2(page, pageSize)
-                delay(500)
                 var jo = JSONObject(s)
                 if (ResChecker.checkRes(TAG + "查询会员积分证书失败:", jo) && jo.has("pointToClaim")) {
                     val pointToClaim = jo.optInt("pointToClaim", 0)
@@ -3770,7 +3754,6 @@ class AntMember : ModelTask() {
                 }
 
                 s = AntMemberRpcCall.queryPointCert(page, pageSize)
-                delay(500)
                 jo = JSONObject(s)
                 if (ResChecker.checkRes(TAG + "查询会员积分证书失败:", jo)) {
                     val hasNextPage = jo.optBoolean("hasNextPage")
@@ -3908,7 +3891,6 @@ class AntMember : ModelTask() {
             primarySceneCode: String? = null
         ): Pair<String, JSONObject> {
             var joinRes = AntMemberRpcCall.joinSesameTask(taskTemplateId, primarySceneCode)
-            delay(200)
             var joinJo = JSONObject(joinRes)
             val joinResultCode = joinJo.optString("resultCode", joinJo.optString("errorCode", ""))
             if (!ResChecker.checkRes(TAG, joinJo) &&
@@ -3917,7 +3899,6 @@ class AntMember : ModelTask() {
             ) {
                 record(TAG, "$logPrefix[领取任务扩展参数失败，回退简版参数]#$taskTitle")
                 joinRes = AntMemberRpcCall.joinSesameTask(taskTemplateId)
-                delay(200)
                 joinJo = JSONObject(joinRes)
             }
             return joinRes to joinJo
@@ -3963,7 +3944,6 @@ class AntMember : ModelTask() {
                 val (attemptLabel, call) = attempt
                 val feedbackRes = call()
                 lastFeedbackRes = feedbackRes
-                delay(300)
                 val feedbackJo = JSONObject(feedbackRes)
                 if (ResChecker.checkRes(TAG, feedbackJo)) {
                     return true
@@ -4155,7 +4135,6 @@ class AntMember : ModelTask() {
                 }
 
                 s = AntMemberRpcCall.finishSesameTask(recordId)
-                delay(200)
                 responseObj = JSONObject(s)
                 if (ResChecker.checkRes(TAG, responseObj)) {
                     record(
@@ -4381,7 +4360,7 @@ class AntMember : ModelTask() {
                     return@run false
                 }
 
-                delay(500)
+                ActionDelayUtil.humanActionDelay(500L)
                 jo = JSONObject(AntMemberRpcCall.actioncode(actionCode))
                 if (!ResChecker.checkRes(TAG, jo)) {
                     record(TAG, "taskQueryByActionCode $jo")

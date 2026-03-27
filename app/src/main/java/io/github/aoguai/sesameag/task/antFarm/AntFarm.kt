@@ -34,6 +34,7 @@ import io.github.aoguai.sesameag.task.antFarm.AntFarmFamily.familyClaimRewardLis
 import io.github.aoguai.sesameag.task.antFarm.AntFarmFamily.familySign
 import io.github.aoguai.sesameag.task.antFarm.FarmGame.drawGameCenterAward
 import io.github.aoguai.sesameag.task.antForest.TaskTimeChecker
+import io.github.aoguai.sesameag.util.ActionDelayUtil
 import io.github.aoguai.sesameag.util.CoroutineUtils
 import io.github.aoguai.sesameag.util.DataStore
 import io.github.aoguai.sesameag.util.JsonUtil
@@ -980,7 +981,7 @@ class AntFarm : ModelTask() {
                 while (exchangeBenefit(spuId)) {
                     exchangedCount += 1
                     Log.farm("乐园币兑换💸#花费[" + minPrice + "乐园币]" + "#第" + exchangedCount + "次兑换" + "[" + spuName + "]")
-                    delay(3000)
+                    ActionDelayUtil.humanActionDelay(3000L)
                 }
             }
             IdMapManager.getInstance(ParadiseCoinBenefitIdMap::class.java)
@@ -1298,7 +1299,7 @@ class AntFarm : ModelTask() {
                         if (result) {
                             Log.farm("使用道具🎭[加饭卡]！")
                             DataStore.put(usedKey, usedCount + 1)
-                            delay(1000)
+                            ActionDelayUtil.humanActionDelay(1000L)
                             // 刷新状态
                             syncAnimalStatus(ownerFarmId)
                         } else {
@@ -2018,7 +2019,6 @@ class AntFarm : ModelTask() {
                     }
                     TaskStatus.FINISHED.name, TaskStatus.RECEIVED.name -> {
                         if (bizKey != "ANSWER") {
-                            delay(1500)
                             continue
                         }
                     }
@@ -2557,13 +2557,13 @@ class AntFarm : ModelTask() {
                     Log.farm("使用了1张加速卡⏩ 预估剩余时间: ${(timeLeft/60).toInt()} 分钟")
                     // 打印用了几张加速卡
                     Log.farm("今日已使用${Status.INSTANCE.useAccelerateToolCount}张加速卡")
-                    delay(1000)
+                    ActionDelayUtil.humanActionDelay(1000L)
                 } else{
                     /* timeLeft也就是饲料剩余时间，小于0则说明饲料吃完了，直接进行投喂，这样可以在一次任务里完成加速
                         卡的使用。如果加速后吃完了，尝试补喂并刷新倒计时。等待8秒是为了防止计算结果的细微差异引起投喂失败
                      */
                     Log.farm("使用加速卡后小鸡饲料吃完，等待8秒后尝试喂鸡")
-                    delay(8000)
+                    ActionDelayUtil.humanActionDelay(8000L)
                     // 等8秒刷新一下小鸡状态，确认是真的处于饥饿状态
                     syncAnimalStatus(ownerFarmId)
                     if (AnimalFeedStatus.HUNGRY.name == ownerAnimal.animalFeedStatus) {
@@ -2752,7 +2752,6 @@ class AntFarm : ModelTask() {
 
                 if (!Status.canFeedFriendToday(userId, maxDailyCount)) continue
                 val jo = JSONObject(AntFarmRpcCall.enterFarm(userId, userId))
-                delay(3 * 1000L) //延迟3秒
                 if (ResChecker.checkRes(TAG, jo)) {
                     val subFarmVOjo = jo.getJSONObject("farmVO").getJSONObject("subFarmVO")
                     val friendFarmId = subFarmVOjo.getString("farmId")
@@ -4002,7 +4001,7 @@ class AntFarm : ModelTask() {
                     )
                     if (ResChecker.checkRes(TAG, JSONObject(sendBackRes))) {
                         Log.farm("NPC小鸡🤖[已遣返${currentName}]")
-                        delay(1000)
+                        ActionDelayUtil.humanActionDelay(1000L)
                         // 雇佣新的
                         hireNpc(targetConfig)
                     } else {
@@ -4052,7 +4051,7 @@ class AntFarm : ModelTask() {
             )
             if (ResChecker.checkRes(TAG, JSONObject(sendBackRes))) {
                 Log.farm("NPC小鸡🤖[奖励领取成功]")
-                delay(1500)
+                ActionDelayUtil.humanActionDelay(1500L)
                 hireNpc(config)
             }
         } else {
@@ -4579,7 +4578,7 @@ class AntFarm : ModelTask() {
             if ("SUCCESS" == jo.getString("memo")) {
                 Log.farm("亲密家庭🏠提交任务[分享好友]")
                 Status.setFlagToday("antFarm::inviteFriendVisitFamily")
-                delay(500)
+                ActionDelayUtil.humanActionDelay(500L)
                 syncFamilyStatusIntimacy(familyGroupId)
             }
         } catch (e: CancellationException) {
@@ -4634,7 +4633,7 @@ class AntFarm : ModelTask() {
                 if (ResChecker.checkRes(TAG, jo)) {
                     Log.farm("亲密家庭🏠提交任务[好友串门送扭蛋]")
                     Status.setFlagToday("antFarm::familyBatchInviteP2P")
-                    delay(500)
+                    ActionDelayUtil.humanActionDelay(500L)
                 }
             }
         } catch (e: CancellationException) {
@@ -4678,7 +4677,6 @@ class AntFarm : ModelTask() {
             }
             val jo = JSONObject(AntFarmRpcCall.queryFamilyDrawActivity())
             if (ResChecker.checkRes(TAG, jo)) {
-                delay(1000)
                 val drawTimes = jo.optInt("familyDrawTimes")
                 //碎片个数
                 val giftNum = jo.optInt("mengliFragmentCount")
@@ -4803,7 +4801,7 @@ class AntFarm : ModelTask() {
                 JSONObject(AntFarmRpcCall.familyEatTogether(familyGroupId, friendUserIdList, array))
             if (ResChecker.checkRes(TAG, jo)) {
                 Log.farm("庄园家庭🏠" + periodName + "请客#消耗美食" + friendUserIdList.length() + "份")
-                delay(500)
+                ActionDelayUtil.humanActionDelay(500L)
                 syncFamilyStatusIntimacy(familyGroupId)
             }
         } catch (e: CancellationException) {

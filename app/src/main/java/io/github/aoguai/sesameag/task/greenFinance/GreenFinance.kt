@@ -21,7 +21,6 @@ import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.data.Status
 import io.github.aoguai.sesameag.util.TimeUtil
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 class GreenFinance : ModelTask() {
@@ -140,7 +139,6 @@ class GreenFinance : ModelTask() {
             batchStealFriend()
             prizes()
             doTask("AP13159535", TAG, "绿色经营📊")
-            delay(500)
         } catch (th: Throwable) {
             Log.runtime(TAG, "index err:")
             Log.printStackTrace(TAG, th)
@@ -179,7 +177,6 @@ class GreenFinance : ModelTask() {
                 return
             }
             s = GreenFinanceRpcCall.signInTrigger(sceneId)
-            delay(300)
             jo = JsonUtil.parseJSONObject(s)
             if (jo.optBoolean("success")) {
                 Log.other("绿色经营📊签到成功")
@@ -217,7 +214,6 @@ class GreenFinance : ModelTask() {
                 val behaviorCode = jsonObject.optString("behaviorCode")
                 if (behaviorCode.isEmpty()) continue
                 str = GreenFinanceRpcCall.submitTick(type, behaviorCode)
-                delay(1500)
                 val obj = JsonUtil.parseJSONObject(str)
                 if (!obj.optBoolean("success") || 
                     JsonUtil.getValueByPath(obj, "result.result") != "true") {
@@ -239,7 +235,6 @@ class GreenFinance : ModelTask() {
         }
         try {
             var str = GreenFinanceRpcCall.queryExpireMcaPoint(1)
-            delay(300)
             var jsonObject = JsonUtil.parseJSONObject(str)
             if (!jsonObject.optBoolean("success")) {
                 Log.runtime("$TAG.donation.queryExpireMcaPoint", jsonObject.optString("resultDesc"))
@@ -255,7 +250,6 @@ class GreenFinance : ModelTask() {
             }
             Log.other("绿色经营📊1天内过期的金币[$amount]")
             str = GreenFinanceRpcCall.queryAllDonationProjectNew()
-            delay(300)
             jsonObject = JsonUtil.parseJSONObject(str)
             if (!jsonObject.optBoolean("success")) {
                 Log.runtime("$TAG.donation.queryAllDonationProjectNew", jsonObject.optString("resultDesc"))
@@ -283,7 +277,6 @@ class GreenFinance : ModelTask() {
                     am = r[1].toString()
                 }
                 str = GreenFinanceRpcCall.donation(id, am)
-                delay(1000)
                 jsonObject = JsonUtil.parseJSONObject(str)
                 if (!jsonObject.optBoolean("success")) {
                     Log.runtime("$TAG.donation.$id", jsonObject.optString("resultDesc"))
@@ -362,7 +355,6 @@ class GreenFinance : ModelTask() {
 
     private suspend fun queryRankingPage(startIndex: Int): JSONObject? {
         val str = GreenFinanceRpcCall.queryRankingList(startIndex)
-        delay(1500)
         val jo = JsonUtil.parseJSONObject(str)
         if (!jo.optBoolean("success")) {
             Log.other("绿色经营🙋，好友金币巡查失败")
@@ -388,7 +380,6 @@ class GreenFinance : ModelTask() {
     @Suppress("ReturnCount")
     private suspend fun collectFromFriend(friendId: String, nickname: String) {
         var str = GreenFinanceRpcCall.queryGuestIndexPoints(friendId)
-        delay(1000)
         var jsonObject = JsonUtil.parseJSONObject(str)
         if (!jsonObject.optBoolean("success")) {
             Log.runtime("$TAG.batchStealFriend.queryGuestIndexPoints", jsonObject.optString("resultDesc"))
@@ -401,7 +392,6 @@ class GreenFinance : ModelTask() {
         }
 
         str = GreenFinanceRpcCall.batchSteal(bsnIds, friendId)
-        delay(1000)
         jsonObject = JsonUtil.parseJSONObject(str)
         if (!jsonObject.optBoolean("success")) {
             Log.runtime("$TAG.batchStealFriend.batchSteal", jsonObject.optString("resultDesc"))

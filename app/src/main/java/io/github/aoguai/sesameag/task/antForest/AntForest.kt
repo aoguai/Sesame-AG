@@ -41,6 +41,7 @@ import io.github.aoguai.sesameag.task.antForest.ForestUtil.hasShield
 import io.github.aoguai.sesameag.task.antForest.Privilege.studentSignInRedEnvelope
 import io.github.aoguai.sesameag.task.antForest.Privilege.youthPrivilege
 import io.github.aoguai.sesameag.ui.ObjReference
+import io.github.aoguai.sesameag.util.ActionDelayUtil
 import io.github.aoguai.sesameag.util.Average
 import io.github.aoguai.sesameag.util.GlobalThreadPools
 import io.github.aoguai.sesameag.util.ListUtil
@@ -1540,7 +1541,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     Log.record(TAG, "收取动物能量失败: " + responseObj.getString("resultDesc"))
                     Log.record(response)
                 }
-                GlobalThreadPools.sleepCompat(300L)
+                ActionDelayUtil.humanActionSleep(300L)
                 break // 收取到一个动物能量后跳出循环
             }
         } catch (e: JSONException) {
@@ -2521,7 +2522,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     consecutiveEmpty = 0 // 重置空计数
 
                     // 收取成功后，稍微等待，模拟人为操作并给服务器状态同步时间
-                    GlobalThreadPools.sleepCompat(1200L)
+                    ActionDelayUtil.humanActionSleep()
                 }
                 if (hasShield || hasBomb) {
                     handleFriendExtraBenefits(friendId, friendHomeObj)
@@ -2632,7 +2633,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 consecutiveEmpty = 0 // 重置空计数
 
                 // 模拟操作延迟
-                GlobalThreadPools.sleepCompat(500L)
+                ActionDelayUtil.humanActionSleep(500L)
             }
         } catch (e: Exception) {
             Log.printStackTrace(TAG, "找能量流程异常", e)
@@ -3253,7 +3254,6 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     @Throws(JSONException::class)
     private fun updateSelfHomePage(collectRobMultiplierEnergy: Boolean = false) {
         val s = AntForestRpcCall.queryHomePage()
-        GlobalThreadPools.sleepCompat(100)
         val joHomePage = JSONObject(s)
         updateSelfHomePage(joHomePage, collectRobMultiplierEnergy)
     }
@@ -3442,7 +3442,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                         Log.forest("好友浇水🚿[${UserMap.getMaskName(userId)}]#$waterEnergy g，当前能量状态 [$currentEnergy/$totalEnergy g]")
                         wateredTimes++
                         successTimes++
-                        GlobalThreadPools.sleepCompat(1200L)
+                        ActionDelayUtil.humanActionSleep()
                     }
 
                     "WATERING_TIMES_LIMIT" -> {
@@ -4389,7 +4389,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                         )
                         if (ResChecker.checkRes(TAG + "赠送道具失败:", giveResultJo)) {
                             Log.forest("赠送道具🎭[" + UserMap.getMaskName(safeTargetUserId) + "]#" + propName)
-                            GlobalThreadPools.sleepCompat(1500)
+                            ActionDelayUtil.humanActionSleep(1500L)
                         } else {
                             val rt = giveResultJo.getString("resultDesc")
                             Log.record(rt)
@@ -4443,7 +4443,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                                     val patrolId = patrolConfig.getString("patrolId")
                                     resData =
                                         JSONObject(AntForestRpcCall.switchUserPatrol(patrolId))
-                                    GlobalThreadPools.sleepCompat(waitTime)
+                                    ActionDelayUtil.humanActionSleep(waitTime)
                                     // 如果切换成功，打印日志并继续
                                     if (ResChecker.checkRes(TAG + "切换巡护地图失败:", resData)) {
                                         Log.forest("巡护⚖️-切换地图至$patrolId")
@@ -4478,7 +4478,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     if ("STANDING" == currentStatus) { // 当前巡护状态为"STANDING"
                         if (leftChance > 0) { // 如果还有剩余的巡护次数，则开始巡护
                             jo = JSONObject(AntForestRpcCall.patrolGo(currentNode, patrolId))
-                            GlobalThreadPools.sleepCompat(waitTime)
+                            ActionDelayUtil.humanActionSleep(waitTime)
                             patrolKeepGoing(jo.toString(), currentNode, patrolId) // 继续巡护
                             continue  // 跳过当前循环
                         } else if (!Status.hasFlagToday(patrolChanceLimitFlag) &&
@@ -4570,7 +4570,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 val materialInfo = event.getJSONObject("materialInfo")
                 val materialType = materialInfo.optString("materialType", "image")
                 s = AntForestRpcCall.patrolKeepGoing(currentNode, patrolId, materialType)
-                GlobalThreadPools.sleepCompat(100) // 等待100毫秒后继续巡护
+                ActionDelayUtil.humanActionSleep(100L) // 等待100毫秒后继续巡护
             } while (!Thread.currentThread().isInterrupted)
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "patrolKeepGoing err", t)
@@ -4998,7 +4998,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 if ("NEED_CONFIRM_CAN_PROLONG" == status || "REPLACE" == status) {
                     // 情况1: 需要二次确认 (真正地续写)
                     Log.record(TAG, propName + "需要二次确认，发送确认请求...")
-                    GlobalThreadPools.sleepCompat(2000)
+                    ActionDelayUtil.humanActionSleep(2000L)
                     val confirmResponseStr =
                         AntForestRpcCall.consumeProp(propGroup, propId, propType, true)
                     jo = JSONObject(confirmResponseStr)
@@ -5483,7 +5483,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     val jo = findPropBag(queryPropList(true), propType) ?: break
                     if (usePropBag(jo)) {
                         Log.record(TAG, "成功使用一个能量雨道具: $propType")
-                        delay(2000)
+                        ActionDelayUtil.humanActionDelay(2000L)
                     } else {
                         break
                     }
@@ -5500,10 +5500,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                                     "限时能量雨机会"
                                 )
                             ) {
-                                delay(1000)
+                                ActionDelayUtil.humanActionDelay(1000L)
                                 val joExchanged = findPropBag(queryPropList(true), propType)
                                 if (joExchanged != null && usePropBag(joExchanged)) {
-                                    delay(1000)
+                                    ActionDelayUtil.humanActionDelay(1000L)
                                 }
                             }
                         }
