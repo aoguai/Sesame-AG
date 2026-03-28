@@ -41,6 +41,7 @@ import io.github.aoguai.sesameag.ui.dto.ModelFieldInfoDto
 import io.github.aoguai.sesameag.ui.dto.ModelFieldShowDto
 import io.github.aoguai.sesameag.ui.dto.ModelGroupDto
 import io.github.aoguai.sesameag.ui.widget.ListDialog
+import io.github.aoguai.sesameag.task.customTasks.ManualTaskModel
 import io.github.aoguai.sesameag.util.Files
 import io.github.aoguai.sesameag.util.GlobalThreadPools
 import io.github.aoguai.sesameag.util.JsonUtil
@@ -223,6 +224,7 @@ class WebSettingsActivity : BaseActivity() {
 
         val modelConfigMap: Map<String, ModelConfig> = Model.getModelConfigMap()
         for ((code, modelConfig) in modelConfigMap.entries) {
+            if (!shouldShowInWebSettings(modelConfig)) continue
             tabList.add(
                 ModelDto(
                     modelCode = code,
@@ -273,6 +275,7 @@ class WebSettingsActivity : BaseActivity() {
             val modelConfigCollection = Model.getGroupModelConfig(modelGroup).values
             val modelDtoList = ArrayList<ModelDto>()
             for (modelConfig in modelConfigCollection) {
+                if (!shouldShowInWebSettings(modelConfig)) continue
                 val modelFields = ArrayList<ModelFieldShowDto>()
                 for (modelField in modelConfig.fields.values) {
                     modelFields.add(ModelFieldShowDto.toShowDto(modelConfig.code, modelConfig.fields, modelField))
@@ -468,6 +471,11 @@ class WebSettingsActivity : BaseActivity() {
             UserMap.save(currentUserId)
             IdMapManager.getInstance(CooperateMap::class.java).save(currentUserId)
         }
+    }
+
+    private fun shouldShowInWebSettings(modelConfig: ModelConfig): Boolean {
+        // “手动调度任务”已有独立入口，避免在 Web 配置页重复暴露第二个入口。
+        return modelConfig.code != ManualTaskModel::class.java.simpleName
     }
 
     companion object {
