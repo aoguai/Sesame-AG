@@ -267,6 +267,18 @@ object AntMemberRpcCall {
     }
 
     @JvmStatic
+    fun queryMemberTaskProcessList(): String {
+        val args = JSONObject().apply {
+            put("relatedChannel", "MEMBERPOINT")
+            put("sourcePassMap", buildMemberSourcePassMap())
+        }
+        return RequestManager.requestString(
+            "com.alipay.alipaymember.biz.rpc.membertask.h5.queryTaskList",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
     fun executeMemberTask(bizParam: String, bizSubType: String, bizType: String): String {
         val args = JSONObject().apply {
             put("bizParam", bizParam)
@@ -289,6 +301,19 @@ object AntMemberRpcCall {
         }
         return RequestManager.requestString(
             "com.alipay.amic.memtask.h5.MemTaskListQueryFacade.querySingleTaskProcessDetail",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun awardMemberTaskProcess(awardRelatedOutBizNo: String, taskProcessId: String): String {
+        val args = JSONObject().apply {
+            put("awardRelatedOutBizNo", awardRelatedOutBizNo)
+            put("taskProcessId", taskProcessId)
+            put("sourcePassMap", buildMemberSourcePassMap())
+        }
+        return RequestManager.requestString(
+            "com.alipay.alipaymember.biz.rpc.membertask.h5.award",
             JSONArray().put(args).toString()
         )
     }

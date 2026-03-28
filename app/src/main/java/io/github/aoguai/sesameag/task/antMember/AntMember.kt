@@ -117,6 +117,14 @@ class AntMember : ModelTask() {
         val simpleTaskConfig: JSONObject
     )
 
+    private data class MemberTaskProcessAward(
+        val taskProcessId: String,
+        val awardRelatedOutBizNo: String,
+        val title: String,
+        val awardPoint: Int,
+        val stageIndex: Int
+    )
+
     private enum class CurrentMemberTaskVerifyState {
         CONFIRMED,
         UNCONFIRMED
@@ -275,7 +283,8 @@ class AntMember : ModelTask() {
 
                 // 并行执行独立任务
                 val deferredTasks = mutableListOf<Deferred<Unit>>()
-                var needMemberPointClaimAfterTasks = false
+                val needMemberTaskAwardClaimAfterTasks = memberTask?.value == true
+                val needMemberPointClaimAfterTasks = memberSign?.value == true || memberTask?.value == true
                 var needSesameCollectAfterTasks = false
                 var needSesameProgressCollectAfterTasks = false
 
@@ -283,7 +292,6 @@ class AntMember : ModelTask() {
                     if (hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_SIGN_DONE)) {
                         record(TAG, "⏭️ 今天已处理过会员签到，跳过执行")
                     } else {
-                        needMemberPointClaimAfterTasks = true
                         deferredTasks.add(async(Dispatchers.IO) { doMemberSign() })
                     }
                 }
@@ -294,7 +302,6 @@ class AntMember : ModelTask() {
                     } else if (hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_TASK_EMPTY_TODAY)) {
                         record(TAG, "⏭️ 今天会员任务已判定无需继续刷新，停止执行")
                     } else {
-                        needMemberPointClaimAfterTasks = true
                         deferredTasks.add(async(Dispatchers.IO) { doAllMemberAvailableTaskCompat() })
                     }
                 }
@@ -452,6 +459,17 @@ class AntMember : ModelTask() {
 
                 // 等待所有异步任务完成
                 deferredTasks.awaitAll()
+
+                if (needMemberTaskAwardClaimAfterTasks) {
+                    if (ApplicationHookConstants.isOffline()) {
+                        record(TAG, "⏭️ 当前处于离线模式，跳过会员阶段奖励领取")
+                    } else {
+                        val claimedRewardCount = collectMemberTaskProcessAwards()
+                        if (claimedRewardCount > 0) {
+                            record(TAG, "🎯 会员阶段奖励领取完成，共${claimedRewardCount}项")
+                        }
+                    }
+                }
 
                 if (needMemberPointClaimAfterTasks) {
                     if (ApplicationHookConstants.isOffline()) {
@@ -1271,6 +1289,90 @@ class AntMember : ModelTask() {
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "doAllMemberAvailableTaskCompat err:", t)
+        }
+    }
+
+    private fun buildMemberTaskProcessAwards(jsonObject: JSONObject): List<MemberTaskProcessAward> {
+        val taskProcessList = jsonObject.optJSONArray("availableTaskProcessList") ?: return emptyList()
+        val awardList = mutableListOf<MemberTaskProcessAward>()
+        val dedupKeys = LinkedHashSet<String>()
+        for (i in 0 until taskProcessList.length()) {
+            val taskProcess = taskProcessList.optJSONObject(i) ?: continue
+            val taskProcessId = taskProcess.optString("taskProcessId")
+            if (taskProcessId.isEmpty()) {
+                continue
+            }
+            val taskConfig = taskProcess.optJSONObject("taskConfig")
+            val taskTitle = taskConfig?.optString("title").orEmpty().ifEmpty {
+                taskProcess.optString("title", "会员任务")
+            }
+            val stageProcessList = taskProcess.optJSONArray("stageProcessList") ?: continue
+            for (stageIndexInList in 0 until stageProcessList.length()) {
+                val stageProcess = stageProcessList.optJSONObject(stageIndexInList) ?: continue
+                val stageStatus = stageProcess.optString("stageStatus")
+                val awardRelatedOutBizNo = stageProcess.optString("awardRelatedOutBizNo")
+                if (!stageStatus.equals("COMPLETE", true) || awardRelatedOutBizNo.isEmpty()) {
+                    continue
+                }
+                val stageIndex = stageProcess.optInt("stageIndex", stageIndexInList + 1)
+                val dedupKey = "$taskProcessId#$awardRelatedOutBizNo"
+                if (!dedupKeys.add(dedupKey)) {
+                    continue
+                }
+                awardList.add(
+                    MemberTaskProcessAward(
+                        taskProcessId = taskProcessId,
+                        awardRelatedOutBizNo = awardRelatedOutBizNo,
+                        title = taskTitle,
+                        awardPoint = stageProcess.optInt("awardPoint", 0),
+                        stageIndex = stageIndex
+                    )
+                )
+            }
+        }
+        return awardList
+    }
+
+    private suspend fun collectMemberTaskProcessAwards(): Int = CoroutineUtils.run {
+        try {
+            val response = AntMemberRpcCall.queryMemberTaskProcessList()
+            val taskListObject = JSONObject(response)
+            if (!ResChecker.checkRes(TAG + "查询会员阶段奖励失败:", taskListObject)) {
+                record(
+                    TAG,
+                    "会员任务[阶段奖励]#查询失败:" + taskListObject.optString("resultDesc", response)
+                )
+                return@run 0
+            }
+
+            val awardList = buildMemberTaskProcessAwards(taskListObject)
+            var claimedCount = 0
+            for (award in awardList) {
+                val awardResponse = AntMemberRpcCall.awardMemberTaskProcess(
+                    award.awardRelatedOutBizNo,
+                    award.taskProcessId
+                )
+                val awardObject = JSONObject(awardResponse)
+                if (!ResChecker.checkRes(TAG + "领取会员阶段奖励失败:", awardObject)) {
+                    record(
+                        TAG,
+                        "会员任务[${award.title}]#阶段奖励领取失败:" + awardObject.optString("resultDesc", awardResponse)
+                    )
+                    continue
+                }
+                val stageSuffix = if (award.stageIndex > 0) "-阶段${award.stageIndex}" else ""
+                if (award.awardPoint > 0) {
+                    Log.other("会员任务[${award.title}$stageSuffix]#获得积分${award.awardPoint}")
+                } else {
+                    Log.other("会员任务[${award.title}$stageSuffix]#领取阶段奖励")
+                }
+                claimedCount++
+                delay(300)
+            }
+            return@run claimedCount
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "collectMemberTaskProcessAwards err:", t)
+            return@run 0
         }
     }
 

@@ -1825,7 +1825,7 @@ class AntOcean : ModelTask() {
                         break
                     }
                     holdsNum -= useCount
-                    Log.forest("神奇海洋???[$propName]使用${useCount}张，获得[${target.name}]剩余${holdsNum}张")
+                    Log.forest("神奇海洋🏖️[$propName]使用${useCount}张，获得[${target.name}]剩余${holdsNum}张")
                     delay(1000)
                 }
             }
