@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import io.github.aoguai.sesameag.model.Model
+import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.task.antForest.AntForest
 import io.github.aoguai.sesameag.task.customTasks.CustomTask
 import io.github.aoguai.sesameag.task.customTasks.ManualTaskModel
@@ -48,6 +49,11 @@ fun ManualTaskScreen(
     val initialGames = remember(antForestModel) {
         (antForestModel?.whackMoleGames?.value ?: 5).toString()
     }
+    val initialExchangeEnergyRainCard = remember {
+        Model.getModelConfigMap()[ManualTaskModel::class.java.simpleName]
+            ?.getModelFieldExt<BooleanModelField>("exchangeEnergyRainCard")
+            ?.value ?: false
+    }
     // 子任务状态
     var whackMoleMode by remember { mutableIntStateOf(initialMode) }
     var whackMoleGames by remember { mutableStateOf(initialGames) }
@@ -58,7 +64,7 @@ fun ManualTaskScreen(
     var toolCount by remember { mutableStateOf("1") }
 
     // 能量雨状态
-    var exchangeEnergyRainCard by remember { mutableStateOf(false) }
+    var exchangeEnergyRainCard by remember { mutableStateOf(initialExchangeEnergyRainCard) }
 
     Scaffold(
         topBar = {

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.LibraryBooks
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material.icons.rounded.BugReport
@@ -123,14 +122,6 @@ fun SettingsContent(
                     onClick = {
                         context.startActivity(Intent(context, ManualTaskActivity::class.java))
                     }
-                )
-            }
-
-            item {
-                SettingsItem(
-                    title = "查看RPC抓包数据",
-                    icon = Icons.AutoMirrored.Rounded.LibraryBooks,
-                    onClick = { onEvent(MainActivity.MainUiEvent.OpenCaptureLog) }
                 )
             }
 

@@ -13,6 +13,7 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.json.JsonMapper
 import io.github.aoguai.sesameag.SesameApplication.Companion.PREFERENCES_KEY
 import io.github.aoguai.sesameag.entity.RpcDebugEntity
+import io.github.aoguai.sesameag.hook.ApplicationHookConstants
 import io.github.aoguai.sesameag.ui.LogViewerActivity
 import io.github.aoguai.sesameag.util.SesameAgUtil
 import io.github.aoguai.sesameag.util.Files
@@ -310,16 +311,20 @@ class RpcDebugViewModel(application: Application) : AndroidViewModel(application
 
             if (editingItem != null) {
                 // 编辑模式
-                val index = currentList.indexOf(editingItem)
+                val index = currentList.indexOfFirst { it.id == editingItem.id }
                 if (index != -1) {
-                    editingItem.id = newId
-                    editingItem.name = finalName
-                    editingItem.description = description // 更新描述
-                    editingItem.method = method
-                    editingItem.requestData = requestData
-                    editingItem.scheduleEnabled = scheduleEnabled
-                    editingItem.dailyCount = finalDailyCount
-                    _items.value = ArrayList(currentList)
+                    currentList[index] = normalizeItem(
+                        editingItem.copy(
+                            id = newId,
+                            name = finalName,
+                            description = description,
+                            method = method,
+                            requestData = requestData,
+                            scheduleEnabled = scheduleEnabled,
+                            dailyCount = finalDailyCount
+                        )
+                    )
+                    _items.value = currentList.toList()
                 }
             } else {
                 // 新增模式
@@ -332,7 +337,7 @@ class RpcDebugViewModel(application: Application) : AndroidViewModel(application
                     scheduleEnabled = scheduleEnabled,
                     dailyCount = finalDailyCount
                 )
-                currentList.add(newItem)
+                currentList.add(normalizeItem(newItem))
                 _items.value = currentList
             }
             saveItems()
@@ -356,7 +361,7 @@ class RpcDebugViewModel(application: Application) : AndroidViewModel(application
             try {
                 val logFile = Files.getDebugLogFile()
                 Files.clearFile(logFile)
-                val intent = Intent("com.eg.android.AlipayGphone.sesame.rpctest").apply {
+                val intent = Intent(ApplicationHookConstants.BroadcastActions.RPC_TEST).apply {
                     putExtra("method", item.method)
                     putExtra("data", item.getRequestDataString())
                     putExtra("type", "Rpc")

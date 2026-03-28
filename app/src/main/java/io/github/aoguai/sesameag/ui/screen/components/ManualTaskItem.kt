@@ -129,7 +129,7 @@ fun ManualTaskItem(
 
                     OutlinedTextField(
                         value = whackMoleGames,
-                        onValueChange = onGamesChange,
+                        onValueChange = { onGamesChange(it.filter { c -> c.isDigit() }) },
                         label = { Text("执行局数") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth(),
@@ -149,7 +149,7 @@ fun ManualTaskItem(
                 } else if (task == CustomTask.FARM_SPECIAL_FOOD) {
                     OutlinedTextField(
                         value = specialFoodCount,
-                        onValueChange = onSpecialFoodCountChange,
+                        onValueChange = { onSpecialFoodCountChange(it.filter { c -> c.isDigit() }) },
                         label = { Text("使用总次数 (必须大于0)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth(),
@@ -193,7 +193,7 @@ fun ManualTaskItem(
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = toolCount,
-                            onValueChange = onToolCountChange,
+                            onValueChange = { onToolCountChange(it.filter { c -> c.isDigit() }) },
                             label = { Text("使用数量") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth(),

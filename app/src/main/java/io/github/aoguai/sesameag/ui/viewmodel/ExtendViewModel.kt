@@ -10,6 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import com.fasterxml.jackson.core.type.TypeReference
 import io.github.aoguai.sesameag.R
+import io.github.aoguai.sesameag.entity.UserEntity
+import io.github.aoguai.sesameag.hook.ApplicationHookConstants
 import io.github.aoguai.sesameag.model.CustomSettings
 import io.github.aoguai.sesameag.ui.LogViewerActivity
 import io.github.aoguai.sesameag.util.DataStore
@@ -90,7 +92,7 @@ class ExtendViewModel : ViewModel() {
 
         // 2.1 查看能量统计（statistics.json）
         menuItems.add(MenuItem("查看能量统计") {
-            val uid = UserMap.currentUid
+            val uid = UserMap.currentUid ?: DataStore.get("activedUser", UserEntity::class.java)?.userId
             if (uid.isNullOrBlank()) {
                 ToastUtil.showToast(context, "用户为空，无法打开统计文件")
                 return@MenuItem
@@ -165,7 +167,7 @@ class ExtendViewModel : ViewModel() {
     }
 
     private fun sendItemsBroadcast(context: Context, type: String) {
-        val intent = Intent("com.eg.android.AlipayGphone.sesame.rpctest").apply {
+        val intent = Intent(ApplicationHookConstants.BroadcastActions.RPC_TEST).apply {
             putExtra("method", "")
             putExtra("data", "")
             putExtra("type", type)

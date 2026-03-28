@@ -9,6 +9,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.aoguai.sesameag.data.Config
 import io.github.aoguai.sesameag.entity.UserEntity
+import io.github.aoguai.sesameag.hook.ApplicationHookConstants
 import io.github.aoguai.sesameag.model.Model
 import io.github.aoguai.sesameag.task.customTasks.CustomTask
 import io.github.aoguai.sesameag.ui.screen.ManualTaskScreen
@@ -17,6 +18,7 @@ import io.github.aoguai.sesameag.ui.theme.ThemeManager
 import io.github.aoguai.sesameag.util.DataStore
 import io.github.aoguai.sesameag.util.Files
 import io.github.aoguai.sesameag.util.ToastUtil
+import io.github.aoguai.sesameag.util.maps.UserMap
 
 /**
  * 手动任务 Fragment (Compose 实现)
@@ -45,13 +47,14 @@ class ManualTaskActivity : ComponentActivity() {
         Model.initAllModel()
         val activeUser = DataStore.get("activedUser", UserEntity::class.java)
         activeUser?.userId?.let { uid ->
+            UserMap.setCurrentUserId(uid)
             Config.load(uid)
         }
     }
 
     private fun runTask(task: CustomTask, params: Map<String, Any>) {
         try {
-            val intent = Intent("com.eg.android.AlipayGphone.sesame.manual_task")
+            val intent = Intent(ApplicationHookConstants.BroadcastActions.MANUAL_TASK)
             intent.putExtra("task", task.name)
             params.forEach { (key, value) ->
                 when (value) {
