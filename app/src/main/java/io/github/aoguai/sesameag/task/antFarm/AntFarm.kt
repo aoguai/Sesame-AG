@@ -60,6 +60,7 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.Objects
 import java.util.Random
+import kotlin.compareTo
 import kotlin.dec
 import kotlin.math.min
 
@@ -210,6 +211,7 @@ class AntFarm : ModelTask() {
      */
     internal var doFarmTask: BooleanModelField? = null // 做饲料任务
     private var doFarmTaskTime: StringModelField? = null // 饲料任务执行时间
+    internal var nextDoFarmTaskTime: StringModelField? = null // 再次执行饲料任务的时间 (默认2200)
 
     // 签到
     private var signRegardless: BooleanModelField? =null
@@ -309,7 +311,12 @@ class AntFarm : ModelTask() {
                 "饲料任务执行时间 | 默认8:30后执行",
                 "0830"
             ).withDesc("限制开始执行饲料任务的时间，避免过早触发。").also { doFarmTaskTime = it })
-
+        modelFields.addField(
+            StringModelField.TimeStringModelField(
+                "nextDoFarmTaskTime",
+                "再次执行饲料任务的时间 | 默认22:00后执行",
+                "2200"
+            ).withDesc("限制再次执行饲料任务的时间，避免验证。-1关闭;-2关闭再次执行").also { nextDoFarmTaskTime = it })
         modelFields.addField(
             BooleanModelField(
                 "receiveFarmTaskAward",
@@ -734,18 +741,33 @@ class AntFarm : ModelTask() {
                 tc.countDebug("NPC小鸡任务")
             }
 
-            /* 为保证单次运行程序可以完成全部任务，而加速卡用完会消耗最多360g饲料，如果差360g满饲料，那肯定不能执行
-                游戏改分了，需要先把饲料任务完成，方便在连续用加速卡逻辑中领取饲料。
-             */
             if (doFarmTask?.value == true) {
-                // 这里设置判断，如果当日完成过一次饲料任务了，就不会在这个位置再进行饲料任务了。
-                if(!Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)) {
-                    // 检查是否到达执行时间
-                    if (TaskTimeChecker.isTimeReached(doFarmTaskTime?.value, "0830")) {
-                        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED, doFarmTasks())
-                        tc.countDebug("饲料任务")
+                val isFinished = Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)
+                val hasRunOnce = Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_ONCE)
+
+                if (!isFinished) {
+                    val targetTime = if (!hasRunOnce) {
+                        doFarmTaskTime?.value ?: "0830"
                     } else {
-                        Log.record(TAG, "饲料任务未到执行时间，跳过")
+                        nextDoFarmTaskTime?.value ?: "2200"
+                    }
+
+                    // -1 或 -2 都视为关闭再次执行。但 -2 特指用户手动指定的“关闭二轮”
+                    val isNextDisabled = hasRunOnce && (targetTime == "-1" || targetTime == "-2")
+
+                    if (!isNextDisabled && TaskTimeChecker.isTimeReached(targetTime, targetTime)) {
+                        Log.record(TAG, if (!hasRunOnce) "开始执行每日首轮饲料任务" else "达到二轮时间，再次尝试补全饲料任务")
+
+                        val state = doFarmTasks()
+                        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED, state)
+                        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_ONCE)
+                        tc.countDebug("饲料任务")
+                    } else if (!hasRunOnce) {
+                        Log.record(TAG, "饲料任务未到首轮执行时间($targetTime)，跳过")
+                    } else if (!isNextDisabled) {
+                        Log.record(TAG, "今日已运行过首轮任务，未到二轮补全时间($targetTime)，跳过")
+                    } else {
+                        Log.record(TAG, "饲料任务已关闭当日再次执行，跳过")
                     }
                 }
             }
@@ -839,6 +861,7 @@ class AntFarm : ModelTask() {
             if (enableChouchoule?.value == true) {
                 tc.countDebug("抽抽乐")
                 ChouChouLe().run(this@AntFarm)
+                handleMultiStageTasksLoop()
                 refreshFarmStatus("抽抽乐流程后")
             }
 
@@ -1333,6 +1356,7 @@ class AntFarm : ModelTask() {
             }
             if (enableChouchoule?.value == true) {
                 ChouChouLe().run(this@AntFarm)
+                handleMultiStageTasksLoop()
             }
         }
 
@@ -1981,9 +2005,6 @@ class AntFarm : ModelTask() {
                 val taskStatus = task.getString("taskStatus")
                 val bizKey = task.getString("bizKey")
 
-                //  val taskMode = task.optString("taskMode")
-                //  if(taskMode=="TRIGGER")     continue                 //跳过事件任务
-
                 // 1. 预检查：黑名单与每日上限
                 // 检查任务标题和业务键是否在黑名单中
                 val titleInBlacklist = TaskBlacklist.isTaskInBlacklist(title)
@@ -2010,6 +2031,9 @@ class AntFarm : ModelTask() {
                                     answerQuestion("100")
                                 }
                             }
+                            "tab3_gyg" -> {
+                                continue
+                            }
                             else -> {
                                 // --- 普通任务通用逻辑 ---
                                 Log.record(TAG, "开始处理庄园任务: $title ($bizKey)")
@@ -2018,26 +2042,132 @@ class AntFarm : ModelTask() {
                         }
                     }
                     TaskStatus.FINISHED.name, TaskStatus.RECEIVED.name -> {
-                        if (bizKey != "ANSWER") {
-                            continue
+                        if (bizKey == "ANSWER") {
+                            if (!Status.hasFlagToday(ANSWERED_FLAG)) Status.setFlagToday(ANSWERED_FLAG)
+                            if (!Status.hasFlagToday(CACHED_FLAG)) {
+                                Log.record(TAG, "答题已完成，尝试预取明日答案...")
+                                answerQuestion("100")
+                            }
                         }
+                        continue
                     }
                     else -> {
                         Log.record(TAG, "跳过非TODO任务: $title ($bizKey) 状态: $taskStatus")
                     }
                 }
-                // 3. 额外处理某些即便不是 TODO 状态也可能需要检查的任务（如答题补漏）
-                if ("ANSWER" == bizKey && !Status.hasFlagToday(CACHED_FLAG)) {
-                    answerQuestion("100")
-                }
-                delay(2000) // 任务间间隔，防止频率过快
+                delay(4000) // 任务间间隔，防止频率过快
             }
+            syncAnimalStatus(ownerFarmId)
             return resolveFarmTaskFlagState()
         } catch (e: CancellationException) {
             throw e
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "doFarmTasks 错误:", t)
             return Status.TodayFlagState.RETRY_LATER
+        }
+    }
+
+    /**
+     * 🚀 优化版：多阶段任务专项循环处理器
+     * 策略：批量领奖 -> 批量完成 -> 再次循环，减少 RPC 请求次数。
+     * 限制：仅处理多阶段任务，饲料满则停止领取后续奖励，但即便满也执行 TODO 以推进进度。
+     */
+    private suspend fun AntFarm.handleMultiStageTasksLoop() {
+        try {
+            syncAnimalStatus(ownerFarmId)
+            val startStock = foodStock
+            delay(1000)
+            JSONObject(AntFarmRpcCall.listFarmTask()).optJSONArray("farmTaskList")?.let { ja ->
+                for (i in 0 until ja.length()) {
+                    val task = ja.getJSONObject(i)
+                    val bizKey = task.optString("bizKey")
+                    if (bizKey == "tab3_gyg" &&
+                        task.optString("taskStatus") == TaskStatus.TODO.name
+                    ) {
+                        val title = task.optString("title", "未知任务")
+                        Log.record(TAG, "开始处理任务: $title ($bizKey)")
+                        handleGeneralTask(bizKey, title)
+                        break
+                    }
+                }
+            }
+            syncAnimalStatus(ownerFarmId)
+            val silentGained = foodStock - startStock
+            if (silentGained > 0) {
+                Log.farm("庄园任务处理完毕，静默获得饲料(直接领取了奖励): ${silentGained}g")
+            }
+
+            Log.record(TAG, "开始多阶段任务循环...")
+            var loopCount = 0
+            var continuousNoAction = 0 // 记录连续没有操作的次数
+            while (loopCount < 15) {
+                loopCount++
+
+                val listRes = AntFarmRpcCall.listFarmTask()
+                if (listRes.isEmpty()) break
+                val jo = JSONObject(listRes)
+                if (!ResChecker.checkRes(TAG, jo)) break
+                val farmTaskList = jo.getJSONArray("farmTaskList")
+
+                var hasTodoMultiStage = false
+                var anyActionTaken = false
+
+                for (i in 0 until farmTaskList.length()) {
+                    if (foodStock >= foodStockLimit) break
+                    val task = farmTaskList.getJSONObject(i)
+                    if (task.optInt("rightsTimesLimit", 1) <= 1) continue
+
+                    val bizKey = task.getString("bizKey")
+                    val title = task.optString("title")
+                    if (TaskBlacklist.isTaskInBlacklist(title) ||
+                        TaskBlacklist.isTaskInBlacklist(bizKey)) continue
+
+                    if (task.getString("taskStatus") == TaskStatus.FINISHED.name) {
+                        val awardCount = task.optInt("awardCount", 0)
+                        val taskId = task.getString("taskId")
+                        val receiveRes = JSONObject(AntFarmRpcCall.receiveFarmTaskAward(taskId))
+                        if (ResChecker.checkRes(TAG, receiveRes)) {
+                            add2FoodStock(awardCount)
+                            Log.farm("领取多阶段奖励[$bizKey] 🍪${awardCount}g")
+                            anyActionTaken = true
+                        }
+                    }
+                }
+
+                for (i in 0 until farmTaskList.length()) {
+                    val task = farmTaskList.getJSONObject(i)
+                    if (task.optInt("rightsTimesLimit", 1) <= 1) continue
+
+                    if (task.getString("taskStatus") == TaskStatus.TODO.name) {
+                        hasTodoMultiStage = true
+                        val bizKey = task.getString("bizKey")
+                        val title = task.optString("title")
+                        if (TaskBlacklist.isTaskInBlacklist(title) ||
+                            TaskBlacklist.isTaskInBlacklist(bizKey)) continue
+
+                        handleGeneralTask(bizKey, title)
+                        anyActionTaken = true
+                        delay(2000)
+                    }
+                }
+
+                if (anyActionTaken) {
+                    continuousNoAction = 0
+                } else {
+                    continuousNoAction++
+                }
+
+                // 如果饲料满了且没有TO DO，或者连续2轮没有检测到任何动作，则退出
+                if ((foodStock >= foodStockLimit && !hasTodoMultiStage) || continuousNoAction >= 2) {
+                    break
+                }
+
+                delay(3000)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "handleMultiStageTasksLoop 异常:", t)
         }
     }
 
