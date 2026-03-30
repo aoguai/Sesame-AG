@@ -1078,18 +1078,18 @@ class ChouChouLe {
                     val fullName = sku.optString("_spuName") + sku.optString("skuName")
                     val cent = sku.optInt("_cent", 0)
 
-                    if (!isCustom) {
-                        if (fullName.contains("新蛋卡")) {
-                            var hasOtherItems = false
-                            for (other in allSkus) {
-                                if (!other.optString("_spuName").contains("新蛋卡") && !other.optBoolean("_isReachLimit")) {
-                                    hasOtherItems = true
-                                    break
-                                }
-                            }
-                            if (hasOtherItems) continue
-                        }
-                    }
+//                    if (!isCustom) {
+//                        if (fullName.contains("新蛋卡")) {
+//                            var hasOtherItems = false
+//                            for (other in allSkus) {
+//                                if (!other.optString("_spuName").contains("新蛋卡") && !other.optBoolean("_isReachLimit")) {
+//                                    hasOtherItems = true
+//                                    break
+//                                }
+//                            }
+//                            if (hasOtherItems) continue
+//                        }
+//                    }
 
                     // 确定本次需要兑换的次数
                     var limitCount = 1
