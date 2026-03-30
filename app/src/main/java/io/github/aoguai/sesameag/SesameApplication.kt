@@ -1,8 +1,6 @@
 package io.github.aoguai.sesameag
 
 import android.app.Application
-import android.content.Intent
-import io.github.aoguai.sesameag.service.CommandService
 import io.github.aoguai.sesameag.ui.theme.ThemeManager
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.ToastUtil
@@ -16,31 +14,14 @@ class SesameApplication : Application() {
 
     companion object {
         private const val TAG = "SesameApplication"
-        public const val PREFERENCES_KEY = "sesame-ag"
+        const val PREFERENCES_KEY = "sesame-ag"
         var hasPermissions: Boolean = false
-
     }
 
     override fun onCreate() {
         super.onCreate()
-        ToastUtil.init(this) // 初始化全局 Context
+        ToastUtil.init(this)
         Log.init(this)
         ThemeManager.init(this)
-        startCommandService()
     }
-
-    /**
-     * 启动 CommandService
-     */
-    private fun startCommandService() {
-        try {
-            val intent = Intent(this, CommandService::class.java)
-            startForegroundService(intent)
-            Log.record(TAG, "✅ CommandService 已启动")
-        } catch (e: Exception) {
-            Log.printStackTrace(TAG, "❌ CommandService 启动失败:", e)
-        }
-    }
-
 }
-

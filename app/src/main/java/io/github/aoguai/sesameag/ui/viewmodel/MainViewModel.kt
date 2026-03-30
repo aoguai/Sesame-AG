@@ -8,7 +8,6 @@ import io.github.aoguai.sesameag.SesameApplication.Companion.PREFERENCES_KEY
 import io.github.aoguai.sesameag.entity.UserEntity
 import io.github.aoguai.sesameag.service.ConnectionState
 import io.github.aoguai.sesameag.service.LsposedServiceManager
-import io.github.aoguai.sesameag.util.CommandUtil
 import io.github.aoguai.sesameag.util.DataStore
 import io.github.aoguai.sesameag.util.DirectoryWatcher
 import io.github.aoguai.sesameag.util.SesameAgUtil
@@ -84,8 +83,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var isInitialized = false
 
-    fun initAppLogic() {
-        if (isInitialized) return
+    fun initAppLogic(): Boolean {
+        if (isInitialized) return false
         isInitialized = true
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -97,14 +96,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 初始检查状态
             refreshModuleFrameworkStatus()
             refreshActiveUser()
-            // 🔥 新增：触发 CommandService 连接
-            // 连接成功后，AIDL 回调会自动更新 serviceStatus
-            CommandUtil.connect(getApplication())
-
             // 注册监听
             LsposedServiceManager.addConnectionListener(serviceListener)
             startConfigDirectoryObserver()
         }
+        return true
     }
 
     override fun onCleared() {

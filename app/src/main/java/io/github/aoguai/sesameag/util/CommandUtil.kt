@@ -55,6 +55,10 @@ object CommandUtil {
     private val isBound = AtomicBoolean(false)
     private var connectionDeferred: CompletableDeferred<Boolean>? = null
     @Volatile
+    private var bindRequested = false
+    @Volatile
+    private var boundContext: Context? = null
+    @Volatile
     private var lastStatusType: String? = null
 
     // --- 监听器实现 ---
@@ -88,6 +92,13 @@ object CommandUtil {
 
                 isBound.set(true)
                 connectionDeferred?.complete(true)
+                if (!bindRequested) {
+                    boundContext?.let { appContext ->
+                        scope.launch {
+                            unbind(appContext)
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "服务连接初始化失败", e)
                 connectionDeferred?.complete(false)
@@ -139,8 +150,14 @@ object CommandUtil {
      * 触发连接 (供 ViewModel 初始化调用)
      */
     fun connect(context: Context) {
+        bindRequested = true
+        val appContext = context.applicationContext
+        boundContext = appContext
         scope.launch {
-            ensureServiceBound(context)
+            val bound = ensureServiceBound(appContext)
+            if (bound && !bindRequested) {
+                unbind(appContext)
+            }
         }
     }
 
@@ -162,18 +179,20 @@ object CommandUtil {
 
             handleServiceLost(updateStatus = false)
             connectionDeferred = CompletableDeferred()
-            val intent = buildServiceIntent(context)
+            val appContext = context.applicationContext
+            boundContext = appContext
+            val intent = buildServiceIntent(appContext)
 
             try {
                 repeat(BIND_RETRY_COUNT) { attempt ->
-                    startCommandService(context, intent)
+                    startCommandService(appContext, intent)
                     if (attempt > 0) {
                         delay(BIND_RETRY_DELAY_MS)
                     } else {
                         delay(300)
                     }
 
-                    val bindResult = context.applicationContext.bindService(
+                    val bindResult = appContext.bindService(
                         intent,
                         serviceConnection,
                         Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT
@@ -190,7 +209,7 @@ object CommandUtil {
 
                         Log.w(TAG, "⚠️ 第 ${attempt + 1} 次绑定超时")
                         try {
-                            context.applicationContext.unbindService(serviceConnection)
+                            appContext.unbindService(serviceConnection)
                         } catch (_: Exception) {
                             // ignore
                         }
@@ -272,12 +291,15 @@ object CommandUtil {
      * 手动解绑服务
      */
     fun unbind(context: Context) {
+        bindRequested = false
+        val appContext = context.applicationContext
+        boundContext = appContext
         if (isBound.compareAndSet(true, false)) {
             try {
                 // 尝试注销监听器 (忽略异常，因为服务可能已死)
                 try { commandService?.unregisterListener(statusListener) } catch (_: Exception) {}
 
-                context.applicationContext.unbindService(serviceConnection)
+                appContext.unbindService(serviceConnection)
                 Log.d(TAG, "已解绑服务")
             } catch (e: Exception) {
                 Log.w(TAG, "解绑异常: ${e.message}")

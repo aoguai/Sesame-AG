@@ -52,7 +52,7 @@ class BaseModel : Model() {
         modelFields.addField(sendHookData) //启用Hook数据转发
         modelFields.addField(sendHookDataUrl) //Hook数据转发地址
 
-        modelFields.addField(batteryPerm) //是否申请目标应用的后台运行权限
+        modelFields.addField(batteryPerm) //是否申请模块电池优化豁免
         modelFields.addField(recordLog) //是否记录record日志
         modelFields.addField(runtimeLog) //是否记录runtime日志
         modelFields.addField(showToast) //是否显示气泡提示
@@ -206,10 +206,10 @@ class BaseModel : Model() {
         )
 
         /**
-         * 是否申请目标应用的后台运行权限
+         * 是否申请模块自身的电池优化豁免
          */
-        val batteryPerm: BooleanModelField = BooleanModelField("batteryPerm", "为目标应用申请后台运行权限", true).withDesc(
-            "初始化时检查并尝试申请目标应用后台运行权限，降低被系统回收的概率。"
+        val batteryPerm: BooleanModelField = BooleanModelField("batteryPerm", "申请模块电池优化豁免", true).withDesc(
+            "打开模块界面时检查并按标准 Android 流程申请模块自身的忽略电池优化权限；自动调度链路只读取状态并在缺失时降级，不会主动跳转授权页。"
         )
 
 

@@ -1,6 +1,7 @@
 package io.github.aoguai.sesameag.util
 
 import android.Manifest
+import android.app.Activity
 import android.app.AlarmManager
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -11,11 +12,10 @@ import android.os.Build
 import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import io.github.aoguai.sesameag.BuildConfig
 import io.github.aoguai.sesameag.hook.ApplicationHook
-import io.github.aoguai.sesameag.ui.MainActivity
 
 /**
  * 权限工具类，用于检查和请求所需权限。
@@ -51,10 +51,13 @@ object PermissionUtil {
     }
 
     /**
-     * 请求文件存储权限
+     * 请求文件存储权限。
+     *
+     * 仅允许从模块前台 Activity 发起；自动调度链路只能读取权限状态。
      */
-    fun checkOrRequestFilePermissions(activity: MainActivity): Boolean {
+    fun checkOrRequestFilePermissions(activity: Activity): Boolean {
         if (checkFilePermissions(activity)) return true
+        if (!ensureModulePermissionRequestHost(activity, "file")) return false
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -91,18 +94,21 @@ object PermissionUtil {
     }
 
     /**
-     * 请求精确闹钟权限
+     * 请求精确闹钟权限。
+     *
+     * 仅允许从模块前台 Activity 发起；自动调度链路只能读取权限状态。
      */
     @JvmStatic
-    fun checkOrRequestAlarmPermissions(context: Context): Boolean {
-        if (checkAlarmPermissions(context)) return true
+    fun checkOrRequestAlarmPermissions(activity: Activity): Boolean {
+        if (checkAlarmPermissions(activity)) return true
+        if (!ensureModulePermissionRequestHost(activity, "exact_alarm")) return false
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                    data = Uri.parse("package:${context.packageName}")
+                    data = Uri.parse("package:${activity.packageName}")
                 }
-                startActivitySafely(context, intent, Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                startActivitySafely(activity, intent, Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
             }
         } catch (e: Exception) {
             Log.printStackTrace(TAG, "请求闹钟权限失败", e)
@@ -116,25 +122,32 @@ object PermissionUtil {
      * 检查是否忽略电池优化
      */
     @JvmStatic
-    fun checkBatteryPermissions(context: Context? = null): Boolean {
+    fun checkBatteryPermissions(
+        context: Context? = null,
+        packageName: String? = null
+    ): Boolean {
         val ctx = context ?: contextSafely ?: return false
         val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        return pm?.isIgnoringBatteryOptimizations(ctx.packageName) == true
+        val targetPackage = packageName?.takeIf { it.isNotBlank() } ?: ctx.packageName
+        return pm?.isIgnoringBatteryOptimizations(targetPackage) == true
     }
 
     /**
-     * 请求加入电池优化白名单
+     * 请求加入电池优化白名单。
+     *
+     * 仅允许从模块前台 Activity 发起；自动调度链路只能读取权限状态。
      */
     @JvmStatic
-    fun checkOrRequestBatteryPermissions(context: Context): Boolean {
-        if (checkBatteryPermissions(context)) return true
+    fun checkOrRequestBatteryPermissions(activity: Activity): Boolean {
+        if (checkBatteryPermissions(activity)) return true
+        if (!ensureModulePermissionRequestHost(activity, "battery_optimization")) return false
 
         try {
             // 尝试直接请求指定包名
             val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                data = Uri.parse("package:${context.packageName}")
+                data = Uri.parse("package:${activity.packageName}")
             }
-            startActivitySafely(context, intent, Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            startActivitySafely(activity, intent, Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
         } catch (e: Exception) {
             Log.printStackTrace(TAG, "请求电池优化权限失败", e)
         }
@@ -155,10 +168,13 @@ object PermissionUtil {
     }
 
     /**
-     * 请求通知权限
+     * 请求通知权限。
+     *
+     * 仅允许从模块前台 Activity 发起；自动调度链路只能读取权限状态。
      */
-    fun checkOrRequestNotificationPermission(activity: AppCompatActivity): Boolean {
+    fun checkOrRequestNotificationPermission(activity: Activity): Boolean {
         if (checkNotificationPermission(activity)) return true
+        if (!ensureModulePermissionRequestHost(activity, "notification")) return false
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             try {
@@ -178,7 +194,7 @@ object PermissionUtil {
      */
     private fun startActivitySafely(context: Context, intent: Intent, fallbackAction: String? = null) {
         try {
-            if (context !is androidx.appcompat.app.AppCompatActivity && context !is android.app.Activity) {
+            if (context !is Activity) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
@@ -198,6 +214,14 @@ object PermissionUtil {
         } catch (e: Exception) {
             Log.printStackTrace(TAG, "未知错误", e)
         }
+    }
+
+    private fun ensureModulePermissionRequestHost(activity: Activity, permissionName: String): Boolean {
+        if (activity.packageName == BuildConfig.APPLICATION_ID) {
+            return true
+        }
+        Log.record(TAG, "忽略非模块前台的权限申请请求: permission=$permissionName package=${activity.packageName}")
+        return false
     }
 
     /**

@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 命令执行服务（前台服务）
@@ -54,50 +55,60 @@ class CommandService : Service() {
     // 使用 SupervisorJob，确保单个任务崩溃不影响整个作用域
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val commandMutex = Mutex()
+    private val pendingCommandCount = AtomicInteger(0)
 
     // ShellManager 实例
     private var shellManager: ShellManager? = null
 
+    @Volatile
+    private var stopWhenIdle = false
+
     private val binder = object : ICommandService.Stub() {
         override fun executeCommand(command: String, callback: ICallback?) {
+            pendingCommandCount.incrementAndGet()
             serviceScope.launch {
-                commandMutex.withLock {
-                    try {
-                        ensureShellManager()
-                        shellManager?.onStateChanged = { newType ->
-                            dispatchStatusChange(newType)
-                        }
-
-                        if (shellManager?.selectedName == "no_executor") {
-                            val refreshedType = shellManager?.refreshSelection(notifyUnavailable = false)
-                            if (refreshedType == "no_executor") {
-                                dispatchStatusChange("no_executor")
-                                safeCallbackError(callback, "无 Root/Shizuku 权限")
-                                return@withLock
+                try {
+                    commandMutex.withLock {
+                        try {
+                            ensureShellManager()
+                            shellManager?.onStateChanged = { newType ->
+                                dispatchStatusChange(newType)
                             }
-                        }
 
-                        // 执行
-                        val result = withTimeout(COMMAND_TIMEOUT_MS) {
-                            shellManager!!.exec(command)
-                        }
+                            if (shellManager?.selectedName == "no_executor") {
+                                val refreshedType = shellManager?.refreshSelection(notifyUnavailable = false)
+                                if (refreshedType == "no_executor") {
+                                    dispatchStatusChange("no_executor")
+                                    safeCallbackError(callback, "无 Root/Shizuku 权限")
+                                    return@withLock
+                                }
+                            }
 
-                        if (result.isSuccess) {
-                            safeCallbackSuccess(callback, result.stdout.trim())
-                        } else {
-                            // 优化错误信息返回，区分是 Shell 找不到还是命令执行错
-                            val errorMsg = if (result.exitCode == -1 && result.stderr.contains("No valid")) {
-                                "无 Root/Shizuku 权限"
+                            // 执行
+                            val result = withTimeout(COMMAND_TIMEOUT_MS) {
+                                shellManager!!.exec(command)
+                            }
+
+                            if (result.isSuccess) {
+                                safeCallbackSuccess(callback, result.stdout.trim())
                             } else {
-                                "Code:${result.exitCode}, Err:${result.stderr}"
+                                // 优化错误信息返回，区分是 Shell 找不到还是命令执行错
+                                val errorMsg = if (result.exitCode == -1 && result.stderr.contains("No valid")) {
+                                    "无 Root/Shizuku 权限"
+                                } else {
+                                    "Code:${result.exitCode}, Err:${result.stderr}"
+                                }
+                                safeCallbackError(callback, errorMsg)
                             }
-                            safeCallbackError(callback, errorMsg)
+                        } catch (e: Exception) {
+                            // ... 异常处理 ...
+                            Log.e(TAG, "执行异常", e)
+                            safeCallbackError(callback, e.message ?: "Service Error")
                         }
-                    } catch (e: Exception) {
-                        // ... 异常处理 ...
-                        Log.e(TAG, "执行异常", e)
-                        safeCallbackError(callback, e.message ?: "Service Error")
                     }
+                } finally {
+                    pendingCommandCount.decrementAndGet()
+                    stopSelfIfIdle()
                 }
             }
         }
@@ -177,7 +188,14 @@ class CommandService : Service() {
 
     override fun onBind(intent: Intent?): IBinder {
         Log.d(TAG, "CommandService onBind")
+        stopWhenIdle = false
         return binder
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        stopWhenIdle = true
+        stopSelfIfIdle()
+        return false
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -279,6 +297,13 @@ class CommandService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true) // 禁止用户侧滑删除
             .build()
+    }
+
+    private fun stopSelfIfIdle() {
+        if (!stopWhenIdle || pendingCommandCount.get() > 0) {
+            return
+        }
+        stopSelf()
     }
 }
 

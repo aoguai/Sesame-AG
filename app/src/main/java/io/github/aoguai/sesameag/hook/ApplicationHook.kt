@@ -70,7 +70,6 @@ import io.github.aoguai.sesameag.util.ModuleStatus
 import io.github.aoguai.sesameag.util.Notify
 import io.github.aoguai.sesameag.util.Notify.stop
 import io.github.aoguai.sesameag.util.Notify.updateStatusText
-import io.github.aoguai.sesameag.util.PermissionUtil
 import io.github.aoguai.sesameag.util.PermissionUtil.checkBatteryPermissions
 import io.github.aoguai.sesameag.util.TimeUtil
 import io.github.aoguai.sesameag.util.WorkflowRootGuard
@@ -1051,16 +1050,10 @@ class ApplicationHook {
 
         private fun checkBatteryPermission() {
             if (batteryPerm.value != true || batteryPermissionChecked) return
-
-            val hasPermission = checkBatteryPermissions(appContext)
             batteryPermissionChecked = true
-            if (!hasPermission) {
-                record(TAG, "无后台运行权限，2秒后申请")
-                mainHandler!!.postDelayed({
-                    if (!PermissionUtil.checkOrRequestBatteryPermissions(appContext!!)) {
-                        show("请授予目标应用始终在后台运行权限")
-                    }
-                }, 2000)
+            val context = appContext ?: return
+            if (!checkBatteryPermissions(context, BuildConfig.APPLICATION_ID)) {
+                record(TAG, "模块缺少忽略电池优化权限，请在模块界面内完成授权；自动链路不会主动申请")
             }
         }
 
