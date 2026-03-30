@@ -420,7 +420,7 @@ object AntFarmRpcCall {
         } else if ("jumpGame" == str) {
             return nextInt(250, 270) * 10
         } else if ("flyGame" == str) {
-            return nextInt(4000, 8000)
+            return nextInt(4500, 7450)
         } else if ("hitGame" == str) {
             return nextInt(80, 120)
         } else {
