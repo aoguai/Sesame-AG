@@ -124,7 +124,7 @@ object ModelFieldTodayStateResolver {
                 flag(StatusFlags.FLAG_ANTSTALL_THROW_MANURE_LIMIT, "今日丢肥料已达上限")
 
             "AntFarm.doFarmTask",
-            "AntFarm.doFarmTaskTime" ->
+            "AntFarm.farmTaskTrigger" ->
                 flag(StatusFlags.FLAG_FARM_TASK_FINISHED, "今日饲料任务已处理")
 
             "AntFarm.feedFriendAnimalList" ->

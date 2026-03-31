@@ -4,12 +4,12 @@ package io.github.aoguai.sesameag.task.antFarm
 import io.github.aoguai.sesameag.data.Status
 import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.task.TaskStatus
-import io.github.aoguai.sesameag.task.antForest.TaskTimeChecker
 import io.github.aoguai.sesameag.util.Files
 import io.github.aoguai.sesameag.util.GlobalThreadPools
 import io.github.aoguai.sesameag.util.JsonUtil
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.ResChecker
+import io.github.aoguai.sesameag.util.TimeTriggerEvaluator
 import io.github.aoguai.sesameag.util.maps.UserMap
 import org.json.JSONArray
 import org.json.JSONObject
@@ -101,7 +101,9 @@ class ChouChouLe {
 
         val isGameFinished = Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)
         val isGameEnabled = antFarm.recordFarmGame?.value == true
-        val isTimeReached = TaskTimeChecker.isTimeReached(antFarm.enableChouchouleTime?.value, "0900")
+        val isTimeReached = antFarm.chouChouLeTrigger?.getTriggerSpec()?.let {
+            TimeTriggerEvaluator.evaluateNow(it).allowNow
+        } == true
         val ignoreAcceLimitMode = !isGameEnabled || antFarm.ignoreAcceLimit?.value == true
 
         when {

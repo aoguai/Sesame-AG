@@ -23,17 +23,16 @@ import io.github.aoguai.sesameag.model.withDesc
 import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.ChoiceModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.IntegerModelField
-import io.github.aoguai.sesameag.model.modelFieldExt.ListModelField.ListJoinCommaToStringModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectAndCountModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.StringModelField
+import io.github.aoguai.sesameag.model.modelFieldExt.TimeTriggerModelField
 import io.github.aoguai.sesameag.task.AnswerAI.AnswerAI
 import io.github.aoguai.sesameag.task.ModelTask
 import io.github.aoguai.sesameag.task.TaskStatus
 import io.github.aoguai.sesameag.task.antFarm.AntFarmFamily.familyClaimRewardList
 import io.github.aoguai.sesameag.task.antFarm.AntFarmFamily.familySign
 import io.github.aoguai.sesameag.task.antFarm.FarmGame.drawGameCenterAward
-import io.github.aoguai.sesameag.task.antForest.TaskTimeChecker
 import io.github.aoguai.sesameag.util.ActionDelayUtil
 import io.github.aoguai.sesameag.util.CoroutineUtils
 import io.github.aoguai.sesameag.util.DataStore
@@ -44,6 +43,8 @@ import io.github.aoguai.sesameag.util.RandomUtil
 import io.github.aoguai.sesameag.util.ResChecker
 import io.github.aoguai.sesameag.util.TaskBlacklist
 import io.github.aoguai.sesameag.util.TimeCounter
+import io.github.aoguai.sesameag.util.TimeTriggerEvaluator
+import io.github.aoguai.sesameag.util.TimeTriggerParseOptions
 import io.github.aoguai.sesameag.util.TimeUtil
 import io.github.aoguai.sesameag.util.maps.IdMapManager
 import io.github.aoguai.sesameag.util.maps.ParadiseCoinBenefitIdMap
@@ -190,7 +191,7 @@ class AntFarm : ModelTask() {
     /**
      * 小鸡游戏时间
      */
-    internal var farmGameTime: ListJoinCommaToStringModelField? = null
+    internal var farmGameTrigger: TimeTriggerModelField? = null
 
     /**
      * 小鸡厨房
@@ -210,8 +211,7 @@ class AntFarm : ModelTask() {
      * 饲料任务
      */
     internal var doFarmTask: BooleanModelField? = null // 做饲料任务
-    private var doFarmTaskTime: StringModelField? = null // 饲料任务执行时间
-    internal var nextDoFarmTaskTime: StringModelField? = null // 再次执行饲料任务的时间 (默认2200)
+    private var farmTaskTrigger: TimeTriggerModelField? = null // 饲料任务触发时间
 
     // 签到
     private var signRegardless: BooleanModelField? =null
@@ -240,7 +240,7 @@ class AntFarm : ModelTask() {
     private var collectChickenDiary: ChoiceModelField? = null
     private lateinit var remainingTime: IntegerModelField
     private var enableChouchoule: BooleanModelField? = null
-    internal var enableChouchouleTime: StringModelField? = null // 抽抽乐执行时间
+    internal var chouChouLeTrigger: TimeTriggerModelField? = null // 抽抽乐触发时间
     var autoExchange: BooleanModelField? = null
     var doChouChouLeDonationTask: BooleanModelField? = null
     internal var exchangeDaysBeforeEndIp: IntegerModelField? = null  // IP 抽抽乐活动结束前兑换天数
@@ -306,19 +306,19 @@ class AntFarm : ModelTask() {
                 false
             ).withDesc("执行庄园每日任务获取饲料、道具和抽奖机会。").also { doFarmTask = it })
         modelFields.addField(
-            StringModelField.TimeStringModelField(
-                "doFarmTaskTime",
-                "饲料任务执行时间 | 默认8:30后执行",
-                "0830"
-            ).withDesc("限制开始执行饲料任务的时间，避免过早触发。").also { doFarmTaskTime = it })
-        modelFields.addField(
-            StringModelField.TimeStringModelField(
-                "nextDoFarmTaskTime",
-                "再次执行饲料任务的时间 | 默认22:00后执行",
-                "2200",
-                true,
-                setOf("-2")
-            ).withDesc("限制再次执行饲料任务的时间，避免验证。-1关闭;-2关闭再次执行").also { nextDoFarmTaskTime = it })
+            TimeTriggerModelField(
+                "farmTaskTrigger",
+                "饲料任务触发时间",
+                "0830,2200",
+                TimeTriggerParseOptions(
+                    allowCheckpoints = true,
+                    allowWindows = false,
+                    allowBlockedWindows = false,
+                    tag = TAG
+                )
+            ).withDesc("按检查点槽位尝试执行饲料任务；格式 HHmm 或 HHmmss，多个时间点用逗号分隔，填 -1 关闭。").also {
+                farmTaskTrigger = it
+            })
         modelFields.addField(
             BooleanModelField(
                 "receiveFarmTaskAward",
@@ -388,11 +388,19 @@ class AntFarm : ModelTask() {
                 autoExchangeList = it
             })
         modelFields.addField(
-            StringModelField.TimeStringModelField(
-                "enableChouchouleTime",
-                "小鸡抽抽乐执行时间 | 默认9:00后执行",
-                "0900"
-            ).withDesc("限制抽抽乐开始时间，避免和其他庄园流程抢时机。").also { enableChouchouleTime = it })
+            TimeTriggerModelField(
+                "chouChouLeTrigger",
+                "小鸡抽抽乐触发时间",
+                "0900",
+                TimeTriggerParseOptions(
+                    allowCheckpoints = true,
+                    allowWindows = true,
+                    allowBlockedWindows = false,
+                    tag = TAG
+                )
+            ).withDesc("控制抽抽乐尝试时机；支持时间点或允许时间段，格式 HHmm、HHmm-HHmm，填 -1 关闭。").also {
+                chouChouLeTrigger = it
+            })
         modelFields.addField(
             BooleanModelField(
                 "recordFarmGame",
@@ -405,12 +413,18 @@ class AntFarm : ModelTask() {
             ).also { gameRewardMax = it }
         )
         modelFields.addField(
-            ListJoinCommaToStringModelField(
-                "farmGameTime",
+            TimeTriggerModelField(
+                "farmGameTrigger",
                 "小鸡游戏时间(范围)",
-                ListUtil.newArrayList("2200-2400")
-            ).withDesc("仅在这些时间段内执行游戏改分，可配置多个范围，如 2200-2400。").also {
-                farmGameTime = it
+                "2200-2400",
+                TimeTriggerParseOptions(
+                    allowCheckpoints = false,
+                    allowWindows = true,
+                    allowBlockedWindows = false,
+                    tag = TAG
+                )
+            ).withDesc("仅在这些允许时间段内执行游戏改分；支持多个 HHmm-HHmm，填 -1 关闭。").also {
+                farmGameTrigger = it
             })
         modelFields.addField(
             BooleanModelField(
@@ -744,36 +758,8 @@ class AntFarm : ModelTask() {
                 tc.countDebug("NPC小鸡任务")
             }
 
-            if (doFarmTask?.value == true) {
-                val isFinished = Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)
-                val hasRunOnce = Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_ONCE)
-
-                if (!isFinished) {
-                    val targetTime = if (!hasRunOnce) {
-                        doFarmTaskTime?.value ?: "0830"
-                    } else {
-                        nextDoFarmTaskTime?.value ?: "2200"
-                    }
-
-                    // -1 或 -2 都视为关闭再次执行。但 -2 特指用户手动指定的“关闭二轮”
-                    val isNextDisabled = hasRunOnce && (targetTime == "-1" || targetTime == "-2")
-
-                    if (!isNextDisabled && TaskTimeChecker.isTimeReached(targetTime, targetTime)) {
-                        Log.record(TAG, if (!hasRunOnce) "开始执行每日首轮饲料任务" else "达到二轮时间，再次尝试补全饲料任务")
-
-                        val state = doFarmTasks()
-                        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED, state)
-                        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_ONCE)
-                        pendingFarmTaskFinalization = state == Status.TodayFlagState.RETRY_LATER
-                        tc.countDebug("饲料任务")
-                    } else if (!hasRunOnce) {
-                        Log.record(TAG, "饲料任务未到首轮执行时间($targetTime)，跳过")
-                    } else if (!isNextDisabled) {
-                        Log.record(TAG, "今日已运行过首轮任务，未到二轮补全时间($targetTime)，跳过")
-                    } else {
-                        Log.record(TAG, "饲料任务已关闭当日再次执行，跳过")
-                    }
-                }
+            if (doFarmTask?.value == true && !Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)) {
+                pendingFarmTaskFinalization = triggerFarmTaskIfNeeded(tc)
             }
 
             handleAutoFeedAnimal()
@@ -1364,9 +1350,6 @@ class AntFarm : ModelTask() {
             if (enableChouchoule?.value == true) {
                 ChouChouLe().run(this@AntFarm)
                 handleMultiStageTasksLoop()
-                if (pendingFarmTaskFinalization) {
-                    pendingFarmTaskFinalization = finalizeFarmTaskAfterMultiStage("蹲点喂食抽抽乐流程后")
-                }
             }
         }
 
@@ -2080,13 +2063,65 @@ class AntFarm : ModelTask() {
     private fun finalizeFarmTaskAfterMultiStage(source: String): Boolean {
         val finalState = resolveFarmTaskFlagState()
         Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED, finalState)
-        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_ONCE)
         if (finalState == Status.TodayFlagState.RETRY_LATER) {
-            Log.record(TAG, "饲料任务在$source后仍未收敛，保留后续重试机会")
+            Log.record(TAG, "饲料任务在${source}后仍未收敛，保留后续重试机会")
             return true
         }
-        Log.record(TAG, "饲料任务在$source后已完成最终状态确认: $finalState")
+        Log.record(TAG, "饲料任务在${source}后已完成最终状态确认: $finalState")
         return false
+    }
+
+    private suspend fun triggerFarmTaskIfNeeded(tc: TimeCounter): Boolean {
+        val spec = farmTaskTrigger?.getTriggerSpec() ?: return false
+        if (spec.disabled) {
+            Log.record(TAG, "饲料任务触发已关闭，跳过")
+            return false
+        }
+
+        val consumedIndex = getFarmTaskTriggerIndex()
+        val decision = TimeTriggerEvaluator.evaluateNow(spec, consumedIndex = consumedIndex)
+        if (!decision.allowNow) {
+            when {
+                decision.blockedNow && decision.nextTriggerAt != null -> {
+                    Log.record(TAG, "饲料任务当前槽位命中禁止窗口，等待${TimeUtil.getCommonDate(decision.nextTriggerAt)}后再尝试")
+                }
+                decision.nextTriggerAt != null -> {
+                    Log.record(TAG, "饲料任务未到触发时机，下一次可尝试时间=${TimeUtil.getCommonDate(decision.nextTriggerAt)}")
+                }
+                else -> {
+                    Log.record(TAG, "饲料任务今日已无可用触发槽位，跳过")
+                }
+            }
+            return false
+        }
+
+        advanceFarmTaskTriggerIndex(decision.matchedSlotIndex)
+        val slotLabel = if (decision.matchedSlotIndex >= 0) {
+            "槽位#${decision.matchedSlotIndex + 1}"
+        } else {
+            "当前窗口"
+        }
+        Log.record(TAG, "命中饲料任务$slotLabel，开始尝试补全饲料任务")
+
+        val state = doFarmTasks()
+        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED, state)
+        tc.countDebug("饲料任务")
+        return state == Status.TodayFlagState.RETRY_LATER
+    }
+
+    private fun getFarmTaskTriggerIndex(): Int {
+        return Status.getIntFlagToday(FARM_TASK_TRIGGER_INDEX_KEY) ?: 0
+    }
+
+    private fun advanceFarmTaskTriggerIndex(matchedSlotIndex: Int) {
+        if (matchedSlotIndex < 0) {
+            return
+        }
+        val nextIndex = matchedSlotIndex + 1
+        val currentIndex = getFarmTaskTriggerIndex()
+        if (nextIndex > currentIndex) {
+            Status.setIntFlagToday(FARM_TASK_TRIGGER_INDEX_KEY, nextIndex)
+        }
     }
 
     /**
@@ -5179,6 +5214,7 @@ class AntFarm : ModelTask() {
         private const val FARM_ANSWER_CACHE_KEY = "farmAnswerQuestionCache"
         private const val ANSWERED_FLAG = "farmQuestion::answered" // 今日是否已答题
         private const val CACHED_FLAG = "farmQuestion::cache" // 是否已缓存明日答案
+        private const val FARM_TASK_TRIGGER_INDEX_KEY = "antFarm::farmTask::triggerIndex"
     }
 
     /**

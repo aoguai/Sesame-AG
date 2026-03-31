@@ -28,10 +28,10 @@ import io.github.aoguai.sesameag.model.withDesc
 import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.ChoiceModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.IntegerModelField
-import io.github.aoguai.sesameag.model.modelFieldExt.ListModelField.ListJoinCommaToStringModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectAndCountModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.StringModelField
+import io.github.aoguai.sesameag.model.modelFieldExt.TimeTriggerModelField
 import io.github.aoguai.sesameag.task.ModelTask
 import io.github.aoguai.sesameag.task.TaskCommon
 import io.github.aoguai.sesameag.task.TaskStatus
@@ -53,6 +53,9 @@ import io.github.aoguai.sesameag.util.ResChecker
 import io.github.aoguai.sesameag.util.TaskBlacklist
 import io.github.aoguai.sesameag.util.TimeCounter
 import io.github.aoguai.sesameag.util.TimeFormatter
+import io.github.aoguai.sesameag.util.TimeTriggerDecision
+import io.github.aoguai.sesameag.util.TimeTriggerEvaluator
+import io.github.aoguai.sesameag.util.TimeTriggerParseOptions
 import io.github.aoguai.sesameag.util.TimeUtil
 import io.github.aoguai.sesameag.util.maps.UserMap
 import kotlinx.coroutines.CancellationException
@@ -171,7 +174,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     private var collectInterval: StringModelField? = null // 收取间隔时间
     private var doubleCollectInterval: StringModelField? = null // 双击间隔时间
     private var doubleCard: ChoiceModelField? = null // 双击卡类型选择
-    private var doubleCardTime: ListJoinCommaToStringModelField? = null // 双击卡使用时间列表
+    private var doubleCardTime: TimeTriggerModelField? = null // 双击卡使用时间列表
     var doubleCountLimit: IntegerModelField? = null // 双击卡使用次数限制
 
     private var doubleCardConstant: BooleanModelField? = null // 双击卡永动机
@@ -210,7 +213,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     private var giveProp: BooleanModelField? = null
 
     private var robMultiplierCard: ChoiceModelField? = null // 收好友N倍卡
-    private var robMultiplierCardTime: ListJoinCommaToStringModelField? = null // 收好友N倍卡时间
+    private var robMultiplierCardTime: TimeTriggerModelField? = null // 收好友N倍卡时间
 
     private var cycleinterval: IntegerModelField? = null
     private var energyRainChance: BooleanModelField? = null
@@ -260,7 +263,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     /**
      * 加速器定时
      */
-    private var bubbleBoostTime: ListJoinCommaToStringModelField? = null
+    private var bubbleBoostTime: TimeTriggerModelField? = null
 
     private val forestTaskTryCount: ConcurrentHashMap<String, AtomicInteger> = ConcurrentHashMap<String, AtomicInteger>()
     private var lastPatrolId: Int = 0
@@ -463,11 +466,19 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 6
             ).withDesc("每天最多使用双击卡的次数。").also { doubleCountLimit = it })
         modelFields.addField(
-            ListJoinCommaToStringModelField(
-                "doubleCardTime", "双击卡 | 使用时间/范围", ListUtil.newArrayList(
-                    "0700", "0730", "1200", "1230", "1700", "1730", "2000", "2030", "2359"
+            TimeTriggerModelField(
+                "doubleCardTime",
+                "双击卡 | 使用时间/范围",
+                "0700,0730,1200,1230,1700,1730,2000,2030,2359",
+                TimeTriggerParseOptions(
+                    allowCheckpoints = true,
+                    allowWindows = true,
+                    allowBlockedWindows = false,
+                    tag = TAG
                 )
-            ).withDesc("仅在这些时间点或时间范围内尝试使用双击卡。").also { doubleCardTime = it })
+            ).withDesc("仅在这些时间点或允许时间段内尝试使用双击卡；支持 HHmm、HHmm-HHmm，填 -1 关闭。").also {
+                doubleCardTime = it
+            })
         // 双击卡永动机
         modelFields.addField(
             BooleanModelField(
@@ -482,15 +493,19 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 ApplyPropType.nickNames
             ).withDesc("配置时光加速器的自动使用策略。").also { bubbleBoostCard = it })
         modelFields.addField(
-            ListJoinCommaToStringModelField(
-                "bubbleBoostTime", "加速器 | 使用时间/不能范围", ListUtil.newArrayList(
-                    "0030,0630",
-                    "0700",
-                    "1200",
-                    "1730",
-                    "2359"
+            TimeTriggerModelField(
+                "bubbleBoostTime",
+                "加速器 | 使用时间/不能范围",
+                "0030,0630,0700,1200,1730,2359",
+                TimeTriggerParseOptions(
+                    allowCheckpoints = true,
+                    allowWindows = false,
+                    allowBlockedWindows = true,
+                    tag = TAG
                 )
-            ).withDesc("在这些时间点尝试使用加速卡；未到时间会挂定时任务。").also { bubbleBoostTime = it })
+            ).withDesc("按这些时间点尝试使用加速卡，并可用 !HHmm-HHmm 配置禁止窗口；未到时间会挂定时任务。").also {
+                bubbleBoostTime = it
+            })
         modelFields.addField(
             ChoiceModelField(
                 "shieldCard",
@@ -519,20 +534,19 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             ).withDesc("配置收好友 N 倍卡的自动使用策略。").also { robMultiplierCard = it })
         // 收好友N倍卡时间
         modelFields.addField(
-            ListJoinCommaToStringModelField(
-                "robExpandCardTime", "收好友N倍卡 | 使用时间/范围",
-                ListUtil.newArrayList(
-                    "0700",
-                    "0730",
-                    "1200",
-                    "1230",
-                    "1700",
-                    "1730",
-                    "2000",
-                    "2030",
-                    "2359"
+            TimeTriggerModelField(
+                "robExpandCardTime",
+                "收好友N倍卡 | 使用时间/范围",
+                "0700,0730,1200,1230,1700,1730,2000,2030,2359",
+                TimeTriggerParseOptions(
+                    allowCheckpoints = true,
+                    allowWindows = true,
+                    allowBlockedWindows = false,
+                    tag = TAG
                 )
-            ).withDesc("仅在这些时间点或时间范围内尝试使用非限时收好友 N 倍卡。").also { robMultiplierCardTime = it }
+            ).withDesc("仅在这些时间点或允许时间段内尝试使用非限时收好友 N 倍卡；支持 HHmm、HHmm-HHmm，填 -1 关闭。").also {
+                robMultiplierCardTime = it
+            }
         )
         modelFields.addField(
             ChoiceModelField(
@@ -4090,12 +4104,9 @@ class AntForest : ModelTask(), EnergyCollectCallback {
 
                     if (needStealth) useStealthCard(bagObject) // 使用隐身卡
 
-                    if (needBubbleBoostCard) useCardBoot(
-                        bubbleBoostTime?.value ?: emptyList(),
-                        "加速卡"
-                    ) {
-                        this.useBubbleBoostCard(bagObject)
-                    } // 使用加速卡
+                    if (needBubbleBoostCard) {
+                        handleBubbleBoostTrigger(bagObject)
+                    }
                     if (needShield) {
                         Log.record(TAG, "尝试使用保护罩罩")
                         useShieldCard(bagObject)
@@ -4112,29 +4123,90 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         }
     }
 
-    fun useCardBoot(targetTimeValue: List<String?>, propName: String?, func: Runnable) {
-        for (targetTimeStr in targetTimeValue) {
-            if ("-1" == targetTimeStr) {
+    private fun handleBubbleBoostTrigger(bagObject: JSONObject?) {
+        val spec = bubbleBoostTime?.getTriggerSpec() ?: return
+        if (spec.disabled) {
+            Log.record(TAG, "加速器时间触发已关闭，跳过")
+            return
+        }
+
+        val consumedIndex = getTriggerIndex(BUBBLE_BOOST_TRIGGER_INDEX_KEY)
+        val decision = TimeTriggerEvaluator.evaluateNow(spec, consumedIndex = consumedIndex)
+        if (decision.allowNow) {
+            consumeTriggerSlot(BUBBLE_BOOST_TRIGGER_INDEX_KEY, decision.matchedSlotIndex)
+            useBubbleBoostCard(bagObject)
+            return
+        }
+
+        if (!TimeTriggerEvaluator.scheduleNext(
+                this,
+                "bubbleBoost",
+                spec,
+                consumedIndex,
+                Runnable { executeBubbleBoostTriggerFromSchedule() }
+            )
+        ) {
+            logTriggerWaiting("加速器", decision)
+        }
+    }
+
+    private fun executeBubbleBoostTriggerFromSchedule() {
+        synchronized(doubleCardLockObj) {
+            val bagObject = queryPropList()
+            if (bagObject == null) {
+                Log.record(TAG, "背包查询为空，跳过定时加速卡触发")
                 return
             }
-            val targetTimeCalendar = TimeUtil.getTodayCalendarByTimeStr(targetTimeStr) ?: return
-            val targetTime = targetTimeCalendar.getTimeInMillis()
-            val now = System.currentTimeMillis()
-            if (now > targetTime) {
-                continue
+
+            val spec = bubbleBoostTime?.getTriggerSpec() ?: return
+            val consumedIndex = getTriggerIndex(BUBBLE_BOOST_TRIGGER_INDEX_KEY)
+            val decision = TimeTriggerEvaluator.evaluateNow(spec, consumedIndex = consumedIndex)
+            if (!decision.allowNow) {
+                logTriggerWaiting("加速器", decision)
+                return
             }
-            val targetTaskId = "TAGET|$targetTime"
-            if (!hasChildTask(targetTaskId)) {
-                addChildTask(ChildModelTask(targetTaskId, "TAGET", func, targetTime))
-                Log.record(
-                    TAG,
-                    "添加定时使用" + propName + "[" + UserMap.getCurrentMaskName() + "]在[" + TimeUtil.getCommonDate(
-                        targetTime
-                    ) + "]执行"
-                )
-            } else {
-                addChildTask(ChildModelTask(targetTaskId, "TAGET", func, targetTime))
-            }
+
+            consumeTriggerSlot(BUBBLE_BOOST_TRIGGER_INDEX_KEY, decision.matchedSlotIndex)
+            useBubbleBoostCard(bagObject)
+        }
+    }
+
+    private fun evaluateTriggerDecision(
+        field: TimeTriggerModelField?,
+        statusKey: String
+    ): TimeTriggerDecision? {
+        val spec = field?.getTriggerSpec() ?: return null
+        if (spec.disabled) {
+            return null
+        }
+        return TimeTriggerEvaluator.evaluateNow(spec, consumedIndex = getTriggerIndex(statusKey))
+    }
+
+    private fun getTriggerIndex(statusKey: String): Int {
+        return Status.getIntFlagToday(statusKey) ?: 0
+    }
+
+    private fun consumeTriggerSlot(statusKey: String, matchedSlotIndex: Int) {
+        if (matchedSlotIndex < 0) {
+            return
+        }
+        val nextIndex = matchedSlotIndex + 1
+        val currentIndex = getTriggerIndex(statusKey)
+        if (nextIndex > currentIndex) {
+            Status.setIntFlagToday(statusKey, nextIndex)
+        }
+    }
+
+    private fun logTriggerWaiting(label: String, decision: TimeTriggerDecision?) {
+        when {
+            decision == null -> Log.record(TAG, "$label 时间触发已关闭，跳过")
+            decision.blockedNow && decision.nextTriggerAt != null ->
+                Log.record(TAG, "$label 当前命中禁止窗口，等待${TimeUtil.getCommonDate(decision.nextTriggerAt)}后再尝试")
+
+            decision.nextTriggerAt != null ->
+                Log.record(TAG, "$label 未到触发时机，下一次可尝试时间=${TimeUtil.getCommonDate(decision.nextTriggerAt)}")
+
+            else -> Log.record(TAG, "$label 今日已无可用触发槽位，跳过")
         }
     }
 
@@ -4323,28 +4395,6 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             )
         }
         return needRenew
-    }
-
-    /**
-     * 检查当前时间是否在设置的使用双击卡时间内
-     *
-     * @return 如果当前时间在双击卡的有效时间范围内，返回true；否则返回false。
-     */
-    private fun hasDoubleCardTime(): Boolean {
-        val currentTimeMillis = System.currentTimeMillis()
-        val timeRanges = doubleCardTime?.value?.filterNotNull() ?: emptyList()
-        return TimeUtil.checkInTimeRange(currentTimeMillis, timeRanges)
-    }
-
-    /**
-     * 检查当前时间是否在设置的收好友N倍卡使用时间内
-     *
-     * @return 如果当前时间在收好友N倍卡的有效时间范围内，返回 true；否则返回 false。
-     */
-    private fun hasRobMultiplierCardTime(): Boolean {
-        val currentTimeMillis = System.currentTimeMillis()
-        val timeRanges = robMultiplierCardTime?.value?.filterNotNull() ?: emptyList()
-        return TimeUtil.checkInTimeRange(currentTimeMillis, timeRanges)
     }
 
     private fun giveProp() {
@@ -5203,6 +5253,9 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             Log.record(TAG, "扫描到" + doubleClickProps.size + "种双击卡，将按过期顺序尝试使用...")
 
             // 步骤3: 遍历筛选并排序后的列表，逐个尝试使用
+            val normalDoubleDecision = evaluateTriggerDecision(doubleCardTime, DOUBLE_CARD_TRIGGER_INDEX_KEY)
+            var loggedNormalDoubleSkip = false
+            var normalDoubleTriggerConsumed = false
             var success = false
             for (propObj in doubleClickProps) {
                 val propType = propObj.optString("propType")
@@ -5210,9 +5263,18 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     propObj.optJSONObject("propConfigVO")?.optString("propName") ?: ""
 
                 // 特定条件检查1: 如果是普通的5分钟卡，需要检查是否在指定时间段内
-                if ("ENERGY_DOUBLE_CLICK" == propType && !hasDoubleCardTime()) {
-                    Log.record(TAG, "跳过[$propName]，当前不在指定使用时间段内")
-                    continue  // 跳过，尝试下一张
+                if ("ENERGY_DOUBLE_CLICK" == propType) {
+                    if (normalDoubleDecision?.allowNow != true) {
+                        if (!loggedNormalDoubleSkip) {
+                            logTriggerWaiting("双击卡", normalDoubleDecision)
+                            loggedNormalDoubleSkip = true
+                        }
+                        continue
+                    }
+                    if (!normalDoubleTriggerConsumed) {
+                        consumeTriggerSlot(DOUBLE_CARD_TRIGGER_INDEX_KEY, normalDoubleDecision.matchedSlotIndex)
+                        normalDoubleTriggerConsumed = true
+                    }
                 }
 
                 if ("LIMIT_TIME_ENERGY_DOUBLE_CLICK" == propType && choice == ApplyPropType.ONLY_LIMIT_TIME) {
@@ -5458,9 +5520,13 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             }
             val jo = selectPreferredRobMultiplierProp(bag)
             val propType = getPropType(jo)
-            if (jo != null && !propType.contains("LIMIT_TIME") && !propType.contains("DAY") && !hasRobMultiplierCardTime()) {
-                Log.record(TAG, "跳过收好友N倍卡[$propType]，当前不在非限时卡指定使用时间段内")
-                return
+            if (jo != null && !propType.contains("LIMIT_TIME") && !propType.contains("DAY")) {
+                val decision = evaluateTriggerDecision(robMultiplierCardTime, ROB_MULTIPLIER_CARD_TRIGGER_INDEX_KEY)
+                if (decision?.allowNow != true) {
+                    logTriggerWaiting("收好友N倍卡", decision)
+                    return
+                }
+                consumeTriggerSlot(ROB_MULTIPLIER_CARD_TRIGGER_INDEX_KEY, decision.matchedSlotIndex)
             }
             if (jo != null && usePropBag(jo)) {
                 robMultiplierCardEndTime = System.currentTimeMillis() + 1000 * 60 * 5
@@ -5792,9 +5858,13 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 // 针对限时双击卡的时间检查
                 if ("双击卡" == config.propName) {
                     val propType = propObj.optString("propType")
-                    if ("ENERGY_DOUBLE_CLICK" == propType && !hasDoubleCardTime()) {
-                        Log.record(TAG, "跳过双击卡[$propType]，当前不在指定使用时间段内")
-                        return
+                    if ("ENERGY_DOUBLE_CLICK" == propType) {
+                        val decision = evaluateTriggerDecision(doubleCardTime, DOUBLE_CARD_TRIGGER_INDEX_KEY)
+                        if (decision?.allowNow != true) {
+                            logTriggerWaiting("双击卡", decision)
+                            return
+                        }
+                        consumeTriggerSlot(DOUBLE_CARD_TRIGGER_INDEX_KEY, decision.matchedSlotIndex)
                     }
                 }
                 Log.record(TAG, "找到" + config.propName + "，准备使用: " + propObj)
@@ -5856,6 +5926,9 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         // 保持向后兼容
         /** 保护罩续写阈值（HHmm），例如 2359 表示 23小时59分  */
         private const val SHIELD_RENEW_THRESHOLD_HHMM = 2359
+        private const val DOUBLE_CARD_TRIGGER_INDEX_KEY = "antForest::doubleCard::triggerIndex"
+        private const val BUBBLE_BOOST_TRIGGER_INDEX_KEY = "antForest::bubbleBoost::triggerIndex"
+        private const val ROB_MULTIPLIER_CARD_TRIGGER_INDEX_KEY = "antForest::robMultiplierCard::triggerIndex"
         var giveEnergyRainList: SelectModelField? = null //能量雨赠送列表
         var medicalHealthOption: SelectModelField? = null //医疗健康选项
         var ecoLifeOption: SelectModelField? = null

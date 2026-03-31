@@ -6,7 +6,7 @@ import io.github.aoguai.sesameag.task.TaskStatus
 import io.github.aoguai.sesameag.util.GameTask
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.ResChecker
-import io.github.aoguai.sesameag.util.TimeUtil
+import io.github.aoguai.sesameag.util.TimeTriggerEvaluator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import org.json.JSONArray
@@ -35,7 +35,9 @@ object FarmGame {
 
         val isAccelEnabled = antFarm.useAccelerateTool!!.value
         val isAccelLimitReached = Status.hasFlagToday(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT) || !Status.canUseAccelerateTool()
-        val isInsideTimeRange = antFarm.farmGameTime!!.value?.any { TimeUtil.checkNowInTimeRange(it) }
+        val isInsideTimeRange = antFarm.farmGameTrigger?.getTriggerSpec()?.let {
+            TimeTriggerEvaluator.evaluateNow(it).allowNow
+        } == true
         val ignoreAcceLimitMode = !isAccelEnabled!! || antFarm.ignoreAcceLimit!!.value == true
 
         when {

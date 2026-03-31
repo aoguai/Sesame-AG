@@ -15,7 +15,14 @@ import io.github.aoguai.sesameag.ui.StringDialog
  * String类型字段类
  * 该类用于表示字符串值字段，点击按钮弹出编辑对话框
  */
-open class StringModelField(code: String, name: String, value: String) : ModelField<String>(code, name, value) {
+open class StringModelField(code: String, name: String, value: String) : ModelField<String>(code, name, null) {
+
+    init {
+        // Avoid calling subclass normalization before subclass constructor properties are initialized.
+        val initialValue = value.trim()
+        defaultValue = initialValue
+        this.value = initialValue
+    }
 
     override fun getType(): String = "STRING"
 
@@ -65,11 +72,19 @@ open class StringModelField(code: String, name: String, value: String) : ModelFi
         private val extraAllowedValues: Set<String> = emptySet()
     ) : StringModelField(code, name, value) {
 
+        @Transient
+        private var initialized = false
+
         init {
+            initialized = true
             setObjectValue(value)
+            defaultValue = this.value
         }
 
         override fun normalizeValue(rawValue: String): String {
+            if (!initialized) {
+                return rawValue.trim()
+            }
             val trimmed = rawValue.trim()
             if (allowDisable && trimmed == "-1") {
                 return "-1"
