@@ -61,7 +61,8 @@ open class StringModelField(code: String, name: String, value: String) : ModelFi
         code: String,
         name: String,
         value: String,
-        private val allowDisable: Boolean = false
+        private val allowDisable: Boolean = false,
+        private val extraAllowedValues: Set<String> = emptySet()
     ) : StringModelField(code, name, value) {
 
         init {
@@ -72,6 +73,9 @@ open class StringModelField(code: String, name: String, value: String) : ModelFi
             val trimmed = rawValue.trim()
             if (allowDisable && trimmed == "-1") {
                 return "-1"
+            }
+            if (trimmed in extraAllowedValues) {
+                return trimmed
             }
 
             val digits = trimmed.filter { it.isDigit() }

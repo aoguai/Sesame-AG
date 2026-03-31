@@ -315,7 +315,9 @@ class AntFarm : ModelTask() {
             StringModelField.TimeStringModelField(
                 "nextDoFarmTaskTime",
                 "再次执行饲料任务的时间 | 默认22:00后执行",
-                "2200"
+                "2200",
+                true,
+                setOf("-2")
             ).withDesc("限制再次执行饲料任务的时间，避免验证。-1关闭;-2关闭再次执行").also { nextDoFarmTaskTime = it })
         modelFields.addField(
             BooleanModelField(
@@ -716,6 +718,7 @@ class AntFarm : ModelTask() {
         try {
             val tc = TimeCounter(TAG)
             val userId = UserMap.currentUid
+            var pendingFarmTaskFinalization = false
             Log.record(TAG, "执行开始-${getName()}")
             invalidToolTypesThisRound.clear()
             manurePotCollectionBlockedThisRound = false
@@ -761,6 +764,7 @@ class AntFarm : ModelTask() {
                         val state = doFarmTasks()
                         Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED, state)
                         Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_ONCE)
+                        pendingFarmTaskFinalization = state == Status.TodayFlagState.RETRY_LATER
                         tc.countDebug("饲料任务")
                     } else if (!hasRunOnce) {
                         Log.record(TAG, "饲料任务未到首轮执行时间($targetTime)，跳过")
@@ -862,6 +866,9 @@ class AntFarm : ModelTask() {
                 tc.countDebug("抽抽乐")
                 ChouChouLe().run(this@AntFarm)
                 handleMultiStageTasksLoop()
+                if (pendingFarmTaskFinalization) {
+                    pendingFarmTaskFinalization = finalizeFarmTaskAfterMultiStage("抽抽乐流程后")
+                }
                 refreshFarmStatus("抽抽乐流程后")
             }
 
@@ -1357,6 +1364,9 @@ class AntFarm : ModelTask() {
             if (enableChouchoule?.value == true) {
                 ChouChouLe().run(this@AntFarm)
                 handleMultiStageTasksLoop()
+                if (pendingFarmTaskFinalization) {
+                    pendingFarmTaskFinalization = finalizeFarmTaskAfterMultiStage("蹲点喂食抽抽乐流程后")
+                }
             }
         }
 
@@ -2067,6 +2077,18 @@ class AntFarm : ModelTask() {
         }
     }
 
+    private fun finalizeFarmTaskAfterMultiStage(source: String): Boolean {
+        val finalState = resolveFarmTaskFlagState()
+        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED, finalState)
+        Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_ONCE)
+        if (finalState == Status.TodayFlagState.RETRY_LATER) {
+            Log.record(TAG, "饲料任务在$source后仍未收敛，保留后续重试机会")
+            return true
+        }
+        Log.record(TAG, "饲料任务在$source后已完成最终状态确认: $finalState")
+        return false
+    }
+
     /**
      * 🚀 优化版：多阶段任务专项循环处理器
      * 策略：批量领奖 -> 批量完成 -> 再次循环，减少 RPC 请求次数。
@@ -2185,6 +2207,10 @@ class AntFarm : ModelTask() {
                 val taskStatus = task.optString("taskStatus")
 
                 if (TaskBlacklist.isTaskInBlacklist(title) || TaskBlacklist.isTaskInBlacklist(bizKey)) {
+                    continue
+                }
+                if (bizKey == "tab3_gyg" && enableChouchoule?.value != true) {
+                    Log.record(TAG, "抽抽乐任务[$title]已关闭，跳过饲料任务收敛检查")
                     continue
                 }
                 if (Status.hasFlagToday("farm::task::limit::$bizKey")) {
