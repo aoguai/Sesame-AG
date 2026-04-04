@@ -1009,6 +1009,12 @@ class AntStall : ModelTask() {
             if (json.optBoolean("success")) {
                 return true
             } else {
+                val errorCode = json.optString("code", json.optString("resultCode", ""))
+                val desc = json.optString("desc", json.optString("memo", ""))
+                if (errorCode == "400000040" || desc.contains("不支持rpc调用")) {
+                    Log.record(TAG, "任务[$taskType]不支持RPC完成，跳过finishTask，等待服务端状态回写")
+                    return false
+                }
                 Log.error(TAG, "finishTask err: $response")
             }
         } catch (t: Throwable) {

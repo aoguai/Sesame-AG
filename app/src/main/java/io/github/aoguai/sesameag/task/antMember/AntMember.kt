@@ -1723,6 +1723,7 @@ class AntMember : ModelTask() {
             var round = 0
             var finishedAllRounds = false
             var interrupted = false
+            val transientSkippedTasks = linkedSetOf<String>()
             while (round < sesameTaskRefreshRoundLimit) {
                 round++
                 val s = AntMemberRpcCall.queryAvailableSesameTask()
@@ -1764,7 +1765,7 @@ class AntMember : ModelTask() {
                             TAG,
                             "芝麻信用💳[第${round}轮待完成任务]#开始处理(" + waitCompleteTaskVOS.length() + "个)"
                         )
-                        val results = joinAndFinishSesameTaskWithResult(waitCompleteTaskVOS)
+                        val results = joinAndFinishSesameTaskWithResult(waitCompleteTaskVOS, transientSkippedTasks)
                         roundCompletedTasks += results.completedCount
                         roundSkippedTasks += results.skippedCount
                         if (results.interrupted) {
@@ -1782,7 +1783,7 @@ class AntMember : ModelTask() {
                             TAG,
                             "芝麻信用💳[第${round}轮待加入任务]#开始处理(" + waitJoinTaskVOS.length() + "个)"
                         )
-                        val results = joinAndFinishSesameTaskWithResult(waitJoinTaskVOS)
+                        val results = joinAndFinishSesameTaskWithResult(waitJoinTaskVOS, transientSkippedTasks)
                         roundCompletedTasks += results.completedCount
                         roundSkippedTasks += results.skippedCount
                         if (results.interrupted) {
@@ -1801,7 +1802,7 @@ class AntMember : ModelTask() {
                         TAG,
                         "芝麻信用💳[第${round}轮toCompleteVOS任务]#开始处理(" + toCompleteVOS.length() + "个)"
                     )
-                    val results = joinAndFinishSesameTaskWithResult(toCompleteVOS)
+                    val results = joinAndFinishSesameTaskWithResult(toCompleteVOS, transientSkippedTasks)
                     roundCompletedTasks += results.completedCount
                     roundSkippedTasks += results.skippedCount
                     if (results.interrupted) {
@@ -3456,14 +3457,10 @@ class AntMember : ModelTask() {
 
             val taskBaseInfo = task.optJSONObject("taskBaseInfo") ?: return
 
-            var taskId = taskBaseInfo.optString("appletId")
-            // 有些任务ID在taskId字段，有些在appletId，做个兼容
-            if (taskId == null || taskId.isEmpty()) {
-                taskId = task.optString("taskId")
-            }
+            val taskId = resolveZhimaTreeTaskId(task, taskBaseInfo)
 
             var title = taskBaseInfo.optString("appletName")
-            if (title.isEmpty()) title = taskBaseInfo.optString("title", taskId)
+            if (title.isEmpty()) title = taskBaseInfo.optString("title", taskId ?: "未知任务")
 
             val status = task.optString("taskProcessStatus")
 
@@ -3477,11 +3474,19 @@ class AntMember : ModelTask() {
 
             if ("NOT_DONE" == status || "SIGNUP_COMPLETE" == status) {
                 // SIGNUP_COMPLETE 通常表示已报名但未做，或者对于复访任务表示可以去完成
+                if (taskId == null) {
+                    record(TAG, "芝麻树🌳[跳过无有效任务ID] $title")
+                    return
+                }
                 record("芝麻树🌳[开始任务] " + title + (if (prizeName.isEmpty()) "" else " ($prizeName)"))
                 performTask(taskId, title, prizeName)
                 // 任务完成
             } else if ("TO_RECEIVE" == status) {
                 // 待领取状态
+                if (taskId == null) {
+                    record(TAG, "芝麻树🌳[跳过无有效任务ID] $title")
+                    return
+                }
                 if (doTaskAction(taskId, "receive")) {
                     val logMsg = "芝麻树🌳[领取奖励] " + title + " #" + (prizeName.ifEmpty { "奖励已领取" })
                     Log.other(logMsg)
@@ -3490,6 +3495,31 @@ class AntMember : ModelTask() {
         } catch (e: Exception) {
             Log.printStackTrace(TAG, e)
         }
+    }
+
+    private fun normalizeZhimaTreeTaskId(rawTaskId: String?): String? {
+        val normalized = rawTaskId?.trim().orEmpty()
+        if (normalized.isBlank() || normalized.equals("null", ignoreCase = true)) {
+            return null
+        }
+        if (normalized == "{}" || normalized == "[]") {
+            return null
+        }
+        if ((normalized.startsWith("{") && normalized.endsWith("}")) ||
+            (normalized.startsWith("[") && normalized.endsWith("]"))
+        ) {
+            return null
+        }
+        return normalized
+    }
+
+    private fun resolveZhimaTreeTaskId(task: JSONObject, taskBaseInfo: JSONObject): String? {
+        return sequenceOf(
+            taskBaseInfo.optString("appletId"),
+            taskBaseInfo.optString("taskId"),
+            task.optString("taskId")
+        ).mapNotNull { normalizeZhimaTreeTaskId(it) }
+            .firstOrNull()
     }
 
     /**
@@ -3573,7 +3603,7 @@ class AntMember : ModelTask() {
 
     private fun doTaskAction(taskId: String?, stageCode: String?): Boolean {
         try {
-            val safeTaskId = taskId?.takeIf { it.isNotBlank() } ?: return false
+            val safeTaskId = normalizeZhimaTreeTaskId(taskId) ?: return false
             val safeStageCode = stageCode?.takeIf { it.isNotBlank() } ?: return false
             val s = AntMemberRpcCall.rentGreenTaskFinish(safeTaskId, safeStageCode) ?: return false
             val json = JSONObject(s)
@@ -4111,7 +4141,10 @@ class AntMember : ModelTask() {
          * @throws JSONException JSON解析异常，上抛处理
          */
         @Throws(JSONException::class)
-        private suspend fun joinAndFinishSesameTaskWithResult(taskList: JSONArray): SesameTaskBatchResult {
+        private suspend fun joinAndFinishSesameTaskWithResult(
+            taskList: JSONArray,
+            transientSkippedTasks: MutableSet<String>
+        ): SesameTaskBatchResult {
             var completedCount = 0
             var skippedCount = 0
             var interrupted = false
@@ -4124,6 +4157,12 @@ class AntMember : ModelTask() {
 
                 val finishFlag = task.optBoolean("finishFlag", false)
                 val actionText = task.optString("actionText", "")
+
+                if (transientSkippedTasks.contains(taskTitle)) {
+                    record(TAG, "芝麻信用💳[跳过本轮频控任务]#$taskTitle")
+                    skippedCount++
+                    continue
+                }
 
                 if (finishFlag || "已完成" == actionText) {
                     record(TAG, "芝麻信用💳[跳过已完成任务]#$taskTitle")
@@ -4205,6 +4244,15 @@ class AntMember : ModelTask() {
                         skippedCount++
                         continue
                     }
+                    val joinResultView = responseObj.optString("resultView").ifEmpty {
+                        responseObj.optString("errorMessage", s ?: "")
+                    }
+                    if (isTransientSesameTaskError(joinResultCode, joinResultView)) {
+                        transientSkippedTasks.add(taskTitle)
+                        record(TAG, "芝麻信用💳[领取任务暂时跳过]#$taskTitle#$joinResultView")
+                        skippedCount++
+                        continue
+                    }
                     if (!ResChecker.checkRes(TAG, responseObj)) {
                         Log.error(TAG, "芝麻信用💳[领取任务" + taskTitle + "失败]#" + s)
                         val errorCode = responseObj.optString("errorCode", responseObj.optString("resultCode", ""))
@@ -4238,7 +4286,17 @@ class AntMember : ModelTask() {
 
                 s = AntMemberRpcCall.finishSesameTask(recordId)
                 responseObj = JSONObject(s)
-                if (ResChecker.checkRes(TAG, responseObj)) {
+                val errorCode = responseObj.optString("errorCode", responseObj.optString("resultCode", ""))
+                val resultView = responseObj.optString("resultView").ifEmpty {
+                    responseObj.optString("errorMessage", s ?: "")
+                }
+                if (isTransientSesameTaskError(errorCode, resultView)) {
+                    transientSkippedTasks.add(taskTitle)
+                    record(TAG, "芝麻信用💳[完成任务暂时跳过]#$taskTitle#$resultView")
+                    if (isSesameTaskFlowInterrupted(responseObj)) {
+                        interrupted = true
+                    }
+                } else if (ResChecker.checkRes(TAG, responseObj)) {
                     record(
                         TAG,
                         "芝麻信用💳[完成任务" + taskTitle + "]#(" + (completedNum + 1) + "/" + needCompleteNum + "天)"
@@ -4246,8 +4304,6 @@ class AntMember : ModelTask() {
                     taskCompleted = true
                 } else {
                     Log.error(TAG, "芝麻信用💳[完成任务" + taskTitle + "失败]#" + s)
-                    val errorCode = responseObj.optString("errorCode", responseObj.optString("resultCode", ""))
-                    val resultView = responseObj.optString("resultView", s ?: "")
                     if (!errorCode.isEmpty()) {
                         autoBlacklistSesameTaskIfNeeded(taskTitle, errorCode, resultView)
                     }

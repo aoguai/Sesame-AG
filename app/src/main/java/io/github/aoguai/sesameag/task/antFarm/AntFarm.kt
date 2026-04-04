@@ -1228,8 +1228,14 @@ class AntFarm : ModelTask() {
                     }
                 }
                 if (useSpecialFood?.value == true) { //使用特殊食品
-                    val cuisineList = jo.getJSONArray("cuisineList")
-                    if (AnimalFeedStatus.SLEEPY.name != ownerAnimal.animalFeedStatus) {
+                    val cuisineList = jo.optJSONArray("cuisineList")
+                    if (cuisineList != null &&
+                        AnimalInteractStatus.HOME.name != ownerAnimal.animalInteractStatus
+                    ) {
+                        Log.record(TAG, "小鸡当前不在庄园，暂不使用特殊食品，等待召回后再试")
+                    } else if (cuisineList != null &&
+                        AnimalFeedStatus.SLEEPY.name != ownerAnimal.animalFeedStatus
+                    ) {
                         val dailyLimit = useSpecialFoodCount?.value ?: -1
                         val usedToday =
                             Status.getIntFlagToday(StatusFlags.FLAG_FARM_SPECIAL_FOOD_DAILY_COUNT) ?: 0
@@ -2786,6 +2792,7 @@ class AntFarm : ModelTask() {
                     // 打印用了几张加速卡
                     Log.farm("今日已使用${Status.INSTANCE.useAccelerateToolCount}张加速卡")
                     ActionDelayUtil.humanActionDelay(1000L)
+                    syncAnimalStatus(ownerFarmId)
                 } else{
                     /* timeLeft也就是饲料剩余时间，小于0则说明饲料吃完了，直接进行投喂，这样可以在一次任务里完成加速
                         卡的使用。如果加速后吃完了，尝试补喂并刷新倒计时。等待8秒是为了防止计算结果的细微差异引起投喂失败
@@ -2923,6 +2930,16 @@ class AntFarm : ModelTask() {
             var s = AntFarmRpcCall.useFarmTool(targetFarmId, tool.toolId.orEmpty(), toolType.name)
             var jo = JSONObject(s)
             val memo = jo.optString("memo")
+            val resultCode = jo.optString("resultCode")
+            if (resultCode == "348" || memo.contains("道具使用无效")) {
+                return confirmFarmToolResultAfterInvalid(
+                    targetFarmId,
+                    toolType,
+                    toolCountBefore,
+                    wasBigEaterActive,
+                    wasAcceleratingActive
+                )
+            }
             if (ResChecker.checkRes(TAG, jo)) {
                 Log.farm("使用了道具🎭[" + toolType.nickName() + "]#剩余" + (tool.toolCount - 1) + "张")
                 if (toolType == ToolType.FENCETOOL) {
@@ -2933,20 +2950,6 @@ class AntFarm : ModelTask() {
                 return true
             } else {
                 // 针对加速卡：当日达到上限(resultCode=3D16)后，设置当日标记，避免后续重复尝试
-                val resultCode = jo.optString("resultCode")
-                if (resultCode == "348" || memo.contains("道具使用无效")) {
-                    if (
-                        confirmFarmToolResultAfterInvalid(
-                            targetFarmId,
-                            toolType,
-                            toolCountBefore,
-                            wasBigEaterActive,
-                            wasAcceleratingActive
-                        )
-                    ) {
-                        return true
-                    }
-                }
                 if (toolType == ToolType.ACCELERATETOOL && resultCode == "3D16") {
                     Status.setFlagToday(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT)
                 }
@@ -3030,14 +3033,15 @@ class AntFarm : ModelTask() {
                                     } else {
                                         val resultCode = feedFriendAnimaljo.optString("resultCode", "")
                                         val memo = feedFriendAnimaljo.optString("memo", "")
+                                        if ("391" == resultCode || memo.contains("今日帮喂次数已达上限")) {
+                                            Status.setFlagToday(StatusFlags.FLAG_FARM_FEED_FRIEND_LIMIT)
+                                            Log.record(TAG, "😞喂[$user]的鸡失败：今日帮喂次数已达上限，已记录为当日限制")
+                                            return
+                                        }
                                         Log.error(
                                             TAG,
                                             "😞喂[$user]的鸡失败$feedFriendAnimaljo"
                                         )
-                                        if ("391" == resultCode || memo.contains("今日帮喂次数已达上限")) {
-                                            Status.setFlagToday(StatusFlags.FLAG_FARM_FEED_FRIEND_LIMIT)
-                                            break
-                                        }
                                         continue
                                     }
                                 } else {
