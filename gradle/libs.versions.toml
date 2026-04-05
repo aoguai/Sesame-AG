@@ -25,7 +25,7 @@ lombok = "1.18.42"
 okhttp = "5.3.2"
 jackson = "2.20.1"
 jackson-annotations = "2.20"
-xposed-api = "101.0.0"
+xposed-api = "101.0.1"
 xposed-service = "101.0.0"
 
 #noinspection GradleDependency

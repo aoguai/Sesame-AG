@@ -8,23 +8,42 @@ import java.io.InputStream
  *
  * 职责：
  * 1. 提供 UI 层调用的接口 getActivatedStatus()，默认返回 "Not Activated"。
- * 2. 提供 Hook 层调用的检测逻辑 detectFramework(ClassLoader)，用于识别具体框架。
+ * 2. 提供 Hook 层调用的统一框架解析入口 resolveFrameworkName(...)。
+ * 3. 保留 detectFramework(ClassLoader) 作为官方字段不可用时的兜底探测。
  */
 object ModuleStatus {
+    private const val UNKNOWN_FRAMEWORK = "Unknown Activated"
 
     /**
      * 获取当前激活状态 (UI 层调用入口)
      *
      * 默认情况下，此方法返回 "Not Activated"。
      * 当模块被 Xposed 框架加载且 Self-Hook 生效时，MainHook 会拦截此方法，
-     * 并将其替换为返回 detectFramework() 的结果 (如 "LSPosed", "LSPatch" 等)。
+     * 并将其替换为返回框架解析结果 (如 "LSPosed", "LSPatch" 等)。
      */
     fun getActivatedStatus(): String {
         return "Not Activated"
     }
 
     /**
-     * 执行实际的框架检测 (Hook 层调用)
+     * 统一解析框架名称。
+     *
+     * 现代 libxposed API 优先以官方 frameworkName 为准；只有官方字段不可用时，
+     * 才回退到旧的内部类/资源探测逻辑，以兼容 patch 或其他非标准场景。
+     */
+    fun resolveFrameworkName(officialFrameworkName: String?, classLoader: ClassLoader?): String {
+        val normalizedOfficialName = officialFrameworkName?.trim()
+        if (isUsableOfficialName(normalizedOfficialName)) {
+            return normalizedOfficialName!!
+        }
+        if (classLoader == null) {
+            return UNKNOWN_FRAMEWORK
+        }
+        return detectFramework(classLoader)
+    }
+
+    /**
+     * 执行实际的框架检测 (fallback，用于官方字段不可用时兜底)
      *
      * @param classLoader 目标进程的 ClassLoader (通常是模块自身被注入后的 ClassLoader)
      * @return 框架名称字符串
@@ -41,7 +60,7 @@ object ModuleStatus {
             checkClass(classLoader, "de.robv.android.xposed.XposedBridge") -> "Xposed"
 
             // 3. 兜底：虽然被 Hook 了但无法识别框架
-            else -> "Unknown Activated"
+            else -> UNKNOWN_FRAMEWORK
         }
     }
 
@@ -57,6 +76,14 @@ object ModuleStatus {
     private fun isNPatch(cl: ClassLoader): Boolean {
         if (checkClass(cl, "org.lsposed.npatch.loader.LSPApplication")) return true
         return checkResource(cl, "assets/npatch/config.json")
+    }
+
+    private fun isUsableOfficialName(frameworkName: String?): Boolean {
+        if (frameworkName.isNullOrBlank()) {
+            return false
+        }
+        return !frameworkName.equals("unknown", ignoreCase = true) &&
+            !frameworkName.equals(UNKNOWN_FRAMEWORK, ignoreCase = true)
     }
 
     /**

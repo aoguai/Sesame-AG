@@ -28,11 +28,13 @@ object ModuleStatusReporter {
     private var lastPackageName: String? = null
 
     fun setBaseInfo(framework: String?, packageName: String?) {
-        if (!framework.isNullOrBlank()) {
-            lastFramework = framework
+        val normalizedFramework = framework?.trim()
+        if (!normalizedFramework.isNullOrBlank()) {
+            lastFramework = normalizedFramework
         }
-        if (!packageName.isNullOrBlank()) {
-            lastPackageName = packageName
+        val normalizedPackageName = packageName?.trim()
+        if (!normalizedPackageName.isNullOrBlank()) {
+            lastPackageName = normalizedPackageName
         }
     }
 

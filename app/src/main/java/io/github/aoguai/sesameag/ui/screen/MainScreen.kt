@@ -58,6 +58,7 @@ fun MainScreen(
     val serviceStatus by serviceStatus.collectAsStateWithLifecycle()
 
     val isOneWordLoading by viewModel.isOneWordLoading.collectAsStateWithLifecycle()
+    val isLegalAccepted by viewModel.isLegalAccepted.collectAsStateWithLifecycle()
     val prefs = context.getSharedPreferences(PREFERENCES_KEY, Context.MODE_PRIVATE)
     var isIconHidden by remember { mutableStateOf(prefs.getBoolean("is_icon_hidden", false)) }
     var showMenu by remember { mutableStateOf(false) }
@@ -132,6 +133,8 @@ fun MainScreen(
                     serviceStatus = serviceStatus,
                     oneWord = oneWord,
                     isOneWordLoading = isOneWordLoading,
+                    isLegalAccepted = isLegalAccepted,
+                    onLegalAcceptedChange = viewModel::setLegalAccepted,
                     onOneWordClick = { onEvent(MainActivity.MainUiEvent.RefreshOneWord) },
                     onEvent = onEvent
                 )

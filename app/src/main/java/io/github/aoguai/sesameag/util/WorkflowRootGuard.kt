@@ -78,7 +78,7 @@ object WorkflowRootGuard {
         val classLoader = ApplicationHook.classLoader
         if (classLoader != null) {
             val detectedFramework = try {
-                ModuleStatus.detectFramework(classLoader).trim()
+                ApplicationHook.resolveCurrentFrameworkName(classLoader).trim()
             } catch (t: Throwable) {
                 Log.printStackTrace(TAG, "当前进程框架识别失败", t)
                 ""
@@ -110,7 +110,7 @@ object WorkflowRootGuard {
 
         val classLoader = ApplicationHook.classLoader ?: return null
         val framework = try {
-            ModuleStatus.detectFramework(classLoader).trim()
+            ApplicationHook.resolveCurrentFrameworkName(classLoader).trim()
         } catch (_: Throwable) {
             return null
         }
@@ -120,7 +120,7 @@ object WorkflowRootGuard {
     private fun resolveHookSourceLabel(): String {
         val classLoader = ApplicationHook.classLoader ?: return "Hook"
         return try {
-            ModuleStatus.detectFramework(classLoader)
+            ApplicationHook.resolveCurrentFrameworkName(classLoader)
                 .trim()
                 .takeIf { it.isNotBlank() && it != "Unknown Activated" }
                 ?: "Hook"

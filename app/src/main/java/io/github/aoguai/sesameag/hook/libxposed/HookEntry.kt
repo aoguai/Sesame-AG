@@ -38,7 +38,7 @@ class HookEntry : XposedModule() {
 
         logInfo("Initialized for process $processName")
 
-        val detectedFrameworkName = runCatching { frameworkName }.getOrDefault("unknown")
+        val detectedFrameworkName = ApplicationHook.resolveCurrentFrameworkName()
         val detectedFrameworkVersion = runCatching { frameworkVersion }.getOrDefault("unknown")
         val detectedFrameworkVersionCode = runCatching { frameworkVersionCode }.getOrDefault(-1L)
         val moduleProcess = runCatching { moduleApplicationInfo.processName }.getOrDefault("unknown")

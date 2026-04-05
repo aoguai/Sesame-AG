@@ -2,10 +2,13 @@ package io.github.aoguai.sesameag.ui.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.aoguai.sesameag.SesameApplication.Companion.PREFERENCES_KEY
+import io.github.aoguai.sesameag.data.Config
 import io.github.aoguai.sesameag.entity.UserEntity
+import io.github.aoguai.sesameag.hook.ApplicationHookConstants
 import io.github.aoguai.sesameag.service.ConnectionState
 import io.github.aoguai.sesameag.service.LsposedServiceManager
 import io.github.aoguai.sesameag.util.DataStore
@@ -73,6 +76,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _userList = MutableStateFlow<List<UserEntity>>(emptyList())
     val userList: StateFlow<List<UserEntity>> = _userList.asStateFlow()
 
+    private val _isLegalAccepted = MutableStateFlow(false)
+    val isLegalAccepted: StateFlow<Boolean> = _isLegalAccepted.asStateFlow()
+
     // --- 监听器 ---
 
     // 监听 LSPosed 服务连接 (仅用于更新详细版本信息)
@@ -96,6 +102,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // 初始检查状态
             refreshModuleFrameworkStatus()
             refreshActiveUser()
+            refreshLegalAcceptanceState()
             // 注册监听
             LsposedServiceManager.addConnectionListener(serviceListener)
             startConfigDirectoryObserver()
@@ -156,11 +163,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     @OptIn(FlowPreview::class)
     private fun startConfigDirectoryObserver() {
         viewModelScope.launch(Dispatchers.IO) {
-            DirectoryWatcher.observeDirectoryChanges(Files.CONFIG_DIR)
+                DirectoryWatcher.observeDirectoryChanges(Files.CONFIG_DIR)
                 .debounce(100)
                 .collectLatest {
                     refreshUserConfigs()
                     refreshActiveUser()
+                    refreshLegalAcceptanceState()
                 }
         }
     }
@@ -194,6 +202,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setLegalAccepted(accepted: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val activeUserId = resolveActiveUserId()
+                if (!Config.saveLegalAcceptedForCurrentVersion(activeUserId, accepted)) {
+                    Log.e(TAG, "Save legal acceptance failed")
+                    refreshLegalAcceptanceState()
+                    return@launch
+                }
+
+                _isLegalAccepted.value = Config.readLegalAcceptedForCurrentVersion(activeUserId)
+
+                if (!activeUserId.isNullOrEmpty()) {
+                    getApplication<Application>().sendBroadcast(
+                        Intent(ApplicationHookConstants.BroadcastActions.RESTART).apply {
+                            putExtra("userId", activeUserId)
+                            putExtra("configReload", true)
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Update legal acceptance failed", e)
+                refreshLegalAcceptanceState()
+            }
+        }
+    }
+
+    private fun refreshLegalAcceptanceState() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val activeUserId = resolveActiveUserId()
+                _isLegalAccepted.value = Config.readLegalAcceptedForCurrentVersion(activeUserId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Read legal acceptance failed", e)
+                _isLegalAccepted.value = false
+            }
+        }
+    }
+
     fun fetchOneWord() {
         viewModelScope.launch {
             _isOneWordLoading.value = true
@@ -210,6 +257,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             IconManager.syncIconState(getApplication(), isHidden)
         }
+    }
+
+    private fun resolveActiveUserId(): String? {
+        return DataStore.get("activedUser", UserEntity::class.java)?.userId
     }
 }
 

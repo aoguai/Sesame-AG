@@ -91,7 +91,7 @@ class ApplicationHook {
     var xposedInterface: XposedInterface? = null
         set(value) {
             field = value
-            frameworkInterface = value
+            updateFrameworkRuntimeInfo(value)
         }
 
     private class TaskLock : AutoCloseable {
@@ -129,13 +129,12 @@ class ApplicationHook {
 
     @SuppressLint("PrivateApi")
     private fun handleHookLogic(loader: ClassLoader?, packageName: String, apkPath: String) {
-        classLoader = loader
+        val activeLoader = loader ?: return
+        classLoader = activeLoader
+        val framework = resolveCurrentFrameworkName(activeLoader)
+
         // 1. 初始化配置读取
-        remotePreferences = runCatching {
-            requireXposedInterface().getRemotePreferences(SesameApplication.PREFERENCES_KEY)
-        }.onFailure {
-            logFramework(android.util.Log.WARN, "读取远程偏好失败: ${it.message}", it)
-        }.getOrNull()
+        remotePreferences = loadRemotePreferences(framework)
 
         // 2. 进程检查
         finalProcessName = processName
@@ -146,10 +145,9 @@ class ApplicationHook {
         isHooked = true
 
         // 3. 基础环境 Hook
-        val framework = ModuleStatus.detectFramework(classLoader!!)
         ModuleStatusReporter.updateNow(framework = framework, packageName = packageName, reason = "hook_detect")
-        VersionHook.installHook(classLoader)
-        initReflection(classLoader!!)
+        VersionHook.installHook(activeLoader)
+        initReflection(activeLoader)
 
         // 4. 核心生命周期 Hook
         hookApplicationAttach(packageName)
@@ -157,7 +155,24 @@ class ApplicationHook {
         hookLoginResume()
         hookServiceLifecycle(apkPath)
 
-        HookUtil.hookOtherService(classLoader!!)
+        HookUtil.hookOtherService(activeLoader)
+    }
+
+    private fun loadRemotePreferences(framework: String): SharedPreferences? {
+        val frameworkProperties = getFrameworkRuntimeInfo()?.properties
+        if (frameworkProperties == null) {
+            logFramework(android.util.Log.INFO, "无法读取 $framework 的 capability，跳过远程偏好读取")
+            return null
+        }
+        if (frameworkProperties.and(XposedInterface.PROP_CAP_REMOTE) == 0L) {
+            logFramework(android.util.Log.INFO, "$framework 未声明 remote capability，跳过远程偏好读取")
+            return null
+        }
+        return runCatching {
+            requireXposedInterface().getRemotePreferences(SesameApplication.PREFERENCES_KEY)
+        }.onFailure {
+            logFramework(android.util.Log.WARN, "读取远程偏好失败: ${it.message}", it)
+        }.getOrNull()
     }
 
     private fun shouldHookProcess(): Boolean {
@@ -608,6 +623,10 @@ class ApplicationHook {
                                     record(TAG, "⛔ 未检测到可用执行权限，忽略手动任务指令: $taskName")
                                     return@execute
                                 }
+                                if (!ensureLegalAcceptanceForWorkflow()) {
+                                    record(TAG, "⛔ 未勾选 LEGAL 说明确认，忽略手动任务指令: $taskName")
+                                    return@execute
+                                }
                                 ManualTask.runSingle(task, extraParams)
                             } catch (e: Exception) {
                                 record(TAG, "❌ 无效的任务指令: $taskName -> ${e.message}")
@@ -615,6 +634,10 @@ class ApplicationHook {
                         } else {
                             if (!WorkflowRootGuard.hasRoot(forceRefresh = true, reason = "manual_task_model")) {
                                 record(TAG, "⛔ 未检测到可用执行权限，忽略手动模型任务指令")
+                                return@execute
+                            }
+                            if (!ensureLegalAcceptanceForWorkflow()) {
+                                record(TAG, "⛔ 未勾选 LEGAL 说明确认，忽略手动模型任务指令")
                                 return@execute
                             }
                             for (model in Model.modelArray) {
@@ -709,6 +732,14 @@ class ApplicationHook {
     }
 
     companion object {
+        private data class FrameworkRuntimeInfo(
+            val name: String?,
+            val version: String?,
+            val versionCode: Long?,
+            val apiVersion: Int?,
+            val properties: Long?
+        )
+
         const val TAG: String = "ApplicationHook" // 简化TAG
         var finalProcessName: String? = ""
 
@@ -776,7 +807,11 @@ class ApplicationHook {
         }
 
         internal fun isReadyForExec(): Boolean {
-            return init && Config.isLoaded() && service != null && WorkflowRootGuard.hasGrantedRoot()
+            return init &&
+                Config.isLoaded() &&
+                Config.isLegalAcceptedForCurrentVersion() &&
+                service != null &&
+                WorkflowRootGuard.hasGrantedRoot()
         }
 
         private fun consumeHostAppBackgrounded(): Boolean {
@@ -855,6 +890,9 @@ class ApplicationHook {
                         record(TAG, "⛔ 可用执行权限不可用，终止主任务执行")
                         ApplicationHookConstants.clearPendingTriggers("root_denied")
                         destroyHandler()
+                        return@withContext
+                    }
+                    if (!ensureLegalAcceptanceForWorkflow()) {
                         return@withContext
                     }
 
@@ -994,6 +1032,9 @@ class ApplicationHook {
 
                 Config.load(userId)
                 if (!Config.isLoaded()) return false
+                if (!ensureLegalAcceptanceForWorkflow()) {
+                    return false
+                }
 
                 // Phase 7：DataStore watcher 生命周期治理（用户切换/重载后重启 watcher，避免丢失跨进程同步能力）
                 try {
@@ -1142,6 +1183,25 @@ class ApplicationHook {
                     rootCheckInProgress = false
                 }
             }
+            return false
+        }
+
+        private fun ensureLegalAcceptanceForWorkflow(): Boolean {
+            if (!Config.isLoaded()) {
+                val activeClassLoader = classLoader ?: return false
+                val userId = HookUtil.getUserId(activeClassLoader) ?: return false
+                Config.load(userId)
+            }
+            if (Config.isLegalAcceptedForCurrentVersion()) {
+                return true
+            }
+
+            pendingInit = false
+            pendingInitReason = null
+            val message = "未勾选已阅读 LICENSE 与 LEGAL 说明，已禁止工作流"
+            record(TAG, "⛔ $message")
+            updateStatusText(message)
+            ApplicationHookConstants.clearPendingTriggers("legal_unaccepted")
             return false
         }
 
@@ -1330,10 +1390,38 @@ class ApplicationHook {
         private var frameworkInterface: XposedInterface? = null
 
         @Volatile
+        private var frameworkRuntimeInfo: FrameworkRuntimeInfo? = null
+
+        @Volatile
         private var remotePreferences: SharedPreferences? = null
 
         internal fun requireXposedInterface(): XposedInterface {
             return frameworkInterface ?: throw IllegalStateException("XposedInterface 未初始化")
+        }
+
+        private fun getFrameworkRuntimeInfo(): FrameworkRuntimeInfo? {
+            return frameworkRuntimeInfo
+        }
+
+        internal fun resolveCurrentFrameworkName(loader: ClassLoader? = classLoader): String {
+            return ModuleStatus.resolveFrameworkName(frameworkRuntimeInfo?.name, loader)
+        }
+
+        private fun updateFrameworkRuntimeInfo(xposedInterface: XposedInterface?) {
+            frameworkInterface = xposedInterface
+            frameworkRuntimeInfo = xposedInterface?.let { framework ->
+                FrameworkRuntimeInfo(
+                    name = runCatching { framework.frameworkName }.getOrNull(),
+                    version = runCatching { framework.frameworkVersion }.getOrNull(),
+                    versionCode = runCatching { framework.frameworkVersionCode }.getOrNull(),
+                    apiVersion = runCatching { framework.apiVersion }.getOrNull(),
+                    properties = runCatching { framework.frameworkProperties }.getOrNull()
+                )
+            }
+            ModuleStatusReporter.setBaseInfo(
+                framework = frameworkRuntimeInfo?.name,
+                packageName = null
+            )
         }
 
         private fun loadClass(loader: ClassLoader, className: String): Class<*> {

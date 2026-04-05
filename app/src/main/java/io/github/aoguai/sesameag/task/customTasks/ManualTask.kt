@@ -1,5 +1,6 @@
 package io.github.aoguai.sesameag.task.customTasks
 
+import io.github.aoguai.sesameag.data.Config
 import io.github.aoguai.sesameag.hook.ApplicationHook
 import io.github.aoguai.sesameag.model.Model
 import io.github.aoguai.sesameag.task.antFarm.AntFarm
@@ -55,6 +56,10 @@ object ManualTask {
 
         if (!WorkflowRootGuard.hasRoot(forceRefresh = true, reason = "manual_task_run")) {
             Log.record("ManualTask", "⛔ 未检测到可用执行权限，手动任务不会执行")
+            return
+        }
+        if (!Config.isLegalAcceptedForCurrentVersion()) {
+            Log.record("ManualTask", "⛔ 未勾选已阅读 LICENSE 与 LEGAL 说明，手动任务不会执行")
             return
         }
 

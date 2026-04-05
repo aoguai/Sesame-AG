@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
 import com.fasterxml.jackson.databind.node.ObjectNode
+import io.github.aoguai.sesameag.BuildConfig
 import io.github.aoguai.sesameag.entity.UserEntity
 import io.github.aoguai.sesameag.model.ModelConfig
 import io.github.aoguai.sesameag.model.ModelField
@@ -35,6 +36,9 @@ class Config private constructor() {
 
     /** 存储模型字段的映射 */
     private val modelFieldsMap: MutableMap<String, ModelFields> = ConcurrentHashMap()
+
+    /** 用户最近一次确认 LEGAL 说明时对应的应用版本。 */
+    var legalAcceptedAppVersion: String? = null
     
     /**
      * 获取模型字段映射（用于序列化）
@@ -104,6 +108,15 @@ class Config private constructor() {
         return modelFields.containsKey(fieldCode)
     }
 
+    @JsonIgnore
+    fun hasAcceptedLegalForCurrentVersion(): Boolean {
+        return legalAcceptedAppVersion?.trim().orEmpty() == BuildConfig.VERSION_NAME
+    }
+
+    fun updateLegalAcceptedForCurrentVersion(accepted: Boolean) {
+        legalAcceptedAppVersion = if (accepted) BuildConfig.VERSION_NAME else ""
+    }
+
     companion object {
         private const val TAG = "Config"
         private val FRIEND_SELECTION_FIELD_CODES = setOf(
@@ -132,6 +145,7 @@ class Config private constructor() {
             "collectToFriendList",
             "sendFriendCard"
         )
+        private const val LEGAL_ACCEPTED_APP_VERSION_FIELD = "legalAcceptedAppVersion"
 
         /** 单例实例 */
         @JvmField
@@ -336,6 +350,43 @@ class Config private constructor() {
         @JvmStatic
         fun isLoaded(): Boolean = INSTANCE.isInit
 
+        @JvmStatic
+        fun isLegalAcceptedForCurrentVersion(): Boolean = INSTANCE.hasAcceptedLegalForCurrentVersion()
+
+        @JvmStatic
+        fun setLegalAcceptedForCurrentVersion(accepted: Boolean) {
+            INSTANCE.updateLegalAcceptedForCurrentVersion(accepted)
+        }
+
+        @JvmStatic
+        fun readLegalAcceptedForCurrentVersion(userId: String?): Boolean {
+            val readableFile = resolveReadableConfigFile(userId) ?: return false
+            val acceptedVersion = readLegalAcceptedAppVersion(Files.readFromFile(readableFile))
+            return acceptedVersion?.trim().orEmpty() == BuildConfig.VERSION_NAME
+        }
+
+        @JvmStatic
+        @Synchronized
+        fun saveLegalAcceptedForCurrentVersion(userId: String?, accepted: Boolean): Boolean {
+            val targetFile = if (userId.isNullOrEmpty()) {
+                Files.getDefaultConfigV2File()
+            } else {
+                Files.getConfigV2File(userId)
+            }
+
+            val baseJson = readBaseConfigJsonForLegalWrite(userId, targetFile) ?: return false
+            val mapper = JsonUtil.copyMapper()
+            val rootNode = (mapper.readTree(baseJson) as? ObjectNode) ?: mapper.createObjectNode()
+            rootNode.put(LEGAL_ACCEPTED_APP_VERSION_FIELD, if (accepted) BuildConfig.VERSION_NAME else "")
+            val updatedJson = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(rootNode)
+
+            return if (userId.isNullOrEmpty()) {
+                Files.setDefaultConfigV2File(updatedJson)
+            } else {
+                Files.setConfigV2File(userId, updatedJson)
+            }
+        }
+
         /**
          * 加载配置文件
          *
@@ -393,6 +444,7 @@ class Config private constructor() {
                                 throw innerEx // 抛出内部异常，触发重置逻辑
                             }
                         }
+                        syncExtraFieldsFromJson(preparedJson)
                         Log.record(TAG, "格式化配置成功:$configV2File")
                         val formatted = toSaveStr()
                         if (formatted != null && formatted != json) {
@@ -404,6 +456,7 @@ class Config private constructor() {
                         val json = Files.readFromFile(Files.getDefaultConfigV2File())
                         val preparedJson = json
                         JsonUtil.copyMapper().readerForUpdating(INSTANCE).readValue(preparedJson, Config::class.java)
+                        syncExtraFieldsFromJson(preparedJson)
                         Log.record(TAG, "复制新配置: $userName")
                         Files.write2File(toSaveStr() ?: preparedJson, configV2File)
                     }
@@ -466,6 +519,8 @@ class Config private constructor() {
                     modelField?.reset()
                 }
             }
+            INSTANCE.legalAcceptedAppVersion = null
+            INSTANCE.isInit = false
         }
 
         /**
@@ -475,6 +530,98 @@ class Config private constructor() {
          */
         @JvmStatic
         fun toSaveStr(): String? = JsonUtil.formatJson(INSTANCE)
+
+        private fun syncExtraFieldsFromJson(json: String?) {
+            val acceptedVersion = when {
+                json.isNullOrBlank() -> null
+                else -> {
+                    val rootNode = JsonUtil.toNode(json)
+                    if (rootNode?.has(LEGAL_ACCEPTED_APP_VERSION_FIELD) == true) {
+                        rootNode.path(LEGAL_ACCEPTED_APP_VERSION_FIELD).asText("")
+                    } else {
+                        null
+                    }
+                }
+            }
+            INSTANCE.legalAcceptedAppVersion = acceptedVersion
+        }
+
+        private fun resolveReadableConfigFile(userId: String?): File? {
+            val targetFile = if (userId.isNullOrEmpty()) {
+                Files.getDefaultConfigV2File()
+            } else {
+                Files.getConfigV2File(userId)
+            }
+            if (targetFile.exists()) {
+                return targetFile
+            }
+            if (!userId.isNullOrEmpty()) {
+                val defaultFile = Files.getDefaultConfigV2File()
+                if (defaultFile.exists()) {
+                    return defaultFile
+                }
+            }
+            return null
+        }
+
+        private fun readLegalAcceptedAppVersion(json: String?): String? {
+            return when {
+                json.isNullOrBlank() -> null
+                else -> {
+                    val rootNode = JsonUtil.toNode(json)
+                    if (rootNode?.has(LEGAL_ACCEPTED_APP_VERSION_FIELD) == true) {
+                        rootNode.path(LEGAL_ACCEPTED_APP_VERSION_FIELD).asText("")
+                    } else {
+                        null
+                    }
+                }
+            }
+        }
+
+        private fun readBaseConfigJsonForLegalWrite(userId: String?, targetFile: File): String? {
+            if (targetFile.exists()) {
+                val targetJson = Files.readFromFile(targetFile)
+                if (targetJson.isNotBlank()) {
+                    return targetJson
+                }
+            }
+            if (!userId.isNullOrEmpty()) {
+                val defaultFile = Files.getDefaultConfigV2File()
+                if (defaultFile.exists()) {
+                    val defaultJson = Files.readFromFile(defaultFile)
+                    if (defaultJson.isNotBlank()) {
+                        return defaultJson
+                    }
+                }
+            }
+            return createConfigSkeletonForLegalWrite(userId)
+        }
+
+        private fun createConfigSkeletonForLegalWrite(userId: String?): String? {
+            val previousJson = toSaveStr()
+            val previousInit = INSTANCE.isInit
+
+            return try {
+                load(userId)
+                toSaveStr()
+            } catch (t: Throwable) {
+                Log.printStackTrace(TAG, "初始化法律确认配置骨架失败", t)
+                previousJson
+            } finally {
+                try {
+                    if (!previousJson.isNullOrBlank()) {
+                        JsonUtil.copyMapper().readerForUpdating(INSTANCE).readValue(previousJson, Config::class.java)
+                        syncExtraFieldsFromJson(previousJson)
+                    } else {
+                        unload()
+                    }
+                } catch (restoreEx: Exception) {
+                    Log.printStackTrace(TAG, "恢复 Config 单例状态失败", restoreEx)
+                } finally {
+                    INSTANCE.isInit = previousInit
+                }
+            }
+        }
 
     }
 }
