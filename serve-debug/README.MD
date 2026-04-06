@@ -1,7 +1,11 @@
 
 # serve-debug（本地 Web-UI 调试）
 
-本目录用于 **Sesame-AG** 的本地调试/抓包辅助脚本与 Web-UI 预览。
+> [!IMPORTANT]
+> `serve-debug` 是仓库内的独立本地辅助工具目录，不属于 Android `:app` 模块，不参与 APK 构建，也不属于 Hook / RPC / 任务调度主执行链。
+> 它只用于在桌面环境下复用模块内的 Web 资源与本地导出数据，进行页面预览、抓包辅助与配置排查。
+
+本目录用于 **Sesame-AG** 的本地调试/抓包辅助脚本与 Web-UI 预览，默认与 Android 主模块分开理解、分开维护。
 
 目标：
 - 在不依赖 Android / Xposed 运行环境的情况下，快速预览与调试模块内的 `assets/web` 页面；
