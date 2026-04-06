@@ -63,41 +63,41 @@ class AntMember : ModelTask() {
         return "AntMember.png"
     }
 
-    private var memberSign: BooleanModelField? = null
-    private var memberTask: BooleanModelField? = null
-    private var memberPointExchangeBenefit: BooleanModelField? = null
+    internal var memberSign: BooleanModelField? = null
+    internal var memberTask: BooleanModelField? = null
+    internal var memberPointExchangeBenefit: BooleanModelField? = null
     private var memberPointExchangeBenefitList: SelectModelField? = null
-    private var collectSesame: BooleanModelField? = null
-    private var collectSesameWithOneClick: BooleanModelField? = null
-    private var sesameTask: BooleanModelField? = null
+    internal var collectSesame: BooleanModelField? = null
+    internal var collectSesameWithOneClick: BooleanModelField? = null
+    internal var sesameTask: BooleanModelField? = null
     private var collectInsuredGold: BooleanModelField? = null
     private var enableGameCenter: BooleanModelField? = null
-    private var merchantSign: BooleanModelField? = null
-    private var merchantKmdk: BooleanModelField? = null
-    private var merchantMoreTask: BooleanModelField? = null
-    private var beanSignIn: BooleanModelField? = null
-    private var beanExchangeBubbleBoost: BooleanModelField? = null
+    internal var merchantSign: BooleanModelField? = null
+    internal var merchantKmdk: BooleanModelField? = null
+    internal var merchantMoreTask: BooleanModelField? = null
+    internal var beanSignIn: BooleanModelField? = null
+    internal var beanExchangeBubbleBoost: BooleanModelField? = null
 
     // 芝麻炼金
-    private var sesameAlchemy: BooleanModelField? = null
+    internal var sesameAlchemy: BooleanModelField? = null
 
     // 芝麻树
-    private var enableZhimaTree: BooleanModelField? = null
+    internal var enableZhimaTree: BooleanModelField? = null
 
     /*//年度回顾
     private var annualReview: BooleanModelField? = null*/
 
     // 黄金票配置 - 签到
-    private var enableGoldTicket: BooleanModelField? = null
+    internal var enableGoldTicket: BooleanModelField? = null
 
     // 黄金票配置 - 提取/兑换
-    private var enableGoldTicketConsume: BooleanModelField? = null
+    internal var enableGoldTicketConsume: BooleanModelField? = null
 
     /** 账单 贴纸 功能开关 */
     private var collectStickers: BooleanModelField? = null
 
     // 【新增】芝麻粒兑换
-    private var sesameGrainExchange: BooleanModelField? = null
+    internal var sesameGrainExchange: BooleanModelField? = null
     private var sesameGrainExchangeList: SelectModelField? = null
 
     private val sesameTaskRefreshRoundLimit = 8
@@ -136,7 +136,7 @@ class AntMember : ModelTask() {
         val interrupted: Boolean = false
     )
 
-    private data class SesameTaskRunSummary(
+    internal data class SesameTaskRunSummary(
         val finishedAllRounds: Boolean = false,
         val completedCount: Int = 0,
         val skippedCount: Int = 0,
@@ -272,229 +272,39 @@ class AntMember : ModelTask() {
     }
 
     override fun runJava() {
-        // 使用协程上下文运行
         runBlocking {
             try {
                 Log.member(TAG, "执行开始-${getName()}")
-                // 异步获取位置信息-for 2101
                 requestLocationSuspend()
-                // 芝麻信用相关检测
-                val isSesameOpened: Boolean = checkSesameCanRun()
 
-                // 并行执行独立任务
                 val deferredTasks = mutableListOf<Deferred<Unit>>()
-                val needMemberTaskAwardClaimAfterTasks = memberTask?.value == true
-                val needMemberPointClaimAfterTasks = memberSign?.value == true || memberTask?.value == true
-                var needSesameCollectAfterTasks = false
-                var needSesameProgressCollectAfterTasks = false
+                val memberPointPlan = prepareMemberPointWorkflows(this, deferredTasks)
+                val sesamePlan = prepareSesameWorkflows(this, deferredTasks)
 
-                if (memberSign?.value == true) {
-                    if (hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_SIGN_DONE)) {
-                        Log.member(TAG, "⏭️ 今天已处理过会员签到，跳过执行")
-                    } else {
-                        deferredTasks.add(async(Dispatchers.IO) { doMemberSign() })
-                    }
-                }
-
-                if (memberTask?.value == true) {
-                    if (hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_TASK_RISK_STOP_TODAY)) {
-                        Log.member(TAG, "⏭️ 今天会员任务已因风控/离线止损，停止执行")
-                    } else if (hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_TASK_EMPTY_TODAY)) {
-                        Log.member(TAG, "⏭️ 今天会员任务已判定无需继续刷新，停止执行")
-                    } else {
-                        deferredTasks.add(async(Dispatchers.IO) { doAllMemberAvailableTaskCompat() })
-                    }
-                }
-
-                if (memberPointExchangeBenefit?.value == true) {
-                    deferredTasks.add(async(Dispatchers.IO) { memberPointExchangeBenefit() })
-                }
-                if (isSesameOpened) {
-
-                    // 芝麻粒兑换入口
-                    if (sesameGrainExchange?.value == true) {
-                        deferredTasks.add(async(Dispatchers.IO) { doSesameGrainExchange() })
-                    }
-                    if (sesameTask?.value == true || collectSesame?.value == true) {
-                        // 芝麻粒福利签到（每日兜底：避免重复请求触发风控）
-                        if (hasFlagToday(StatusFlags.FLAG_ANTMEMBER_ZML_CHECKIN_DONE)) {
-                            Log.sesame(TAG, "⏭️ 今天已处理过芝麻粒福利签到，跳过执行")
-                        } else {
-                            doSesameZmlCheckIn()
-                        }
-                        if (sesameTask?.value == true) {
-                            if (hasFlagToday(StatusFlags.FLAG_ANTMEMBER_DO_ALL_SESAME_TASK)) {
-                                Log.sesame(TAG, "⏭️ 今天已完成过芝麻信用任务，跳过执行")
-                            } else {
-                                needSesameProgressCollectAfterTasks = true
-                                Log.sesame(TAG, "🎮 开始执行芝麻信用任务")
-                                val sesameTaskSummary = doAllAvailableSesameTask()
-                                if (sesameTaskSummary.interrupted || ApplicationHookConstants.isOffline()) {
-                                    Log.sesame(TAG, "芝麻信用任务被离线或验证状态中断，保留后续重试机会")
-                                } else {
-                                    handleGrowthGuideTasks()
-                                    Log.sesame(TAG, "芝麻信用任务已执行，稍后统一领取涨分进度球")
-                                }
-                            }
-                        }
-                        if (collectSesame?.value == true) {
-                            if (hasFlagToday(StatusFlags.FLAG_ANTMEMBER_COLLECT_SESAME_DONE)) {
-                                Log.sesame(TAG, "⏭️ 今天已处理过芝麻粒领取，跳过执行")
-                            } else {
-                                needSesameCollectAfterTasks = true
-                                Log.sesame(TAG, "🎯 芝麻相关任务执行中，稍后统一领取芝麻粒")
-                            }
-                        }
-                    }
-
-                    // 芝麻炼金
-                    if (sesameAlchemy?.value == true) {
-                        deferredTasks.add(async(Dispatchers.IO) {
-                            doSesameAlchemy()
-                            // ===== 次日奖励：只有今天还没领过才执行 =====
-                            if (!hasFlagToday(StatusFlags.FLAG_ZMXY_ALCHEMY_NEXT_DAY_AWARD)) {
-                                doSesameAlchemyNextDayAward()
-                            } else Log.sesame(TAG, "✅ 芝麻粒次日奖励已领取，今天不再执行")
-                        })
-                    }
-
-                    // 芝麻树
-                    if (enableZhimaTree?.value == true) {
-                        deferredTasks.add(async(Dispatchers.IO) { doZhimaTree() })
-                    }
-                }
-
-
-                //保障金
                 if (collectInsuredGold?.value == true) {
                     deferredTasks.add(async(Dispatchers.IO) { collectInsuredGold() })
                 }
 
-                // 【更新】执行黄金票任务，替换旧的 goldTicket()
-                if (enableGoldTicket?.value == true || enableGoldTicketConsume?.value == true) {
-                    // 传入签到和提取的开关值
-                    deferredTasks.add(async(Dispatchers.IO) {
-                        doGoldTicketTask(
-                            enableGoldTicket?.value == true, enableGoldTicketConsume?.value == true
-                        )
-                    })
-                }
+                scheduleGoldTicketWorkflows(this, deferredTasks)
 
                 if (enableGameCenter?.value == true) {
                     deferredTasks.add(async(Dispatchers.IO) { enableGameCenter() })
-                }
-
-                if (beanSignIn?.value == true) {
-                    deferredTasks.add(async(Dispatchers.IO) { beanSignIn() })
                 }
 
                /* if (annualReview!!.value) {   //年度回顾已下线
                     deferredTasks.add(async(Dispatchers.IO) { doAnnualReview() })
                 }*/
 
-                if (beanExchangeBubbleBoost?.value == true) {
-                    deferredTasks.add(async(Dispatchers.IO) { beanExchangeBubbleBoost() })
-                }
-
-
-
-                if (merchantSign?.value == true || merchantKmdk?.value == true || merchantMoreTask?.value == true) {
-                    deferredTasks.add(async(Dispatchers.IO) {
-                        val needKmdkSignIn =
-                            merchantKmdk?.value == true &&
-                                !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_KMDK_SIGNIN_DONE) &&
-                                TimeUtil.isNowAfterTimeStr("0600") &&
-                                TimeUtil.isNowBeforeTimeStr("1200")
-                        val needKmdkSignUp =
-                            merchantKmdk?.value == true &&
-                                !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_KMDK_SIGNUP_DONE)
-                        val needMerchantSign =
-                            merchantSign?.value == true &&
-                                !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_SIGN_DONE)
-                        val needMerchantMoreTask =
-                            merchantMoreTask?.value == true
-
-                        if (!(needKmdkSignIn || needKmdkSignUp || needMerchantSign || needMerchantMoreTask)) {
-                            Log.member(TAG, "⏭️ 今天已处理过商家服务相关任务，跳过执行")
-                            return@async
-                        }
-
-                        if (needMerchantSign) {
-                            if (doMerchantSign()) {
-                                setFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_SIGN_DONE)
-                            }
-                        }
-                        if (needMerchantMoreTask) {
-                            doMerchantMoreTask()
-                        }
-                        if (merchantKmdk?.value == true && (needKmdkSignIn || needKmdkSignUp)) {
-                            if (!canRunMerchantKmdk()) {
-                                return@async
-                            }
-                            if (needKmdkSignIn) {
-                                if (kmdkSignIn()) {
-                                    setFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_KMDK_SIGNIN_DONE)
-                                }
-                            } else if (TimeUtil.isNowAfterTimeStr("1200")) {
-                                // 过了时间窗不再尝试，避免重复请求
-                                setFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_KMDK_SIGNIN_DONE)
-                            }
-                            if (needKmdkSignUp) {
-                                if (kmdkSignUp()) {
-                                    setFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_KMDK_SIGNUP_DONE)
-                                }
-                            }
-                        }
-                    })
-                }
-
-
-
-
+                scheduleBeanWorkflows(this, deferredTasks)
+                scheduleMerchantWorkflows(this, deferredTasks)
 
                 if (collectStickers?.value == true) {
                     queryAndCollectStickers()
                 }
 
-
-                // 等待所有异步任务完成
                 deferredTasks.awaitAll()
-
-                if (needMemberTaskAwardClaimAfterTasks) {
-                    if (ApplicationHookConstants.isOffline()) {
-                        Log.member(TAG, "⏭️ 当前处于离线模式，跳过会员阶段奖励领取")
-                    } else {
-                        val claimedRewardCount = collectMemberTaskProcessAwards()
-                        if (claimedRewardCount > 0) {
-                            Log.member(TAG, "🎯 会员阶段奖励领取完成，共${claimedRewardCount}项")
-                        }
-                    }
-                }
-
-                if (needMemberPointClaimAfterTasks) {
-                    if (ApplicationHookConstants.isOffline()) {
-                        Log.member(TAG, "⏭️ 当前处于离线模式，跳过统一领取会员积分")
-                    } else {
-                        Log.member(TAG, "🎯 会员流程执行完成，开始统一领取会员积分")
-                        queryPointCert(1, 20)
-                    }
-                }
-                if (needSesameCollectAfterTasks) {
-                    if (ApplicationHookConstants.isOffline()) {
-                        Log.sesame(TAG, "⏭️ 当前处于离线模式，跳过统一领取芝麻粒")
-                    } else {
-                        Log.sesame(TAG, "🎯 芝麻相关流程执行完成，开始统一领取芝麻粒")
-                        collectSesame(collectSesameWithOneClick?.value == true)
-                    }
-                }
-                if (needSesameProgressCollectAfterTasks) {
-                    if (ApplicationHookConstants.isOffline()) {
-                        Log.sesame(TAG, "⏭️ 当前处于离线模式，跳过统一领取涨分进度球")
-                    } else {
-                        Log.sesame(TAG, "🎯 芝麻信用流程执行完成，开始统一领取涨分进度球")
-                        queryAndCollect()
-                    }
-                }
+                finishMemberPointWorkflows(memberPointPlan)
+                finishSesameWorkflows(sesamePlan)
 
             } catch (t: Throwable) {
                 Log.printStackTrace(TAG, t)
@@ -504,7 +314,54 @@ class AntMember : ModelTask() {
         }
     }
 
-    private fun handleGrowthGuideTasks() {
+    internal suspend fun runMerchantWorkflow() {
+        val needKmdkSignIn =
+            merchantKmdk?.value == true &&
+                !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_KMDK_SIGNIN_DONE) &&
+                TimeUtil.isNowAfterTimeStr("0600") &&
+                TimeUtil.isNowBeforeTimeStr("1200")
+        val needKmdkSignUp =
+            merchantKmdk?.value == true &&
+                !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_KMDK_SIGNUP_DONE)
+        val needMerchantSign =
+            merchantSign?.value == true &&
+                !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_SIGN_DONE)
+        val needMerchantMoreTask =
+            merchantMoreTask?.value == true
+
+        if (!(needKmdkSignIn || needKmdkSignUp || needMerchantSign || needMerchantMoreTask)) {
+            Log.member(TAG, "⏭️ 今天已处理过商家服务相关任务，跳过执行")
+            return
+        }
+
+        if (needMerchantSign) {
+            if (doMerchantSign()) {
+                setFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_SIGN_DONE)
+            }
+        }
+        if (needMerchantMoreTask) {
+            doMerchantMoreTask()
+        }
+        if (merchantKmdk?.value == true && (needKmdkSignIn || needKmdkSignUp)) {
+            if (!canRunMerchantKmdk()) {
+                return
+            }
+            if (needKmdkSignIn) {
+                if (kmdkSignIn()) {
+                    setFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_KMDK_SIGNIN_DONE)
+                }
+            } else if (TimeUtil.isNowAfterTimeStr("1200")) {
+                setFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_KMDK_SIGNIN_DONE)
+            }
+            if (needKmdkSignUp) {
+                if (kmdkSignUp()) {
+                    setFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_KMDK_SIGNUP_DONE)
+                }
+            }
+        }
+    }
+
+    internal fun handleGrowthGuideTasks() {
         try {
             if (ApplicationHookConstants.isOffline()) {
                 Log.sesame("$TAG.handleGrowthGuideTasks", "信誉任务领取因离线模式跳过，保留后续重试机会")
@@ -1058,7 +915,7 @@ class AntMember : ModelTask() {
     /**
      * 会员积分0元兑，权益道具兑换
      */
-    private fun memberPointExchangeBenefit() {
+    internal fun memberPointExchangeBenefit() {
         if (hasFlagToday("memberBenefit::refresh")) {
             return
         }
@@ -1199,7 +1056,7 @@ class AntMember : ModelTask() {
     /**
      * 会员签到
      */
-    private suspend fun doMemberSign(): Unit = CoroutineUtils.run {
+    internal suspend fun doMemberSign(): Unit = CoroutineUtils.run {
         var signDoneToday = hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_SIGN_DONE)
         try {
             val uid = UserMap.currentUid
@@ -1241,7 +1098,7 @@ class AntMember : ModelTask() {
         }
     }
 
-    private suspend fun doAllMemberAvailableTaskCompat(): Unit = CoroutineUtils.run {
+    internal suspend fun doAllMemberAvailableTaskCompat(): Unit = CoroutineUtils.run {
         try {
             val currentTaskResponse = AntMemberRpcCall.queryMemberTaskList()
             val currentTaskObject = JSONObject(currentTaskResponse)
@@ -1333,7 +1190,7 @@ class AntMember : ModelTask() {
         return awardList
     }
 
-    private suspend fun collectMemberTaskProcessAwards(): Int = CoroutineUtils.run {
+    internal suspend fun collectMemberTaskProcessAwards(): Int = CoroutineUtils.run {
         try {
             val response = AntMemberRpcCall.queryMemberTaskProcessList()
             val taskListObject = JSONObject(response)
@@ -1716,7 +1573,7 @@ class AntMember : ModelTask() {
     /**
      * 芝麻信用任务
      */
-    private suspend fun doAllAvailableSesameTask(): SesameTaskRunSummary = CoroutineUtils.run {
+    internal suspend fun doAllAvailableSesameTask(): SesameTaskRunSummary = CoroutineUtils.run {
         var overallCompletedTasks = 0
         var overallSkippedTasks = 0
         try {
@@ -1886,7 +1743,7 @@ class AntMember : ModelTask() {
      * 基于 HomeV8RpcManager.queryServiceCard 返回的 serviceCardVOList
      * 通过 itemAttrs.checkInModuleVO.currentDateCheckInTaskVO 判断今日是否可签到
      */
-    private fun doSesameZmlCheckIn() {
+    internal fun doSesameZmlCheckIn() {
         var flagState = Status.TodayFlagState.RETRY_LATER
         try {
             if (ApplicationHookConstants.isOffline()) {
@@ -1935,7 +1792,7 @@ class AntMember : ModelTask() {
         }
     }
 
-    private fun doSesameAlchemyNextDayAward() = CoroutineUtils.run {
+    internal fun doSesameAlchemyNextDayAward() = CoroutineUtils.run {
         try {
             val entryRes = AntMemberRpcCall.Zmxy.Alchemy.alchemyQueryEntryList()
             val entryJo = JSONObject(entryRes)
@@ -2103,7 +1960,7 @@ class AntMember : ModelTask() {
      * 芝麻粒收取
      * @param withOneClick 启用一键收取
      */
-    private suspend fun collectSesame(withOneClick: Boolean): Unit = CoroutineUtils.run {
+    internal suspend fun collectSesame(withOneClick: Boolean): Unit = CoroutineUtils.run {
         var flagState = Status.TodayFlagState.RETRY_LATER
         if (ApplicationHookConstants.isOffline()) {
             return@run
@@ -2312,7 +2169,7 @@ class AntMember : ModelTask() {
      * @param doSignIn 是否执行签到
      * @param doConsume 是否执行提取
      */
-    private fun doGoldTicketTask(doSignIn: Boolean, doConsume: Boolean) {
+    internal fun doGoldTicketTask(doSignIn: Boolean, doConsume: Boolean) {
         val needSignIn = doSignIn && !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_SIGN_DONE)
         val needHomeCheck = doSignIn && !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_HOME_DONE)
         val needConsume = doConsume && !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_CONSUME_DONE)
@@ -2982,7 +2839,7 @@ class AntMember : ModelTask() {
         }
     }
 
-    private fun beanSignIn() {
+    internal fun beanSignIn() {
         try {
             try {
                 val signInProcessStr = AntMemberRpcCall.querySignInProcess("AP16242232", "INS_BLUE_BEAN_SIGN")
@@ -3012,7 +2869,7 @@ class AntMember : ModelTask() {
         }
     }
 
-    private fun beanExchangeBubbleBoost() {
+    internal fun beanExchangeBubbleBoost() {
         try {
             // 检查RPC调用是否可用
             try {
@@ -3064,7 +2921,7 @@ class AntMember : ModelTask() {
     /**
      * 芝麻炼金
      */
-    private suspend fun doSesameAlchemy(): Unit = CoroutineUtils.run {
+    internal suspend fun doSesameAlchemy(): Unit = CoroutineUtils.run {
         try {
             Log.sesame(TAG, "开始执行芝麻炼金⚗️")
 
@@ -3372,7 +3229,7 @@ class AntMember : ModelTask() {
         }
     }
 
-    private suspend fun doZhimaTree(): Unit = CoroutineUtils.run {
+    internal suspend fun doZhimaTree(): Unit = CoroutineUtils.run {
         try {
             // 1. 执行首页的所有任务 (包括浏览任务和复访任务)
             doHomeTasks()
@@ -3839,7 +3696,7 @@ class AntMember : ModelTask() {
          * @param page 第几页
          * @param pageSize 每页数据条数
          */
-        private suspend fun queryPointCert(page: Int, pageSize: Int) {
+        internal suspend fun queryPointCert(page: Int, pageSize: Int) {
             try {
                 var s = AntMemberRpcCall.queryPointCertV2(page, pageSize)
                 var jo = JSONObject(s)
@@ -3923,7 +3780,7 @@ class AntMember : ModelTask() {
          * 检查是否满足运行芝麻信用任务的条件
          * @return bool
          */
-        private fun checkSesameCanRun(): Boolean {
+        internal fun checkSesameCanRun(): Boolean {
             try {
                 val s = AntMemberRpcCall.queryHome()
                 val jo = JSONObject(s)
@@ -4800,7 +4657,7 @@ class AntMember : ModelTask() {
      * 【新增】芝麻粒兑换道具
      * 仿照会员积分兑换逻辑：遍历列表更新Map，同时匹配用户设置进行兑换
      */
-    private suspend fun doSesameGrainExchange(): Unit = CoroutineUtils.run {
+    internal suspend fun doSesameGrainExchange(): Unit = CoroutineUtils.run {
         // 每日只运行一次，避免重复请求
         if (hasFlagToday("sesameGrainExchange::done")) {
             return@run

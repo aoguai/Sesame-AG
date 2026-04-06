@@ -65,37 +65,37 @@ class AntSports : ModelTask() {
     private var syncStepHookLogged: Boolean = false
 
     // 配置字段
-    private lateinit var walk: BooleanModelField
+    internal lateinit var walk: BooleanModelField
     private lateinit var walkPathTheme: ChoiceModelField
     private var walkPathThemeId: String? = null
     private lateinit var walkCustomPath: BooleanModelField
     private lateinit var walkCustomPathId: StringModelField
-    private lateinit var openTreasureBox: BooleanModelField
+    internal lateinit var openTreasureBox: BooleanModelField
     private lateinit var receiveCoinAssetField: BooleanModelField
-    private lateinit var donateCharityCoin: BooleanModelField
+    internal lateinit var donateCharityCoin: BooleanModelField
     private lateinit var donateCharityCoinType: ChoiceModelField
     private lateinit var donateCharityCoinAmount: IntegerModelField
-    private lateinit var minExchangeCount: IntegerModelField
-    private lateinit var earliestSyncStepTime: HourOfDayModelField
+    internal lateinit var minExchangeCount: IntegerModelField
+    internal lateinit var earliestSyncStepTime: HourOfDayModelField
     private lateinit var latestExchangeTime: HourOfDayModelField
     private lateinit var syncStepCount: IntegerModelField
-    private lateinit var tiyubiz: BooleanModelField
-    private lateinit var battleForFriends: BooleanModelField
+    internal lateinit var tiyubiz: BooleanModelField
+    internal lateinit var battleForFriends: BooleanModelField
     private lateinit var battleForFriendType: ChoiceModelField
     private lateinit var originBossIdList: SelectModelField
     private lateinit var sportsTasksField: BooleanModelField
     private lateinit var sportsEnergyBubble: BooleanModelField
 
     // 训练好友相关配置
-    private lateinit var trainFriend: BooleanModelField
+    internal lateinit var trainFriend: BooleanModelField
     private lateinit var zeroCoinLimit: IntegerModelField
 
     /** @brief 记录训练好友连续获得 0 金币的次数 */
     private var zeroTrainCoinCount: Int = 0
 
     // 健康岛任务
-    private lateinit var neverlandTask: BooleanModelField
-    private lateinit var neverlandGrid: BooleanModelField
+    internal lateinit var neverlandTask: BooleanModelField
+    internal lateinit var neverlandGrid: BooleanModelField
     private lateinit var neverlandGridStepCount: IntegerModelField
 
 
@@ -331,19 +331,8 @@ class AntSports : ModelTask() {
                 return
             }
 
-            // 健康岛整体任务（任务大厅 + 泡泡 + 走路建造）
-            if (neverlandTask.value == true || neverlandGrid.value == true) {
-                Log.sports(TAG, "开始执行健康岛")
-                NeverlandTaskHandler().runNeverland()
-                Log.sports(TAG, "健康岛结束")
-            }
-
-            // 步数同步
-            if (isSyncStepEnabled() &&
-                !Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE) &&
-                earliestSyncStepTime.hasReachedToday()) {
-                syncStepTask()
-            }
+            runNeverlandWorkflow()
+            runStepSyncWorkflow()
 
             // 运动任务
             if (!Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_DAILY_TASKS_DONE) &&
@@ -356,47 +345,13 @@ class AntSports : ModelTask() {
                 sportsEnergyBubbleTask()
             }
 
-            // 新版行走路线
-            if (walk.value == true) {
-                getWalkPathThemeIdOnConfig()
-                walk()
-            }
-
-            // 旧版路线：只开宝箱
-            if (openTreasureBox.value == true && walk.value != true) {
-                queryMyHomePage(loader)
-            }
-
-            // 捐能量
-            if (donateCharityCoin.value == true && Status.canDonateCharityCoin()) {
-                queryProjectList()
-            }
-
-            // 捐步
-            val currentUid = UserMap.currentUid
-            if ((minExchangeCount.value ?: 0) > 0 &&
-                currentUid != null &&
-                Status.canExchangeToday(currentUid)) {
-                queryWalkStep()
-            }
+            runRouteWorkflow(loader)
 
             // 文体中心
-            if (tiyubiz.value == true) {
-                userTaskGroupQuery("SPORTS_DAILY_SIGN_GROUP")
-                userTaskGroupQuery("SPORTS_DAILY_GROUP")
-                userTaskRightsReceive()
-                pathFeatureQuery()
-                participate()
-            }
+            runSportsCenterWorkflow()
 
             // 抢好友大战
-            if (battleForFriends.value == true) {
-                queryClubHome()
-                if (trainFriend.value == true) {
-                    queryTrainItem()
-                }
-                buyMember()
-            }
+            runBattleForFriendsWorkflow()
 
             // 首页金币
             if (receiveCoinAssetField.value == true) {
@@ -414,7 +369,7 @@ class AntSports : ModelTask() {
     /**
      * 步数同步任务
      */
-    private fun syncStepTask() {
+    internal fun syncStepTask() {
         addChildTask(
             ChildModelTask(
                 "syncStep",
@@ -515,7 +470,7 @@ class AntSports : ModelTask() {
         return cachedTargetDailyStep.coerceAtLeast(safeOriginStep)
     }
 
-    private fun isSyncStepEnabled(): Boolean {
+    internal fun isSyncStepEnabled(): Boolean {
         return (syncStepCount.value ?: 0) > 0
     }
 
@@ -1051,7 +1006,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 新版行走路线主流程 主入口
      */
-    private fun walk() {
+    internal fun walk() {
         try {
             val user = JSONObject(AntSportsRpcCall.queryUser())
             if (!ResChecker.checkRes(TAG, user)) {
@@ -1309,7 +1264,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 根据配置索引同步更新路线主题 ID
      */
-    private fun getWalkPathThemeIdOnConfig() {
+    internal fun getWalkPathThemeIdOnConfig() {
         val index = walkPathTheme.value ?: WalkPathTheme.DA_MEI_ZHONG_GUO
         if (index in 0 until WalkPathTheme.themeIds.size) {
             walkPathThemeId = WalkPathTheme.themeIds[index]
@@ -1326,7 +1281,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 旧版行走路线首页逻辑（开宝箱 + 行走 + 加入路线）
      */
-    private fun queryMyHomePage(loader: ClassLoader) {
+    internal fun queryMyHomePage(loader: ClassLoader) {
         try {
             var s = AntSportsRpcCall.queryMyHomePage()
             var jo = JSONObject(s)
@@ -1548,7 +1503,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 查询慈善项目列表并执行捐赠
      */
-    private fun queryProjectList() {
+    internal fun queryProjectList() {
         try {
             var jo = JSONObject(AntSportsRpcCall.queryProjectList(0))
             if (ResChecker.checkRes(TAG, jo)) {
@@ -1596,7 +1551,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 查询行走步数，并根据条件自动捐步
      */
-    private fun queryWalkStep() {
+    internal fun queryWalkStep() {
         try {
             var s = AntSportsRpcCall.queryWalkStep()
             var jo = JSONObject(s)
@@ -1665,7 +1620,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 文体中心任务组查询并自动完成 TODO 状态任务
      */
-    private fun userTaskGroupQuery(groupId: String) {
+    internal fun userTaskGroupQuery(groupId: String) {
         try {
             val s = AntSportsRpcCall.userTaskGroupQuery(groupId)
             var jo = JSONObject(s)
@@ -1697,7 +1652,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 文体中心走路挑战报名
      */
-    private fun participate() {
+    internal fun participate() {
         try {
             val s = AntSportsRpcCall.queryAccount()
             var jo = JSONObject(s)
@@ -1754,7 +1709,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 文体中心奖励领取
      */
-    private fun userTaskRightsReceive() {
+    internal fun userTaskRightsReceive() {
         try {
             val s = AntSportsRpcCall.userTaskGroupQuery("SPORTS_DAILY_GROUP")
             var jo = JSONObject(s)
@@ -1796,7 +1751,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 文体中心路径特性查询 + 行走任务/加入路径
      */
-    private fun pathFeatureQuery() {
+    internal fun pathFeatureQuery() {
         try {
             val s = AntSportsRpcCall.pathFeatureQuery()
             var jo = JSONObject(s)
@@ -1931,7 +1886,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 抢好友主页查询 + 训练好友收益泡泡收集
      */
-    private fun queryClubHome() {
+    internal fun queryClubHome() {
         try {
             val maxCount = getTrainFriendZeroCoinLimit()
             if (maxCount != null && hasReachedTrainFriendZeroCoinLimit()) {
@@ -2005,7 +1960,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 训练好友：选取可训练好友并执行一次训练
      */
-    private fun queryTrainItem() {
+    internal fun queryTrainItem() {
         if (trainFriend.value != true) {
             return
         }
@@ -2099,7 +2054,7 @@ class AntSports : ModelTask() {
     /**
      * @brief 抢好友大战：抢购好友逻辑
      */
-    private fun buyMember() {
+    internal fun buyMember() {
         try {
             val clubHomeResponse = AntSportsRpcCall.queryClubHome()
             GlobalThreadPools.sleepCompat(500)
