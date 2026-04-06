@@ -11,11 +11,6 @@ import io.github.aoguai.sesameag.util.NetworkUtils
 import io.github.aoguai.sesameag.util.Notify
 import io.github.aoguai.sesameag.util.RpcCache
 import io.github.aoguai.sesameag.util.TimeUtil
-import org.json.JSONObject
-import java.util.concurrent.Callable
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.FutureTask
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -35,8 +30,8 @@ object RequestManager {
     // 连续失败计数器
     private val errorCount = AtomicInteger(0)
 
-    private val lastRpcBridgeNullLogAtMs = AtomicLong(0)
-    private val lastRpcBlockedLogAtMs = AtomicLong(0)
+    private val rpcBridgeNullLogLimiter = RpcLogLimiter(RPC_BRIDGE_NULL_LOG_INTERVAL_MS)
+    private val rpcBlockedLogLimiter = RpcLogLimiter(RPC_BLOCKED_LOG_INTERVAL_MS)
 
     private val rpcRequestCount = AtomicLong(0)
     private val rpcBlockedCount = AtomicLong(0)
@@ -46,124 +41,21 @@ object RequestManager {
     private val rpcCacheHitCount = AtomicLong(0)
     private val rpcCacheMissCount = AtomicLong(0)
 
-    private sealed class RpcResult {
-        data class Success(val body: String) : RpcResult()
-        data class Failure(val reason: String) : RpcResult()
-    }
-
-    private val inFlight = ConcurrentHashMap<String, FutureTask<RpcResult>>()
+    private val inFlightRegistry = RpcInFlightRegistry()
 
     @Volatile
     private var lastOfflineRecoveryTime = 0L
-
-    private fun shouldLogRpcBridgeNull(): Boolean {
-        val now = System.currentTimeMillis()
-        val last = lastRpcBridgeNullLogAtMs.get()
-        return if (last == 0L || now - last >= RPC_BRIDGE_NULL_LOG_INTERVAL_MS) {
-            lastRpcBridgeNullLogAtMs.set(now)
-            true
-        } else {
-            false
-        }
-    }
-
-    private fun shouldLogRpcBlocked(): Boolean {
-        val now = System.currentTimeMillis()
-        val last = lastRpcBlockedLogAtMs.get()
-        return if (last == 0L || now - last >= RPC_BLOCKED_LOG_INTERVAL_MS) {
-            lastRpcBlockedLogAtMs.set(now)
-            true
-        } else {
-            false
-        }
-    }
-
-    private fun shouldUseRpcCache(method: String?): Boolean {
-        val m = method?.lowercase() ?: return false
-        val allow = m.contains("query") || m.contains("list") || m.contains("get")
-        if (!allow) return false
-
-        val deny = m.contains("send") ||
-            m.contains("finish") ||
-            m.contains("receive") ||
-            m.contains("draw") ||
-            m.contains("exchange") ||
-            m.contains("apply") ||
-            m.contains("submit") ||
-            m.contains("sign") ||
-            m.contains("use")
-        return !deny
-    }
-
-    private fun buildCacheKeyData(data: String?, relation: String?): String? {
-        if (data == null) return null
-        if (relation.isNullOrEmpty()) return data
-        return data + "\u0001rel=" + relation
-    }
-
-    private fun generateKey(method: String?, data: String?): String? {
-        if (method.isNullOrBlank()) return null
-        val dataHash = data?.hashCode() ?: 0
-        return "${method}_${dataHash}"
-    }
-
-    private fun requestWithInFlight(key: String, supplier: () -> RpcResult): RpcResult {
-        val task = FutureTask(Callable { supplier() })
-        val existing = inFlight.putIfAbsent(key, task)
-        val toWait = existing ?: task
-        if (existing == null) {
-            inFlightCreatedCount.incrementAndGet()
-            Log.runtime(TAG, "in-flight create: key=$key")
-            try {
-                task.run()
-            } finally {
-                inFlight.remove(key, task)
-            }
-        } else {
-            inFlightJoinedCount.incrementAndGet()
-            Log.runtime(TAG, "in-flight join: key=$key")
-        }
-
-        return try {
-            toWait.get()
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-            RpcResult.Failure("Interrupted")
-        } catch (_: ExecutionException) {
-            RpcResult.Failure("ExecutionException")
-        } catch (_: Throwable) {
-            RpcResult.Failure("Throwable")
-        }
-    }
-
-    private fun buildFallbackJson(reason: String, method: String?): String {
-        val message = "$reason，请稍后再试"
-        return try {
-            JSONObject().apply {
-                put("success", false)
-                put("memo", message)
-                put("resultDesc", message)
-                put("desc", message)
-                put("resultCode", "I07")
-                if (!method.isNullOrBlank()) {
-                    put("rpcMethod", method)
-                }
-            }.toString()
-        } catch (_: Throwable) {
-            """{"success":false,"memo":"$message","resultDesc":"$message","desc":"$message","resultCode":"I07"}"""
-        }
-    }
 
     /**
      * 核心执行函数 (内联优化)
      * 流程：离线检查 -> 获取 Bridge -> 执行请求 -> 结果校验 -> 错误计数/重置
      */
-    private fun tryBlockByOffline(methodLog: String?): RpcResult.Failure? {
+    private fun tryBlockByOffline(methodLog: String?): RpcRequestOutcome.Failure? {
         if (!ApplicationHookConstants.shouldBlockRpc()) return null
 
         rpcBlockedCount.incrementAndGet()
 
-        if (shouldLogRpcBlocked()) {
+        if (rpcBlockedLogLimiter.shouldLog()) {
             val untilMs = ApplicationHookConstants.offlineUntilMs
             val remainMs = if (untilMs > 0L) {
                 (untilMs - System.currentTimeMillis()).coerceAtLeast(0L)
@@ -181,12 +73,12 @@ object RequestManager {
         }
 
         handleOfflineRecovery()
-        return RpcResult.Failure("离线模式")
+        return RpcRequestOutcome.Failure("离线模式")
     }
 
     private fun normalizeTryCount(value: Int): Int = value.coerceAtLeast(1)
 
-    private inline fun executeRpcOnce(methodLog: String?, block: (RpcBridge) -> String?): RpcResult {
+    private inline fun executeRpcOnce(methodLog: String?, block: (RpcBridge) -> String?): RpcRequestOutcome {
         val blocked = tryBlockByOffline(methodLog)
         if (blocked != null) return blocked
 
@@ -195,12 +87,12 @@ object RequestManager {
         val bridge = getRpcBridge()
         if (bridge == null) {
             rpcBridgeNullCount.incrementAndGet()
-            if (shouldLogRpcBridgeNull()) {
+            if (rpcBridgeNullLogLimiter.shouldLog()) {
                 Log.record(TAG, "RpcBridge 不可用: $methodLog")
                 ModuleStatusReporter.requestUpdate(reason = "rpc_bridge_null")
             }
             handleFailure(methodLog ?: "Network/Bridge Unavailable", "网络或Bridge不可用")
-            return RpcResult.Failure("网络或Bridge不可用")
+            return RpcRequestOutcome.Failure("网络或Bridge不可用")
         }
 
         // 3. 执行请求
@@ -215,14 +107,14 @@ object RequestManager {
         if (result.isNullOrBlank()) {
             // 失败：增加计数，检查兜底
             handleFailure(methodLog ?: "Unknown", "返回数据为空")
-            return RpcResult.Failure("返回数据为空")
+            return RpcRequestOutcome.Failure("返回数据为空")
         } else {
             // 成功：重置计数器
             if (errorCount.get() > 0) {
                 errorCount.set(0)
                 Log.record(TAG, "RPC 恢复正常，错误计数重置")
             }
-            return RpcResult.Success(result)
+            return RpcRequestOutcome.Success(result)
         }
     }
 
@@ -305,7 +197,7 @@ object RequestManager {
             "blockedCount" to rpcBlockedCount.get(),
             "bridgeNullCount" to rpcBridgeNullCount.get(),
             "errorCount" to errorCount.get(),
-            "inFlightCurrent" to inFlight.size,
+            "inFlightCurrent" to inFlightRegistry.size(),
             "inFlightCreated" to inFlightCreatedCount.get(),
             "inFlightJoined" to inFlightJoinedCount.get(),
             "cacheHit" to rpcCacheHitCount.get(),
@@ -325,12 +217,12 @@ object RequestManager {
         // 离线优先：不允许 cache 绕过 offline（避免“脚本暂停”时仍继续执行业务）
         val blocked = tryBlockByOffline(method)
         if (blocked != null) {
-            return buildFallbackJson(blocked.reason, method)
+            return RpcFallbackJsonFactory.build(blocked.reason, method)
         }
 
         val normalizedTryCount = normalizeTryCount(tryCount)
 
-        if (shouldUseRpcCache(method) && cacheKeyData != null) {
+        if (RpcRequestPolicy.shouldUseCache(method) && cacheKeyData != null) {
             val cached = RpcCache.get(method, cacheKeyData)
             if (cached != null) {
                 rpcCacheHitCount.incrementAndGet()
@@ -340,21 +232,26 @@ object RequestManager {
             rpcCacheMissCount.incrementAndGet()
             Log.runtime(TAG, "rpc cache miss: method=$method")
 
-            val key = generateKey(method, cacheKeyData)
+            val key = RpcRequestPolicy.generateKey(method, cacheKeyData)
             if (key != null) {
-                val inFlightResult = requestWithInFlight(key) {
+                val inFlightResult = inFlightRegistry.execute(
+                    tag = TAG,
+                    key = key,
+                    onCreate = { inFlightCreatedCount.incrementAndGet() },
+                    onJoin = { inFlightJoinedCount.incrementAndGet() }
+                ) {
                     val outcome = executeRpcOnce(method) { bridge ->
                         block(bridge, normalizedTryCount, retryInterval)
                     }
-                    if (outcome is RpcResult.Success) {
+                    if (outcome is RpcRequestOutcome.Success) {
                         RpcCache.put(method, cacheKeyData, outcome.body)
                     }
                     outcome
                 }
 
                 return when (inFlightResult) {
-                    is RpcResult.Success -> inFlightResult.body
-                    is RpcResult.Failure -> buildFallbackJson(inFlightResult.reason, method)
+                    is RpcRequestOutcome.Success -> inFlightResult.body
+                    is RpcRequestOutcome.Failure -> RpcFallbackJsonFactory.build(inFlightResult.reason, method)
                 }
             }
         }
@@ -363,8 +260,8 @@ object RequestManager {
             block(bridge, normalizedTryCount, retryInterval)
         }
         return when (result) {
-            is RpcResult.Success -> result.body
-            is RpcResult.Failure -> buildFallbackJson(result.reason, method)
+            is RpcRequestOutcome.Success -> result.body
+            is RpcRequestOutcome.Failure -> RpcFallbackJsonFactory.build(result.reason, method)
         }
     }
 
@@ -373,7 +270,7 @@ object RequestManager {
     @JvmStatic
     fun requestString(rpcEntity: RpcEntity): String {
         val method = rpcEntity.requestMethod
-        val cacheKeyData = buildCacheKeyData(rpcEntity.requestData, rpcEntity.requestRelation)
+        val cacheKeyData = RpcRequestPolicy.buildCacheKeyData(rpcEntity.requestData, rpcEntity.requestRelation)
         return requestStringWithPolicy(method, cacheKeyData, RpcBridge.DEFAULT_TRY_COUNT, RpcBridge.DEFAULT_RETRY_INTERVAL) { bridge, tc, ri ->
             bridge.requestString(rpcEntity, tc, ri)
         }
@@ -382,7 +279,7 @@ object RequestManager {
     @JvmStatic
     fun requestString(rpcEntity: RpcEntity, tryCount: Int, retryInterval: Int): String {
         val method = rpcEntity.requestMethod
-        val cacheKeyData = buildCacheKeyData(rpcEntity.requestData, rpcEntity.requestRelation)
+        val cacheKeyData = RpcRequestPolicy.buildCacheKeyData(rpcEntity.requestData, rpcEntity.requestRelation)
         return requestStringWithPolicy(method, cacheKeyData, tryCount, retryInterval) { bridge, tc, ri ->
             bridge.requestString(rpcEntity, tc, ri)
         }
@@ -390,7 +287,7 @@ object RequestManager {
 
     @JvmStatic
     fun requestString(method: String?, data: String?): String {
-        val cacheKeyData = buildCacheKeyData(data, null)
+        val cacheKeyData = RpcRequestPolicy.buildCacheKeyData(data, null)
         return requestStringWithPolicy(method, cacheKeyData, RpcBridge.DEFAULT_TRY_COUNT, RpcBridge.DEFAULT_RETRY_INTERVAL) { bridge, tc, ri ->
             bridge.requestString(method, data, tc, ri)
         }
@@ -398,7 +295,7 @@ object RequestManager {
 
     @JvmStatic
     fun requestString(method: String?, data: String?, relation: String?): String {
-        val cacheKeyData = buildCacheKeyData(data, relation)
+        val cacheKeyData = RpcRequestPolicy.buildCacheKeyData(data, relation)
         return requestStringWithPolicy(method, cacheKeyData, RpcBridge.DEFAULT_TRY_COUNT, RpcBridge.DEFAULT_RETRY_INTERVAL) { bridge, tc, ri ->
             bridge.requestString(method, data, relation, tc, ri)
         }
@@ -412,7 +309,7 @@ object RequestManager {
         methodName: String?,
         facadeName: String?
     ): String {
-        val cacheKeyData = buildCacheKeyData(data, null)
+        val cacheKeyData = RpcRequestPolicy.buildCacheKeyData(data, null)
         return requestStringWithPolicy(method, cacheKeyData, RpcBridge.DEFAULT_TRY_COUNT, RpcBridge.DEFAULT_RETRY_INTERVAL) { bridge, _, _ ->
             bridge.requestString(method, data, appName, methodName, facadeName)
         }
@@ -420,7 +317,7 @@ object RequestManager {
 
     @JvmStatic
     fun requestString(method: String?, data: String?, tryCount: Int, retryInterval: Int): String {
-        val cacheKeyData = buildCacheKeyData(data, null)
+        val cacheKeyData = RpcRequestPolicy.buildCacheKeyData(data, null)
         return requestStringWithPolicy(method, cacheKeyData, tryCount, retryInterval) { bridge, tc, ri ->
             bridge.requestString(method, data, tc, ri)
         }
@@ -434,7 +331,7 @@ object RequestManager {
         tryCount: Int,
         retryInterval: Int
     ): String {
-        val cacheKeyData = buildCacheKeyData(data, relation)
+        val cacheKeyData = RpcRequestPolicy.buildCacheKeyData(data, relation)
         return requestStringWithPolicy(method, cacheKeyData, tryCount, retryInterval) { bridge, tc, ri ->
             bridge.requestString(method, data, relation, tc, ri)
         }

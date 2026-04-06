@@ -37,7 +37,6 @@ import io.github.aoguai.sesameag.hook.rpc.bridge.NewRpcBridge
 import io.github.aoguai.sesameag.hook.rpc.bridge.OldRpcBridge
 import io.github.aoguai.sesameag.hook.rpc.bridge.RpcBridge
 import io.github.aoguai.sesameag.hook.rpc.bridge.RpcVersion
-import io.github.aoguai.sesameag.hook.rpc.debug.DebugRpc
 import io.github.aoguai.sesameag.hook.rpc.intervallimit.RpcIntervalLimit.clearIntervalLimit
 import io.github.aoguai.sesameag.hook.server.ModuleHttpServerManager.startIfNeeded
 import io.github.aoguai.sesameag.model.BaseModel.Companion.batteryPerm
@@ -54,10 +53,6 @@ import io.github.aoguai.sesameag.model.Model
 import io.github.aoguai.sesameag.task.CoroutineTaskRunner
 import io.github.aoguai.sesameag.task.MainTask
 import io.github.aoguai.sesameag.task.ModelTask.Companion.stopAllTask
-import io.github.aoguai.sesameag.task.antForest.AntForest
-import io.github.aoguai.sesameag.task.customTasks.CustomTask
-import io.github.aoguai.sesameag.task.customTasks.ManualTask
-import io.github.aoguai.sesameag.task.customTasks.ManualTaskModel
 import io.github.aoguai.sesameag.util.DataStore.init
 import io.github.aoguai.sesameag.util.Files
 import io.github.aoguai.sesameag.util.GlobalThreadPools.execute
@@ -252,110 +247,12 @@ class ApplicationHook {
                                 HookUtil.hookUser(classLoader!!)
                             }
 
-                            // 访问被拒绝/需要滑块验证后，用户手动完成验证并回到首页时会触发 onResume。
-                            // 这里自动退出离线状态并恢复执行链路，避免长期卡在离线模式无法继续任务。
-                            // 注意：手动开启离线（reason=null 且 untilMs<=0）不应被自动退出。
-                            var recoveredFromOffline = false
-                            if (ApplicationHookConstants.isOffline()) {
-                                val reason = ApplicationHookConstants.offlineReason
-                                val untilMs = ApplicationHookConstants.offlineUntilMs
-                                val now = System.currentTimeMillis()
-                                val cooldownExpired = untilMs > 0L && now >= untilMs
-
-                                val lastReopenAt = lastReOpenAppLaunchAtMs
-                                val autoResumeByReopen =
-                                    reason == "auth_like" &&
-                                        !cooldownExpired &&
-                                        lastReopenAt > 0L &&
-                                        (now - lastReopenAt) in 0..AUTH_LIKE_AUTO_RECOVER_GUARD_MS
-                                if (autoResumeByReopen) {
-                                    val offlineEnterAtMs = ApplicationHookConstants.lastOfflineEnterAtMs
-                                    if (authLikeReopenGuardOfflineEnterAtMs != offlineEnterAtMs) {
-                                        authLikeReopenGuardOfflineEnterAtMs = offlineEnterAtMs
-                                        authLikeReopenGuardCountedReopenAtMs = 0L
-                                        authLikeReopenGuardReopenCount = 0
-                                    }
-
-                                    if (lastReopenAt != authLikeReopenGuardCountedReopenAtMs) {
-                                        authLikeReopenGuardCountedReopenAtMs = lastReopenAt
-                                        authLikeReopenGuardReopenCount++
-                                    }
-
-                                    if (authLikeReopenGuardReopenCount <= AUTH_LIKE_AUTO_RECOVER_GUARD_IGNORE_REOPEN_COUNT) {
-                                        record(
-                                            TAG,
-                                            "检测到 auth_like 离线，但 onResume 由 reOpenApp 触发(${now - lastReopenAt}ms)，保持离线等待用户完成验证(#$authLikeReopenGuardReopenCount)"
-                                        )
-                                        return@submitEntry
-                                    }
-
-                                    record(TAG, "检测到 auth_like 离线，但已多次 reOpenApp(#$authLikeReopenGuardReopenCount)，尝试自动恢复执行")
-                                }
-                                val shouldRecover = cooldownExpired || when (reason) {
-                                    "auth_like",
-                                    "system_busy",
-                                    "login_timeout",
-                                    "network_error_threshold",
-                                    "rpc_error_threshold" -> true
-                                    else -> false
-                                }
-
-                                if (shouldRecover) {
-                                    record(TAG, "检测到 ${reason ?: "unknown"} 离线状态，尝试在 onResume 退出离线并恢复任务执行")
-                                    ApplicationHookConstants.setOffline(false)
-                                    SmartSchedulerManager.cancelNamedTask("重新登录")
-                                    // 避免快速返回App被 2s 间隔保护挡住而无法立刻恢复
-                                    lastExecTime = 0
-
-                                    val statusMsg = when (reason) {
-                                        "auth_like" -> "✅ 验证已解除，恢复执行"
-                                        "system_busy" -> "✅ 已解除系统繁忙/验证态，恢复执行"
-                                        "login_timeout" -> "✅ 登录已恢复，继续执行"
-                                        else -> "✅ 离线已解除，恢复执行"
-                                    }
-                                    updateRunningStatus(statusMsg)
-
-                                    val triggerReason =
-                                        if (reason == "auth_like") "auth_like_recovered"
-                                        else "offline_recovered:${reason ?: "unknown"}"
-                                    val dedupeKey =
-                                        if (reason == "auth_like") "auth_like_recovered"
-                                        else "offline_recovered"
-
-                                    // 离线恢复时，旧的执行链路可能仍在跑（队列里也可能有 pending trigger）。
-                                    // 主动取消当前主任务与子任务，让恢复触发能尽快生效。
-                                    val runningMainTask = mainTask
-                                    if (runningMainTask?.isRunning == true) {
-                                        record(TAG, "🔄 离线恢复：取消当前主任务以便立即恢复执行")
-                                        runningMainTask.stopTask()
-                                    }
-                                    stopAllTask()
-                                    ApplicationHookConstants.clearPendingTriggers("offline_recover")
-                                    recoveredFromOffline = true
-
-                                    ApplicationHookCore.requestExecution(
-                                        ApplicationHookConstants.TriggerInfo(
-                                            type = ApplicationHookConstants.TriggerType.ON_RESUME,
-                                            priority = ApplicationHookConstants.TriggerPriority.HIGH,
-                                            reason = triggerReason,
-                                            dedupeKey = dedupeKey
-                                        )
-                                    )
-                                }
-                            }
+                            val recoveredFromOffline = ApplicationResumeCoordinator.tryRecoverOffline("onResume")
 
                             val resumeAt = System.currentTimeMillis()
-                            val resumedFromBackground = consumeHostAppBackgrounded()
-                            val moduleInitiatedResume =
-                                isPendingModuleForegroundResume(resumeAt) ||
-                                    (lastReOpenAppLaunchAtMs > 0L &&
-                                        (resumeAt - lastReOpenAppLaunchAtMs) in 0..AUTH_LIKE_AUTO_RECOVER_GUARD_MS)
-                            if (moduleInitiatedResume) {
-                                pendingModuleForegroundResume = false
-                            }
-                            val recentlyReopenedByModule =
-                                lastReOpenAppLaunchAtMs > 0L &&
-                                    (resumeAt - lastReOpenAppLaunchAtMs) in 0..AUTH_LIKE_AUTO_RECOVER_GUARD_MS
+                            val resumedFromBackground = ApplicationResumeCoordinator.consumeHostAppBackgrounded()
+                            val moduleInitiatedResume = ApplicationResumeCoordinator.consumeModuleForegroundResume(resumeAt)
+                            val recentlyReopenedByModule = ApplicationResumeCoordinator.wasRecentlyReopenedByModule(resumeAt)
                             if (
                                 resumedFromBackground &&
                                 !moduleInitiatedResume &&
@@ -393,91 +290,7 @@ class ApplicationHook {
                 val result = chain.proceed()
                 ApplicationHookConstants.submitEntry("login_onResume") {
                             if (!init) return@submitEntry
-                            if (!ApplicationHookConstants.isOffline()) return@submitEntry
-
-                            val reason = ApplicationHookConstants.offlineReason
-                            val untilMs = ApplicationHookConstants.offlineUntilMs
-                            val now = System.currentTimeMillis()
-                            val cooldownExpired = untilMs > 0L && now >= untilMs
-
-                            val lastReopenAt = lastReOpenAppLaunchAtMs
-                            val autoResumeByReopen =
-                                reason == "auth_like" &&
-                                    !cooldownExpired &&
-                                    lastReopenAt > 0L &&
-                                    (now - lastReopenAt) in 0..AUTH_LIKE_AUTO_RECOVER_GUARD_MS
-                            if (autoResumeByReopen) {
-                                val offlineEnterAtMs = ApplicationHookConstants.lastOfflineEnterAtMs
-                                if (authLikeReopenGuardOfflineEnterAtMs != offlineEnterAtMs) {
-                                    authLikeReopenGuardOfflineEnterAtMs = offlineEnterAtMs
-                                    authLikeReopenGuardCountedReopenAtMs = 0L
-                                    authLikeReopenGuardReopenCount = 0
-                                }
-
-                                if (lastReopenAt != authLikeReopenGuardCountedReopenAtMs) {
-                                    authLikeReopenGuardCountedReopenAtMs = lastReopenAt
-                                    authLikeReopenGuardReopenCount++
-                                }
-
-                                if (authLikeReopenGuardReopenCount <= AUTH_LIKE_AUTO_RECOVER_GUARD_IGNORE_REOPEN_COUNT) {
-                                    record(
-                                        TAG,
-                                        "检测到 auth_like 离线，但 login.onResume 由 reOpenApp 触发(${now - lastReopenAt}ms)，保持离线等待用户完成验证(#$authLikeReopenGuardReopenCount)"
-                                    )
-                                    return@submitEntry
-                                }
-
-                                record(TAG, "检测到 auth_like 离线，但已多次 reOpenApp(#$authLikeReopenGuardReopenCount)，尝试自动恢复执行")
-                            }
-                            val shouldRecover = cooldownExpired || when (reason) {
-                                "auth_like",
-                                "system_busy",
-                                "login_timeout",
-                                "network_error_threshold",
-                                "rpc_error_threshold" -> true
-                                else -> false
-                            }
-
-                            if (!shouldRecover) return@submitEntry
-
-                            record(TAG, "检测到 ${reason ?: "unknown"} 离线状态，尝试在 login.onResume 退出离线并恢复任务执行")
-                            ApplicationHookConstants.setOffline(false)
-                            SmartSchedulerManager.cancelNamedTask("重新登录")
-                            lastExecTime = 0
-
-                            val statusMsg = when (reason) {
-                                "auth_like" -> "✅ 验证已解除，恢复执行"
-                                "system_busy" -> "✅ 已解除系统繁忙/验证态，恢复执行"
-                                "login_timeout" -> "✅ 登录已恢复，继续执行"
-                                else -> "✅ 离线已解除，恢复执行"
-                            }
-                            updateRunningStatus(statusMsg)
-
-                            val triggerReason =
-                                if (reason == "auth_like") "auth_like_recovered"
-                                else "offline_recovered:${reason ?: "unknown"}"
-                            val dedupeKey =
-                                if (reason == "auth_like") "auth_like_recovered"
-                                else "offline_recovered"
-
-                            // 离线恢复时，旧的执行链路可能仍在跑（队列里也可能有 pending trigger）。
-                            // 主动取消当前主任务与子任务，让恢复触发能尽快生效。
-                            val runningMainTask = mainTask
-                            if (runningMainTask?.isRunning == true) {
-                                record(TAG, "🔄 离线恢复：取消当前主任务以便立即恢复执行")
-                                runningMainTask.stopTask()
-                            }
-                            stopAllTask()
-                            ApplicationHookConstants.clearPendingTriggers("offline_recover")
-
-                            ApplicationHookCore.requestExecution(
-                                ApplicationHookConstants.TriggerInfo(
-                                    type = ApplicationHookConstants.TriggerType.ON_RESUME,
-                                    priority = ApplicationHookConstants.TriggerPriority.HIGH,
-                                    reason = triggerReason,
-                                    dedupeKey = dedupeKey
-                                )
-                            )
+                            ApplicationResumeCoordinator.tryRecoverOffline("login.onResume")
                 }
                 result
             }
@@ -555,179 +368,7 @@ class ApplicationHook {
     // --- 广播接收器 ---
     internal class AlipayBroadcastReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
-            val action = intent.action ?: return
-
-            if (finalProcessName != null && finalProcessName!!.endsWith(":widgetProvider")) {
-                return  // 忽略小组件进程
-            }
-
-            when (action) {
-                ApplicationHookConstants.BroadcastActions.RESTART -> {
-                    val safeIntent = Intent(intent)
-                    ApplicationHookConstants.submitEntry("broadcast_restart") {
-                        val targetUserId = safeIntent.getStringExtra("userId")
-                        val currentUserId = HookUtil.getUserId(classLoader!!)
-                        if (targetUserId != null && targetUserId != currentUserId) {
-                            record(TAG, "忽略非当前用户的重启广播: target=$targetUserId, current=$currentUserId")
-                            return@submitEntry
-                        }
-                        val restartReason =
-                            if (safeIntent.getBooleanExtra("configReload", false)) {
-                                "config_reload"
-                            } else {
-                                "broadcast_restart"
-                            }
-                        initHandler(restartReason)
-                    }
-                }
-
-                ApplicationHookConstants.BroadcastActions.EXECUTE -> handleExecuteBroadcast(context, intent)
-
-                ApplicationHookConstants.BroadcastActions.PRE_WAKEUP -> handlePreWakeupBroadcast(context, intent)
-
-                ApplicationHookConstants.BroadcastActions.RE_LOGIN -> reOpenApp()
-                ApplicationHookConstants.BroadcastActions.RPC_TEST -> handleRpcTest(intent)
-                ApplicationHookConstants.BroadcastActions.MANUAL_TASK -> {
-                    record(TAG, "🚀 收到手动庄园任务指令")
-                    execute {
-                        val taskName = intent.getStringExtra("task")
-                        if (taskName != null) {
-                            val normalizedTaskName = taskName.replace("+", "_")
-                            try {
-                                val task = CustomTask.valueOf(normalizedTaskName)
-                                val extraParams = HashMap<String, Any>()
-                                when (task) {
-                                    CustomTask.FOREST_WHACK_MOLE -> {
-                                        extraParams["whackMoleMode"] = intent.getIntExtra("whackMoleMode", 1)
-                                        extraParams["whackMoleGames"] = intent.getIntExtra("whackMoleGames", 5)
-                                    }
-
-                                    CustomTask.FOREST_ENERGY_RAIN -> {
-                                        extraParams["exchangeEnergyRainCard"] = intent.getBooleanExtra("exchangeEnergyRainCard", false)
-                                    }
-
-                                    CustomTask.FARM_SPECIAL_FOOD -> {
-                                        extraParams["specialFoodCount"] = intent.getIntExtra("specialFoodCount", 0)
-                                    }
-
-                                    CustomTask.FARM_USE_TOOL -> {
-                                        extraParams["toolType"] = intent.getStringExtra("toolType") ?: ""
-                                        extraParams["toolCount"] = intent.getIntExtra("toolCount", 1)
-                                    }
-
-                                    else -> {
-                                        record(TAG, "❌ 无效的任务指令: $taskName")
-                                    }
-                                }
-                                if (!WorkflowRootGuard.hasRoot(forceRefresh = true, reason = "manual_task")) {
-                                    record(TAG, "⛔ 未检测到可用执行权限，忽略手动任务指令: $taskName")
-                                    return@execute
-                                }
-                                if (!ensureLegalAcceptanceForWorkflow()) {
-                                    record(TAG, "⛔ 未勾选 LEGAL 说明确认，忽略手动任务指令: $taskName")
-                                    return@execute
-                                }
-                                ManualTask.runSingle(task, extraParams)
-                            } catch (e: Exception) {
-                                record(TAG, "❌ 无效的任务指令: $taskName -> ${e.message}")
-                            }
-                        } else {
-                            if (!WorkflowRootGuard.hasRoot(forceRefresh = true, reason = "manual_task_model")) {
-                                record(TAG, "⛔ 未检测到可用执行权限，忽略手动模型任务指令")
-                                return@execute
-                            }
-                            if (!ensureLegalAcceptanceForWorkflow()) {
-                                record(TAG, "⛔ 未勾选 LEGAL 说明确认，忽略手动模型任务指令")
-                                return@execute
-                            }
-                            for (model in Model.modelArray) {
-                                if (model is ManualTaskModel) {
-                                    model.startTask(true, 1)
-                                    break
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        private fun handleExecuteBroadcast(context: Context?, intent: Intent) {
-            val safeIntent = Intent(intent)
-            val isAlarmTriggered = safeIntent.getBooleanExtra("alarm_triggered", false)
-            val wakenAtTime = safeIntent.getBooleanExtra("waken_at_time", false)
-            val wakenTime = safeIntent.getStringExtra("waken_time")?.trim().takeIf { !it.isNullOrBlank() }
-            val normalizedWakenTime = if (wakenAtTime && wakenTime.isNullOrBlank()) "0000" else wakenTime
-
-            val trigger = ApplicationHookConstants.TriggerInfo(
-                type = ApplicationHookConstants.TriggerType.BROADCAST_EXECUTE,
-                priority = if (isAlarmTriggered || wakenAtTime) {
-                    ApplicationHookConstants.TriggerPriority.HIGH
-                } else {
-                    ApplicationHookConstants.TriggerPriority.NORMAL
-                },
-                alarmTriggered = isAlarmTriggered,
-                wakenAtTime = wakenAtTime,
-                wakenTime = normalizedWakenTime,
-                reason = "broadcast_execute",
-                dedupeKey = when {
-                    wakenAtTime && !normalizedWakenTime.isNullOrBlank() -> "wakeup_$normalizedWakenTime"
-                    isAlarmTriggered -> "alarm_execute"
-                    else -> "broadcast_execute"
-                }
-            )
-
-            ApplicationHookConstants.submitEntry("broadcast_execute") {
-                if (!isReadyForExec()) {
-                    record(TAG, "execute broadcast received but not ready: init=$init loaded=${Config.isLoaded()} service=${service != null}")
-                }
-                ApplicationHookCore.requestExecution(trigger)
-            }
-        }
-
-        private fun handlePreWakeupBroadcast(context: Context?, intent: Intent) {
-            val ctx = context?.applicationContext ?: context
-            if (ctx == null) return
-
-            val safeIntent = Intent(intent)
-            val executionTimeMillis = safeIntent.getLongExtra("execution_time", 0L)
-            val now = System.currentTimeMillis()
-            val delayMillis = executionTimeMillis - now
-
-            val triggerAtExecTime = ApplicationHookConstants.TriggerInfo(
-                type = ApplicationHookConstants.TriggerType.BROADCAST_PREWAKEUP,
-                priority = ApplicationHookConstants.TriggerPriority.HIGH,
-                alarmTriggered = true,
-                reason = if (executionTimeMillis > 0) "prewakeup_to_${TimeUtil.getCommonDate(executionTimeMillis)}" else "prewakeup",
-                dedupeKey = if (executionTimeMillis > 0) "prewakeup_$executionTimeMillis" else "prewakeup"
-            )
-
-            SmartSchedulerManager.initialize(ctx)
-            if (executionTimeMillis > 0 && delayMillis > 0) {
-                record(TAG, "收到 prewakeup，计划在 ${TimeUtil.getCommonDate(executionTimeMillis)} 执行 (delay=${TimeUtil.formatDuration(delayMillis)})")
-                schedule(delayMillis, "prewakeup_execute") {
-                    ApplicationHookCore.requestExecution(triggerAtExecTime)
-                }
-                return
-            }
-
-            record(TAG, "收到 prewakeup，但 execution_time 无效/已过期，立即触发一次执行链路")
-            ApplicationHookCore.requestExecution(triggerAtExecTime)
-        }
-
-        private fun handleRpcTest(intent: Intent) {
-            execute({
-                record(TAG, "RPC测试: $intent")
-                try {
-                    val rpc = DebugRpc()
-                    rpc.start(
-                        intent.getStringExtra("method") ?: "",
-                        intent.getStringExtra("data") ?: "",
-                        intent.getStringExtra("type") ?: ""
-                    )
-                } catch (_: Throwable) { /* ignore */
-                }
-            })
+            ApplicationBroadcastDispatcher.handleReceive(context, intent)
         }
     }
 
@@ -781,12 +422,6 @@ class ApplicationHook {
         private var rootCheckInProgress = false
 
         @Volatile
-        private var hostAppWentBackground = false
-
-        @Volatile
-        private var pendingModuleForegroundResume = false
-
-        @Volatile
         var dayCalendar: Calendar?
 
         @Volatile
@@ -814,24 +449,13 @@ class ApplicationHook {
                 WorkflowRootGuard.hasGrantedRoot()
         }
 
-        private fun consumeHostAppBackgrounded(): Boolean {
-            val wasBackgrounded = hostAppWentBackground
-            hostAppWentBackground = false
-            return wasBackgrounded
+        internal fun readinessSummary(): String {
+            return "init=$init loaded=${Config.isLoaded()} service=${service != null}"
         }
 
-        private fun isPendingModuleForegroundResume(now: Long): Boolean {
-            if (!pendingModuleForegroundResume) {
-                return false
-            }
-            val lastLaunchAt = lastReOpenAppLaunchAtMs
-            val delta = now - lastLaunchAt
-            if (lastLaunchAt <= 0L || delta < 0L || delta > MODULE_FOREGROUND_RESUME_GUARD_MS) {
-                pendingModuleForegroundResume = false
-                return false
-            }
-            return true
-        }
+        internal fun restartWorkflow(reason: String): Boolean = initHandler(reason)
+
+        internal fun ensureLegalAcceptedForWorkflow(): Boolean = ensureLegalAcceptanceForWorkflow()
 
         @Volatile
         var rpcBridge: RpcBridge? = null
@@ -843,29 +467,12 @@ class ApplicationHook {
         var lastExecTime: Long = 0
 
         @Volatile
-        private var lastReOpenAppLaunchAtMs: Long = 0L
-
-        private const val AUTH_LIKE_AUTO_RECOVER_GUARD_MS: Long = 1500L
-        private const val MODULE_FOREGROUND_RESUME_GUARD_MS: Long = 15_000L
-
-        private const val AUTH_LIKE_AUTO_RECOVER_GUARD_IGNORE_REOPEN_COUNT: Int = 1
-
-        @Volatile
-        private var authLikeReopenGuardOfflineEnterAtMs: Long = 0L
-
-        @Volatile
-        private var authLikeReopenGuardCountedReopenAtMs: Long = 0L
-
-        @Volatile
-        private var authLikeReopenGuardReopenCount: Int = 0
-
-        @Volatile
         var nextExecutionTime: Long = 0
 
         private val appVisibilityCallbacks = object : ComponentCallbacks2 {
             override fun onTrimMemory(level: Int) {
                 if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-                    hostAppWentBackground = true
+                    ApplicationResumeCoordinator.markHostAppBackgrounded()
                 }
             }
 
@@ -1104,8 +711,7 @@ class ApplicationHook {
                 pendingInit = false
                 pendingInitReason = null
                 rootCheckInProgress = false
-                hostAppWentBackground = false
-                pendingModuleForegroundResume = false
+                ApplicationResumeCoordinator.reset()
                 lastExecTime = 0
                 try {
                     io.github.aoguai.sesameag.util.DataStore.shutdown()
@@ -1258,8 +864,7 @@ class ApplicationHook {
             ensureScheduler()
             schedule(20000L, "重新登录") {
                 try {
-                    lastReOpenAppLaunchAtMs = System.currentTimeMillis()
-                    pendingModuleForegroundResume = true
+                    ApplicationResumeCoordinator.recordReOpenAppLaunch()
                     val intent = Intent(Intent.ACTION_VIEW)
                     intent.setClassName(General.PACKAGE_NAME, General.CURRENT_USING_ACTIVITY)
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -1354,7 +959,7 @@ class ApplicationHook {
             if (appVisibilityCallbacksRegistered) return
             try {
                 context.registerComponentCallbacks(appVisibilityCallbacks)
-                hostAppWentBackground = false
+                ApplicationResumeCoordinator.clearBackgroundFlag()
                 appVisibilityCallbacksRegistered = true
             } catch (th: Throwable) {
                 appVisibilityCallbacksRegistered = false
@@ -1382,7 +987,7 @@ class ApplicationHook {
                 // ignore: callbacks not registered
             } finally {
                 appVisibilityCallbacksRegistered = false
-                hostAppWentBackground = false
+                ApplicationResumeCoordinator.clearBackgroundFlag()
             }
         }
 
