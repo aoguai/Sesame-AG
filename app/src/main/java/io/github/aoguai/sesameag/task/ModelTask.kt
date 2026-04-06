@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * 1. 基于Kotlin协程的任务生命周期管理（启动、停止、暂停）
  * 2. 协程子任务管理（添加、移除、执行）
  * 3. 任务执行统计和监控
- * 4. 统一的顺序、并行、多轮执行模式
+ * 4. 统一的多轮顺序执行模式
  * 5. 协程调度器管理和任务调度
  * 6. 结构化并发和错误处理
  *
@@ -279,7 +279,7 @@ abstract class ModelTask : Model() {
             if (getName() != "MAIN_TASK") {
                 Log.debug(TAG, "开始执行第${round}轮任务: ${getName()}")
             }
-            // 无论什么模式，都使用顺序执行
+            // 统一使用顺序执行
             executeSequential(round, stats)
             
             // 轮次间延迟
@@ -344,13 +344,6 @@ abstract class ModelTask : Model() {
                 Log.printStackTrace("stopTask err", e)
             }
         }
-    }
-
-    /**
-     * 任务执行模式（仅支持顺序执行）
-     */
-    enum class TaskExecutionMode {
-        SEQUENTIAL  // 顺序执行（唯一支持的模式）
     }
 
     /**
