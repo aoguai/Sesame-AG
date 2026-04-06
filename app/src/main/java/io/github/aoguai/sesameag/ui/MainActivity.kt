@@ -179,7 +179,7 @@ class MainActivity : ComponentActivity() {
         openLogFile(Files.getLogFile(channel))
     }
 
-    // --- 辅助方法 (替代 BaseActivity) ---
+    // --- 辅助方法 ---
 
     private fun setupShizuku() {
         Shizuku.addRequestPermissionResultListener(shizukuListener)

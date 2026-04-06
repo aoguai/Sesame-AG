@@ -23,7 +23,9 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import com.fasterxml.jackson.core.type.TypeReference
+import com.google.android.material.appbar.MaterialToolbar
 import io.github.aoguai.sesameag.BuildConfig
 import io.github.aoguai.sesameag.R
 import io.github.aoguai.sesameag.data.Config
@@ -61,10 +63,11 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.Dispatchers
 
-class WebSettingsActivity : BaseActivity() {
+class WebSettingsActivity : AppCompatActivity() {
 
     private lateinit var exportLauncher: ActivityResultLauncher<Intent>
     private lateinit var importLauncher: ActivityResultLauncher<Intent>
+    private lateinit var toolbar: MaterialToolbar
     private lateinit var webView: WebView
     private lateinit var context: Context
     private var userId: String? = null
@@ -81,9 +84,7 @@ class WebSettingsActivity : BaseActivity() {
         userName = intent?.getStringExtra("userName")
 
         setContentView(R.layout.activity_web_settings)
-
-        // BaseActivity 采用 pendingSubtitle 驱动 Toolbar；这里直接赋值即可
-        baseSubtitle = userName?.let { "${getString(R.string.settings)}: $it" } ?: getString(R.string.settings)
+        setupToolbar()
 
         webView = findViewById(R.id.webView)
         val progressBar: ProgressBar? = findViewById(R.id.progress_bar)
@@ -157,6 +158,14 @@ class WebSettingsActivity : BaseActivity() {
                 }
             }
         }
+    }
+
+    private fun setupToolbar() {
+        toolbar = findViewById(R.id.x_toolbar)
+        setSupportActionBar(toolbar)
+        toolbar.setContentInsetsAbsolute(0, 0)
+        toolbar.title = null
+        toolbar.subtitle = userName?.let { "${getString(R.string.settings)}: $it" } ?: getString(R.string.settings)
     }
 
     private fun initializeWebView() {

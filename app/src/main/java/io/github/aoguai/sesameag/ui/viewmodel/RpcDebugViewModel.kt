@@ -11,11 +11,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.json.JsonMapper
-import io.github.aoguai.sesameag.SesameApplication.Companion.PREFERENCES_KEY
 import io.github.aoguai.sesameag.entity.RpcDebugEntity
 import io.github.aoguai.sesameag.hook.ApplicationHookConstants
+import io.github.aoguai.sesameag.ui.repository.RpcDebugConfigStore
 import io.github.aoguai.sesameag.ui.LogViewerActivity
-import io.github.aoguai.sesameag.util.SesameAgUtil
 import io.github.aoguai.sesameag.util.Files
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.LogChannel
@@ -25,8 +24,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.io.File
-import java.security.MessageDigest
 
 // 弹窗状态
 sealed class RpcDialogState {
@@ -52,9 +49,7 @@ class RpcDebugViewModel(application: Application) : AndroidViewModel(application
     data class RpcDebugItemRaw(val name: String, val method: String, val requestData: Any?, val description: String)
 
 
-    private val prefs = application.getSharedPreferences(PREFERENCES_KEY, Context.MODE_PRIVATE)
-    private val legacyPrefsKey = "rpc_debug_items"
-    private val configFile: File = File(Files.MAIN_DIR, "rpcRequest.json")
+    private val configStore = RpcDebugConfigStore(application)
 
     private val objectMapper = JsonMapper.builder()
         .enable(com.fasterxml.jackson.databind.MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES)
@@ -68,167 +63,19 @@ class RpcDebugViewModel(application: Application) : AndroidViewModel(application
     val dialogState = _dialogState.asStateFlow()
 
     init {
-        val hasConfig = loadItems()
-        if (!hasConfig && _items.value.isEmpty()) {
+        val loadResult = configStore.loadItems()
+        _items.value = loadResult.items
+        if (!loadResult.hasConfigSource && loadResult.items.isEmpty()) {
             loadDefaultItems()
         }
     }
 
     // --- 加载与保存 ---
 
-    /**
-     * 读取 RPC 配置（同一份 JSON）：`Android/media/.../sesame-AG/rpcRequest.json`
-     *
-     * 兼容旧版：如果文件不存在，则尝试从旧 SharedPreferences(`rpc_debug_items`) 迁移一次。
-     *
-     * @return 是否存在可识别的配置来源（文件存在 / legacy prefs 存在）
-     */
-    private fun loadItems(): Boolean {
-        try {
-            if (configFile.exists()) {
-                val text = Files.readFromFile(configFile).trim()
-                if (text.isBlank()) {
-                    _items.value = emptyList()
-                    return true
-                }
-
-                val list = parseRpcListCompat(text)
-                _items.value = list.map { normalizeItem(it) }
-                return true
-            }
-
-            val legacyText = prefs.getString(legacyPrefsKey, null)?.trim().orEmpty()
-            if (legacyText.isNotBlank()) {
-                val legacyList = objectMapper.readValue(legacyText, object : TypeReference<List<RpcDebugEntity>>() {})
-                _items.value = legacyList.map { normalizeItem(it) }
-                saveItems() // 迁移到文件，后续不再需要同步
-                return true
-            }
-
-            // 兼容旧逻辑：如果 root 文件不存在，尝试从任意账号目录的 rpcRequest.json 迁移到 root
-            if (tryMigrateFromAnyUserConfigFile()) {
-                return true
-            }
-        } catch (e: Exception) {
-            Log.e("RpcDebug", "Load failed", e)
-        }
-        return false
-    }
-
     private fun saveItems() {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val jsonString = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(_items.value)
-                Files.write2File(jsonString, configFile)
-            } catch (e: Exception) {
-                Log.e("RpcDebug", "Save failed", e)
-            }
+            configStore.saveItems(_items.value)
         }
-    }
-
-    private fun parseRpcListCompat(text: String): List<RpcDebugEntity> {
-        val trimmed = text.trim()
-        if (trimmed.startsWith("[")) {
-            return objectMapper.readValue(trimmed, object : TypeReference<List<RpcDebugEntity>>() {})
-        }
-
-        // 兼容 map 格式：{ "<jsonKey>": "显示名", ... }
-        if (trimmed.startsWith("{")) {
-            val map = objectMapper.readValue(trimmed, object : TypeReference<Map<String, Any?>>() {})
-            val result = ArrayList<RpcDebugEntity>()
-            for ((key, value) in map) {
-                val displayName = value?.toString()?.trim().orEmpty()
-                val keyObj = try {
-                    objectMapper.readValue(key, object : TypeReference<Map<String, Any?>>() {})
-                } catch (_: Exception) {
-                    null
-                } ?: continue
-
-                val method = (keyObj["methodName"] ?: keyObj["method"] ?: keyObj["Method"])?.toString()?.trim().orEmpty()
-                if (method.isBlank()) continue
-
-                val requestData = keyObj["requestData"] ?: keyObj["RequestData"]
-                val id = stableId(method, requestData)
-
-                result.add(
-                    RpcDebugEntity(
-                        id = id,
-                        name = displayName.ifBlank { method },
-                        method = method,
-                        requestData = requestData,
-                        description = ""
-                    )
-                )
-            }
-            return result
-        }
-
-        return emptyList()
-    }
-
-    private fun normalizeItem(item: RpcDebugEntity): RpcDebugEntity {
-        if (item.id.isBlank()) {
-            item.id = stableId(item.method, item.requestData)
-        }
-        if (item.name.isBlank()) {
-            item.name = item.method
-        }
-        if (item.dailyCount < 0) item.dailyCount = 0
-        if (!item.scheduleEnabled) item.dailyCount = 0
-        return item
-    }
-
-    private fun stableId(method: String, requestData: Any?): String {
-        val requestDataStr = try {
-            when (requestData) {
-                null -> ""
-                is String -> requestData
-                is Map<*, *> -> objectMapper.writeValueAsString(listOf(requestData))
-                is List<*> -> objectMapper.writeValueAsString(requestData)
-                else -> objectMapper.writeValueAsString(requestData)
-            }
-        } catch (_: Exception) {
-            requestData?.toString() ?: ""
-        }
-
-        val md = MessageDigest.getInstance("SHA-256")
-        val bytes = (method.trim() + "\n" + requestDataStr.trim()).toByteArray(Charsets.UTF_8)
-        val digest = md.digest(bytes)
-        return digest.joinToString("") { b -> "%02x".format(b) }
-    }
-
-    private fun tryMigrateFromAnyUserConfigFile(): Boolean {
-        if (configFile.exists()) return false
-
-        val uids = SesameAgUtil.getFolderList(Files.CONFIG_DIR.absolutePath)
-        if (uids.isEmpty()) return false
-
-        for (uid in uids) {
-            val userDir = File(Files.CONFIG_DIR, uid)
-            val candidates = arrayOf(
-                File(userDir, "rpcRequest.json"),
-                File(userDir, "rpcResquest.json")
-            )
-            val text = candidates.firstNotNullOfOrNull { f ->
-                if (!f.exists()) return@firstNotNullOfOrNull null
-                val body = Files.readFromFile(f).trim()
-                if (body.isBlank()) null else body
-            } ?: continue
-
-            return try {
-                val list = parseRpcListCompat(text)
-                if (list.isEmpty()) false
-                else {
-                    _items.value = list.map { normalizeItem(it) }
-                    saveItems()
-                    true
-                }
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        return false
     }
 
     // --- 业务操作 ---
@@ -308,13 +155,13 @@ class RpcDebugViewModel(application: Application) : AndroidViewModel(application
             }
 
             val currentList = _items.value.toMutableList()
-            val newId = stableId(method, requestData)
+            val newId = configStore.stableId(method, requestData)
 
             if (editingItem != null) {
                 // 编辑模式
                 val index = currentList.indexOfFirst { it.id == editingItem.id }
                 if (index != -1) {
-                    currentList[index] = normalizeItem(
+                    currentList[index] = configStore.normalizeItem(
                         editingItem.copy(
                             id = newId,
                             name = finalName,
@@ -338,7 +185,7 @@ class RpcDebugViewModel(application: Application) : AndroidViewModel(application
                     scheduleEnabled = scheduleEnabled,
                     dailyCount = finalDailyCount
                 )
-                currentList.add(normalizeItem(newItem))
+                currentList.add(configStore.normalizeItem(newItem))
                 _items.value = currentList
             }
             saveItems()
@@ -425,7 +272,7 @@ class RpcDebugViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun confirmRestore(newItems: List<RpcDebugEntity>) {
-        _items.value = newItems.map { normalizeItem(it) }
+        _items.value = configStore.normalizeItems(newItems)
         saveItems()
         dismissDialog()
         ToastUtil.makeText("恢复成功", Toast.LENGTH_SHORT).show()
@@ -441,7 +288,7 @@ class RpcDebugViewModel(application: Application) : AndroidViewModel(application
             )
         )
         // 简单合并逻辑：略
-        _items.value = defaultList
+        _items.value = configStore.normalizeItems(defaultList)
         saveItems()
     }
 
