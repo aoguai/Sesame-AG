@@ -77,7 +77,7 @@ internal suspend fun AntFarm.runFarmTaskWorkflow(tc: TimeCounter, userId: String
     }
 
     if (useNewEggCard?.value == true) {
-        useFarmTool(ownerFarmId, ToolType.NEWEGGTOOL)
+        useFarmTool(ownerFarmId, AntFarm.ToolType.NEWEGGTOOL)
         syncAnimalStatus(ownerFarmId)
         tc.countDebug("使用新蛋卡")
     }

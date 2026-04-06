@@ -6,7 +6,7 @@ import io.github.aoguai.sesameag.util.CoroutineUtils
 import io.github.aoguai.sesameag.util.GameTask
 import org.json.JSONObject
 
-internal fun AntOrchard.runOrchardRewardWorkflow(indexJson: JSONObject, userId: String) {
+internal suspend fun AntOrchard.runOrchardRewardWorkflow(indexJson: JSONObject, userId: String) {
     tryReceiveSpreadManureActivityAward(indexJson)
 
     if (receiveSevenDayGift.value == true) {
