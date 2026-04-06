@@ -33,7 +33,6 @@ import io.github.aoguai.sesameag.task.ModelTask
 import io.github.aoguai.sesameag.task.TaskStatus
 import io.github.aoguai.sesameag.task.antFarm.AntFarmFamily.familyClaimRewardList
 import io.github.aoguai.sesameag.task.antFarm.AntFarmFamily.familySign
-import io.github.aoguai.sesameag.task.antFarm.FarmGame.drawGameCenterAward
 import io.github.aoguai.sesameag.util.ActionDelayUtil
 import io.github.aoguai.sesameag.util.CoroutineUtils
 import io.github.aoguai.sesameag.util.DataStore
@@ -151,12 +150,12 @@ class AntFarm : ModelTask() {
     /**
      * 打赏好友
      */
-    private var rewardFriend: BooleanModelField? = null
+    internal var rewardFriend: BooleanModelField? = null
 
     /**
      * 遣返小鸡
      */
-    private var sendBackAnimal: BooleanModelField? = null
+    internal var sendBackAnimal: BooleanModelField? = null
     private var timeSendBack: IntegerModelField? = null
 
     /**
@@ -182,7 +181,7 @@ class AntFarm : ModelTask() {
     /**
      * s收取道具奖励
      */
-    private var receiveFarmToolReward: BooleanModelField? = null
+    internal var receiveFarmToolReward: BooleanModelField? = null
 
     /**
      * 游戏改分
@@ -198,17 +197,17 @@ class AntFarm : ModelTask() {
     /**
      * 小鸡厨房
      */
-    private var kitchen: BooleanModelField? = null
+    internal var kitchen: BooleanModelField? = null
 
     /**
      * 使用特殊食品
      */
     private var useSpecialFood: BooleanModelField? = null
     private var useSpecialFoodCount: IntegerModelField? = null
-    private var useNewEggCard: BooleanModelField? = null
-    private var harvestProduce: BooleanModelField? = null
-    private var donation: BooleanModelField? = null
-    private var donationCount: ChoiceModelField? = null
+    internal var useNewEggCard: BooleanModelField? = null
+    internal var harvestProduce: BooleanModelField? = null
+    internal var donation: BooleanModelField? = null
+    internal var donationCount: ChoiceModelField? = null
 
     /**
      * 饲料任务
@@ -222,7 +221,7 @@ class AntFarm : ModelTask() {
     /**
      * 收取饲料奖励（无时间限制）
      */
-    private var receiveFarmTaskAward: BooleanModelField? = null
+    internal var receiveFarmTaskAward: BooleanModelField? = null
     internal var useAccelerateTool: BooleanModelField? = null
     internal var ignoreAcceLimit: BooleanModelField? = null
     private var useBigEaterTool: BooleanModelField? = null // ✅ 新增加饭卡
@@ -233,42 +232,42 @@ class AntFarm : ModelTask() {
      * 喂鸡列表
      */
     private var feedFriendAnimalList: SelectAndCountModelField? = null
-    private var notifyFriend: BooleanModelField? = null
+    internal var notifyFriend: BooleanModelField? = null
     private var notifyFriendType: ChoiceModelField? = null
     private var notifyFriendList: SelectModelField? = null
     private var acceptGift: BooleanModelField? = null
     private var visitFriendList: SelectAndCountModelField? = null
-    private var chickenDiary: BooleanModelField? = null
+    internal var chickenDiary: BooleanModelField? = null
     private var diaryTietie: BooleanModelField? = null
     private var collectChickenDiary: ChoiceModelField? = null
     private lateinit var remainingTime: IntegerModelField
-    private var enableChouchoule: BooleanModelField? = null
+    internal var enableChouchoule: BooleanModelField? = null
     internal var chouChouLeTrigger: TimeTriggerModelField? = null // 抽抽乐触发时间
     var autoExchange: BooleanModelField? = null
     var doChouChouLeDonationTask: BooleanModelField? = null
     internal var exchangeDaysBeforeEndIp: IntegerModelField? = null  // IP 抽抽乐活动结束前兑换天数
     internal var autoExchangeList: SelectAndCountModelField? = null  // IP 抽抽乐自定义兑换列表
     private var listOrnaments: BooleanModelField? = null
-    private var hireAnimal: BooleanModelField? = null
+    internal var hireAnimal: BooleanModelField? = null
     private var hireAnimalType: ChoiceModelField? = null
     private var hireAnimalList: SelectModelField? = null
-    private var enableDdrawGameCenterAward: BooleanModelField? = null
-    private var getFeed: BooleanModelField? = null
+    internal var enableDdrawGameCenterAward: BooleanModelField? = null
+    internal var getFeed: BooleanModelField? = null
     private var getFeedlList: SelectModelField? = null
     private var getFeedType: ChoiceModelField? = null
-    private var family: BooleanModelField? = null
-    private var familyOptions: SelectModelField? = null
-    private var notInviteList: SelectModelField? = null
+    internal var family: BooleanModelField? = null
+    internal var familyOptions: SelectModelField? = null
+    internal var notInviteList: SelectModelField? = null
     private val giftFamilyDrawFragment: StringModelField? = null
-    private var paradiseCoinExchangeBenefit: BooleanModelField? = null
+    internal var paradiseCoinExchangeBenefit: BooleanModelField? = null
     private var paradiseCoinExchangeBenefitList: SelectModelField? = null
 
-    private var visitAnimal: BooleanModelField? = null
+    internal var visitAnimal: BooleanModelField? = null
     private var useSmartSchedulerManager: BooleanModelField? = null
     private var hasFence: Boolean = false       // 是否正在使用篱笆
     private var fenceCountDown: Int = 0
     // 雇佣NPC
-    private var npcAnimalType: ChoiceModelField? = null
+    internal var npcAnimalType: ChoiceModelField? = null
     // NPC配置定义
     private enum class NpcConfig(val animalId: String, val source: String, val nickName: String) {
         NONE("", "", "关闭"),
@@ -745,160 +744,16 @@ class AntFarm : ModelTask() {
         try {
             val tc = TimeCounter(TAG)
             val userId = UserMap.currentUid
-            var pendingFarmTaskFinalization = false
             Log.farm(TAG, "执行开始-${getName()}")
             invalidToolTypesThisRound.clear()
             manurePotCollectionBlockedThisRound = false
 
-            if (enterFarm() == null) {
+            if (!runFarmLifecycleWorkflow(tc)) {
                 return
             }
-            //先遣返，再召回自己的小鸡，再雇佣，最后喂鸡
-            if (sendBackAnimal?.value == true) {
-                sendBackAnimal()
-                tc.countDebug("遣返")
-            }
-            recallAnimal()
-            tc.countDebug("召回小鸡")
-            // 雇佣小鸡
-            if (hireAnimal?.value == true && AnimalFeedStatus.SLEEPY.name != ownerAnimal.animalFeedStatus) {
-                hireAnimal()
-            }
-
-            // 处理NPC小鸡逻辑 (大表鸽/黄金鸡/农场鸡)
-            if (npcAnimalType!!.value != NpcConfig.NONE.ordinal) {
-                handleNpcAnimalLogic()
-                tc.countDebug("NPC小鸡任务")
-            }
-
-            if (doFarmTask?.value == true && !Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)) {
-                pendingFarmTaskFinalization = triggerFarmTaskIfNeeded(tc)
-            }
-
-            handleAutoFeedAnimal()
-            tc.countDebug("喂食")
-
-            listFarmTool() //装载道具信息
-            tc.countDebug("装载道具信息")
-
-            if (rewardFriend?.value == true) {
-                rewardFriend()
-                tc.countDebug("打赏好友")
-            }
-
-            if (receiveFarmToolReward?.value == true) {
-                receiveToolTaskReward()
-                tc.countDebug("收取道具奖励")
-            }
-            if (recordFarmGame?.value == true) {
-                tc.countDebug("游戏改分(星星球、登山赛、飞行赛、揍小鸡)")
-                if(!Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)) {
-                    FarmGame.run(this@AntFarm)
-                }
-            }
-
-            // 小鸡日记和贴贴
-            if (chickenDiary?.value == true) {
-                doChickenDiary()
-                tc.countDebug("小鸡日记")
-            }
-
-            if (kitchen?.value == true) {
-                // 检查小鸡是否在睡觉，如果在睡觉则跳过厨房功能
-                if (AnimalFeedStatus.SLEEPY.name == ownerAnimal.animalFeedStatus) {
-                    Log.farm(TAG, "小鸡厨房🐔[小鸡正在睡觉中，跳过厨房功能]")
-                } else {
-                    collectDailyFoodMaterial()
-                    collectDailyLimitedFoodMaterial()
-                    cook()
-                    refreshFarmStatus("厨房流程后")
-                }
-                tc.countDebug("小鸡厨房")
-            }
-
-            if (useNewEggCard?.value == true) {
-                useFarmTool(ownerFarmId, ToolType.NEWEGGTOOL)
-                syncAnimalStatus(ownerFarmId)
-                tc.countDebug("使用新蛋卡")
-            }
-            if (harvestProduce?.value == true && benevolenceScore >= 1) {
-                Log.farm(TAG, "有可收取的爱心鸡蛋")
-                harvestProduce(ownerFarmId)
-                tc.countDebug("收鸡蛋")
-            }
-            if (donation?.value == true && Status.canDonationEgg(userId) && harvestBenevolenceScore >= 1) {
-                handleDonation(donationCount?.value ?: 0)
-                tc.countDebug("每日捐蛋")
-                Log.farm("今日捐蛋完成")
-            }
-
-            // 收取饲料奖励（无时间限制）
-            if (receiveFarmTaskAward?.value == true) {
-                receiveFarmAwards()
-                tc.countDebug("收取饲料奖励")
-            }
-
-            // 到访小鸡送礼
-            if (visitAnimal?.value == true) {
-                visitAnimal()
-                tc.countDebug("到访小鸡送礼")
-                // 送麦子
-                visit()
-                tc.countDebug("送麦子")
-            }
-            // 家庭任务中的帮喂优先于普通好友帮喂
-            if (family?.value == true) {
-                AntFarmFamily.run(familyOptions!!, notInviteList!!)
-                tc.countDebug("家庭任务")
-            }
-            // 帮好友喂鸡
-            feedFriend()
-            tc.countDebug("帮好友喂鸡")
-            // 通知好友赶鸡
-            if (notifyFriend?.value == true) {
-                notifyFriend()
-                tc.countDebug("通知好友赶鸡")
-            }
-
-            // 抽抽乐
-            if (enableChouchoule?.value == true) {
-                tc.countDebug("抽抽乐")
-                ChouChouLe().run(this@AntFarm)
-                handleMultiStageTasksLoop()
-                if (pendingFarmTaskFinalization) {
-                    pendingFarmTaskFinalization = finalizeFarmTaskAfterMultiStage("抽抽乐流程后")
-                }
-                refreshFarmStatus("抽抽乐流程后")
-            }
-
-            if (getFeed?.value == true) {
-                letsGetChickenFeedTogether()
-                tc.countDebug("一起拿饲料")
-            }
-            // 开宝箱
-            if (enableDdrawGameCenterAward?.value == true) {
-                drawGameCenterAward()
-                tc.countDebug("开宝箱")
-            }
-            // 小鸡乐园道具兑换
-            if (paradiseCoinExchangeBenefit?.value == true) {
-                paradiseCoinExchangeBenefit()
-                tc.countDebug("小鸡乐园道具兑换")
-            }
-            //小鸡睡觉&起床
-            animalSleepAndWake()
-            tc.countDebug("小鸡睡觉&起床")
-
-            /* 小鸡睡觉后领取饲料，先同步小鸡状态，更新小鸡为SLEEPY状态，然后领取饲料。避免小鸡睡觉后软件异常，引起
-                喂小鸡睡觉的饲料没有领取，而造成缺口
-             */
-            syncAnimalStatus(ownerFarmId)
-            if (AnimalFeedStatus.SLEEPY.name == ownerAnimal.animalFeedStatus) {
-                Log.farm(TAG, "小鸡正在睡觉，领取饲料")
-                receiveFarmAwards()
-            }
-
-            tc.stop()
+            val pendingFarmTaskFinalization = runFarmTaskWorkflow(tc, userId)
+            runFarmSocialWorkflow(tc, pendingFarmTaskFinalization)
+            runFarmFinalizeWorkflow(tc)
         } catch (e: CancellationException) {
             // 协程取消是正常现象，不记录为错误
              Log.farm(TAG, "AntFarm 协程被取消")
@@ -910,10 +765,34 @@ class AntFarm : ModelTask() {
         }
     }
 
+    internal fun shouldHireAnimalNow(): Boolean {
+        return hireAnimal?.value == true && AnimalFeedStatus.SLEEPY.name != ownerAnimal.animalFeedStatus
+    }
+
+    internal fun shouldRunNpcAnimalLogic(): Boolean {
+        return npcAnimalType?.value != NpcConfig.NONE.ordinal
+    }
+
+    internal fun isOwnerAnimalSleeping(): Boolean {
+        return AnimalFeedStatus.SLEEPY.name == ownerAnimal.animalFeedStatus
+    }
+
+    internal fun shouldHarvestProduceNow(): Boolean {
+        return harvestProduce?.value == true && benevolenceScore >= 1
+    }
+
+    internal fun shouldDonateEggNow(userId: String?): Boolean {
+        return donation?.value == true && Status.canDonationEgg(userId) && harvestBenevolenceScore >= 1
+    }
+
+    internal fun preloadFarmTools() {
+        listFarmTool()
+    }
+
     /**
      * 召回小鸡
      */
-    private fun recallAnimal() {
+    internal fun recallAnimal() {
         try {
             //召回小鸡相关操作
             if (AnimalInteractStatus.HOME.name != ownerAnimal.animalInteractStatus) { //如果小鸡不在家
@@ -980,7 +859,7 @@ class AntFarm : ModelTask() {
         }
     }
 
-    private suspend fun paradiseCoinExchangeBenefit() {
+    internal suspend fun paradiseCoinExchangeBenefit() {
         try {
             val jo = JSONObject(AntFarmRpcCall.getMallHome())
 
@@ -1087,7 +966,7 @@ class AntFarm : ModelTask() {
         return false
     }
 
-    private fun animalSleepAndWake() {
+    internal fun animalSleepAndWake() {
         try {
             val now = TimeUtil.getNow()
             val animalSleepTime = when {
@@ -1195,7 +1074,7 @@ class AntFarm : ModelTask() {
      *
      * @return 庄园信息
      */
-    private fun enterFarm(): JSONObject? {
+    internal fun enterFarm(): JSONObject? {
         try {
             val userId = UserMap.currentUid
             val jo = JSONObject(AntFarmRpcCall.enterFarm(userId, userId))
@@ -1273,7 +1152,7 @@ class AntFarm : ModelTask() {
     /**
      * 自动喂鸡
      */
-    private suspend fun handleAutoFeedAnimal(isChildTask: Boolean = false) {
+    internal suspend fun handleAutoFeedAnimal(isChildTask: Boolean = false) {
         if (!ownerFarmId.isNullOrBlank()) {
             syncAnimalStatus(ownerFarmId)
         }
@@ -1546,7 +1425,7 @@ class AntFarm : ModelTask() {
         }
     }
 
-    private fun refreshFarmStatus(reason: String) {
+    internal fun refreshFarmStatus(reason: String) {
         if (ownerFarmId.isNullOrBlank()) {
             return
         }
@@ -1600,7 +1479,7 @@ class AntFarm : ModelTask() {
         }
     }
 
-    private fun rewardFriend() {
+    internal fun rewardFriend() {
         try {
             if (rewardList != null) {
                 for (rewardFriend in rewardList) {
@@ -1657,7 +1536,7 @@ class AntFarm : ModelTask() {
         }
     }
 
-    private fun sendBackAnimal() {
+    internal fun sendBackAnimal() {
         if (animals == null) {
             return
         }
@@ -1697,7 +1576,7 @@ class AntFarm : ModelTask() {
         }
     }
 
-    private fun receiveToolTaskReward() {
+    internal fun receiveToolTaskReward() {
         try {
             var s = AntFarmRpcCall.listToolTaskDetails()
             var jo = JSONObject(s)
@@ -1754,7 +1633,7 @@ class AntFarm : ModelTask() {
         }
     }
 
-    private fun harvestProduce(farmId: String?) {
+    internal fun harvestProduce(farmId: String?) {
         try {
             val s = AntFarmRpcCall.harvestProduce(farmId)
             val jo = JSONObject(s)
@@ -1773,7 +1652,7 @@ class AntFarm : ModelTask() {
     }
 
     /* 捐赠爱心鸡蛋 */
-    private fun handleDonation(donationType: Int) {
+    internal fun handleDonation(donationType: Int) {
         try {
             val s = AntFarmRpcCall.listActivityInfo()
             var jo = JSONObject(s)
@@ -2096,7 +1975,7 @@ class AntFarm : ModelTask() {
         }
     }
 
-    private fun finalizeFarmTaskAfterMultiStage(source: String): Boolean {
+    internal fun finalizeFarmTaskAfterMultiStage(source: String): Boolean {
         val finalState = resolveFarmTaskFlagState()
         Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED, finalState)
         if (finalState == Status.TodayFlagState.RETRY_LATER) {
@@ -2107,7 +1986,7 @@ class AntFarm : ModelTask() {
         return false
     }
 
-    private suspend fun triggerFarmTaskIfNeeded(tc: TimeCounter): Boolean {
+    internal suspend fun triggerFarmTaskIfNeeded(tc: TimeCounter): Boolean {
         val spec = farmTaskTrigger?.getTriggerSpec() ?: return false
         if (spec.disabled) {
             Log.farm(TAG, "饲料任务触发已关闭，跳过")
@@ -2165,7 +2044,7 @@ class AntFarm : ModelTask() {
      * 策略：批量领奖 -> 批量完成 -> 再次循环，减少 RPC 请求次数。
      * 限制：仅处理多阶段任务，饲料满则停止领取后续奖励，但即便满也执行 TODO 以推进进度。
      */
-    private suspend fun AntFarm.handleMultiStageTasksLoop() {
+    internal suspend fun AntFarm.handleMultiStageTasksLoop() {
         try {
             syncAnimalStatus(ownerFarmId)
             val startStock = foodStock
@@ -2904,7 +2783,7 @@ class AntFarm : ModelTask() {
         return false
     }
 
-    private fun useFarmTool(targetFarmId: String?, toolType: ToolType): Boolean {
+    internal fun useFarmTool(targetFarmId: String?, toolType: ToolType): Boolean {
         try {
             if (invalidToolTypesThisRound.contains(toolType)) {
                 Log.farm(TAG, "道具🎭[${toolType.nickName()}]本轮已被判定为无效，跳过继续尝试")
@@ -2963,7 +2842,7 @@ class AntFarm : ModelTask() {
         return false
     }
 
-    private suspend fun feedFriend() {
+    internal suspend fun feedFriend() {
         val pendingInvalidUserIds = linkedSetOf<String>()
         try {
             val feedFriendAnimalMap: Map<String?, Int?> = feedFriendAnimalList?.value ?: emptyMap()
@@ -3066,7 +2945,7 @@ class AntFarm : ModelTask() {
     }
 
 
-    private fun notifyFriend() {
+    internal fun notifyFriend() {
         if (foodStock >= foodStockLimit) return
         try {
             var hasNext = false
@@ -3317,7 +3196,7 @@ class AntFarm : ModelTask() {
     /**
      * 收集每日食材
      */
-    private fun collectDailyFoodMaterial() {
+    internal fun collectDailyFoodMaterial() {
         try {
             val userId = UserMap.currentUid
             var jo = JSONObject(AntFarmRpcCall.enterKitchen(userId))
@@ -3394,7 +3273,7 @@ class AntFarm : ModelTask() {
     /**
      * 领取爱心食材店食材
      */
-    private fun collectDailyLimitedFoodMaterial() {
+    internal fun collectDailyLimitedFoodMaterial() {
         try {
             var jo = JSONObject(AntFarmRpcCall.queryFoodMaterialPack())
             if (ResChecker.checkRes(TAG, jo)) {
@@ -3423,7 +3302,7 @@ class AntFarm : ModelTask() {
         }
     }
 
-    private suspend fun cook() {
+    internal suspend fun cook() {
         try {
             val userId = UserMap.currentUid
             var jo = JSONObject(AntFarmRpcCall.enterKitchen(userId))
@@ -3605,7 +3484,7 @@ class AntFarm : ModelTask() {
     /**
      * 送麦子
      */
-    private suspend fun visit() {
+    internal suspend fun visit() {
         val pendingInvalidUserIds = linkedSetOf<String>()
         try {
             val map: Map<String?, Int?> = visitFriendList?.value ?: emptyMap()
@@ -3901,7 +3780,7 @@ class AntFarm : ModelTask() {
         return hasPreviousMore
     }
 
-    private suspend fun doChickenDiary() {
+    internal suspend fun doChickenDiary() {
         if (diaryTietie?.value == true) { // 贴贴小鸡
             diaryTietze("")
         }
@@ -3950,7 +3829,7 @@ class AntFarm : ModelTask() {
         }
     }
 
-    private fun visitAnimal() {
+    internal fun visitAnimal() {
         try {
             val response = AntFarmRpcCall.visitAnimal()
             if (response.isNullOrEmpty()) {
@@ -3999,7 +3878,7 @@ class AntFarm : ModelTask() {
     }
 
     /* 雇佣好友小鸡 */
-    private  fun hireAnimal() {
+    internal fun hireAnimal() {
         // 重置农场已满标志
         isFarmFull = false
         var animals: JSONArray? = null
@@ -4260,7 +4139,7 @@ class AntFarm : ModelTask() {
     /**
      * 统一处理NPC小鸡的雇佣、切换、领奖与任务
      */
-    private suspend fun handleNpcAnimalLogic() {
+    internal suspend fun handleNpcAnimalLogic() {
         try {
             val selectedIndex = npcAnimalType?.value ?: 0
             val targetConfig = NpcConfig.getByIndex(selectedIndex)
@@ -4501,7 +4380,7 @@ class AntFarm : ModelTask() {
     }
 
     // 一起拿小鸡饲料
-    private fun letsGetChickenFeedTogether() {
+    internal fun letsGetChickenFeedTogether() {
         try {
             var jo = JSONObject(AntFarmRpcCall.letsGetChickenFeedTogether())
             if (jo.optBoolean("success")) {

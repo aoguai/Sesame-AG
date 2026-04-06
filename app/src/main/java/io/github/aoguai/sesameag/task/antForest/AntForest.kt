@@ -150,13 +150,13 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     private var friendProcessConcurrencyInt: Int = FRIEND_PROCESS_CONCURRENCY
 
     private var collectEnergy: BooleanModelField? = null // 收集能量开关
-    private var pkEnergy: BooleanModelField? = null // PK能量开关
-    private var energyRain: BooleanModelField? = null // 能量雨开关
+    internal var pkEnergy: BooleanModelField? = null // PK能量开关
+    internal var energyRain: BooleanModelField? = null // 能量雨开关
     private var advanceTime: IntegerModelField? = null // 提前时间（毫秒）
     private var tryCount: IntegerModelField? = null // 尝试收取次数
     private var retryInterval: IntegerModelField? = null // 重试间隔（毫秒）
     private var dontCollectList: SelectModelField? = null // 不收取能量的用户列表
-    private var collectWateringBubble: BooleanModelField? = null // 收取浇水金球开关
+    internal var collectWateringBubble: BooleanModelField? = null // 收取浇水金球开关
     private var batchRobEnergy: BooleanModelField? = null // 批量收取能量开关
     private var collectSelfEnergyType: ChoiceModelField? = null // 收自己能量方式
     private var collectSelfEnergyThreshold: IntegerModelField? = null // 收自己能量阈值
@@ -172,7 +172,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
 
     // 6秒拼手速模式选择
     val whackMoleModeNames = arrayOf("关闭", "兼容", "激进")
-    private var collectProp: BooleanModelField? = null // 收集道具开关
+    internal var collectProp: BooleanModelField? = null // 收集道具开关
     private var queryInterval: StringModelField? = null // 查询间隔时间
     private var collectInterval: StringModelField? = null // 收取间隔时间
     private var doubleCollectInterval: StringModelField? = null // 双击间隔时间
@@ -197,31 +197,31 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     private var returnWater33: IntegerModelField? = null
     private var returnWater18: IntegerModelField? = null
     private var returnWater10: IntegerModelField? = null
-    private var receiveForestTaskAward: BooleanModelField? = null
+    internal var receiveForestTaskAward: BooleanModelField? = null
     private var waterFriendList: SelectAndCountModelField? = null
     private var waterFriendCount: IntegerModelField? = null
     private var notifyFriend: BooleanModelField? = null
-    private var vitalityExchange: BooleanModelField? = null
-    private var userPatrol: BooleanModelField? = null
+    internal var vitalityExchange: BooleanModelField? = null
+    internal var userPatrol: BooleanModelField? = null
     private var collectGiftBox: BooleanModelField? = null
-    private var medicalHealth: BooleanModelField? = null //医疗健康开关
-    private var forestMarket: BooleanModelField? = null
-    private var combineAnimalPiece: BooleanModelField? = null
+    internal var medicalHealth: BooleanModelField? = null //医疗健康开关
+    internal var forestMarket: BooleanModelField? = null
+    internal var combineAnimalPiece: BooleanModelField? = null
     private var consumeAnimalProp: BooleanModelField? = null
     private var whoYouWantToGiveTo: SelectModelField? = null
-    private var dailyCheckIn: BooleanModelField? = null //青春特权签到
+    internal var dailyCheckIn: BooleanModelField? = null //青春特权签到
     private var bubbleBoostCard: ChoiceModelField? = null //加速卡
-    private var youthPrivilege: BooleanModelField? = null //青春特权 森林道具
-    private var ecoLife: BooleanModelField? = null
-    private var ecoLifeTime: TimePointModelField? = null // 绿色行动执行时间
-    private var giveProp: BooleanModelField? = null
+    internal var youthPrivilege: BooleanModelField? = null //青春特权 森林道具
+    internal var ecoLife: BooleanModelField? = null
+    internal var ecoLifeTime: TimePointModelField? = null // 绿色行动执行时间
+    internal var giveProp: BooleanModelField? = null
 
     private var robMultiplierCard: ChoiceModelField? = null // 收好友N倍卡
     private var robMultiplierCardTime: TimeTriggerModelField? = null // 收好友N倍卡时间
 
     private var cycleinterval: IntegerModelField? = null
-    private var energyRainChance: BooleanModelField? = null
-    private var energyRainTime: TimePointModelField? = null // 能量雨执行时间
+    internal var energyRainChance: BooleanModelField? = null
+    internal var energyRainTime: TimePointModelField? = null // 能量雨执行时间
 
     /**
      * 能量炸弹卡
@@ -262,7 +262,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     private val handledGiftBoxUsers: ConcurrentHashMap.KeySetView<String, Boolean> = ConcurrentHashMap.newKeySet()
     private val handledProtectUsers: ConcurrentHashMap.KeySetView<String, Boolean> = ConcurrentHashMap.newKeySet()
 
-    private var forestChouChouLe: BooleanModelField? = null //森林抽抽乐
+    internal var forestChouChouLe: BooleanModelField? = null //森林抽抽乐
 
     /**
      * 加速器定时
@@ -1020,189 +1020,8 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 totalWatered = Statistics.getData(uid, Statistics.TimeType.DAY, Statistics.DataType.WATERED)
             }
 
-            // -------------------------------
-            // 自己使用道具
-            // -------------------------------
-            // 先查询主页，更新道具状态（双击卡、保护罩等的剩余时间）
-            updateSelfHomePage()
-            tc.countDebug("查询道具状态")
-
-            usePropBeforeCollectEnergy(selfId)
-            tc.countDebug("使用自己道具卡")
-
-            // -------------------------------
-            // 收好友能量
-            // -------------------------------
-            // 先尝试使用找能量功能快速定位有能量的好友（协程）
-            Log.forest(TAG, "🚀 执行找能量功能（协程）")
-            collectEnergyByTakeLook()
-            tc.countDebug("找能量收取（协程）")
-
-            // -------------------------------
-            // 收PK好友能量
-            // -------------------------------
-            if (pkEnergy?.value == true) {
-                Log.forest(TAG, "🚀 异步执行PK好友能量收取")
-                collectPKEnergyCoroutine()  // 好友道具在 collectFriendEnergy 内会自动处理
-                tc.countDebug("收PK好友能量（同步）")
-            } else {
-                tc.countDebug("跳过PK好友能量（未开启）")
-            }
-
-            // -------------------------------
-            // 收自己能量
-            // -------------------------------
-            Log.forest(TAG, "🌳 【正常流程】开始收取自己的能量...")
-            val selfHomeObj = run {
-                val obj = querySelfHome()
-                tc.countDebug("获取自己主页对象信息")
-                if (obj != null) {
-
-                    collectEnergy(UserMap.currentUid, obj, "self")
-                    Log.forest(TAG, "✅ 【正常流程】收取自己的能量完成")
-                    tc.countDebug("收取自己的能量")
-                } else {
-                    Log.error(TAG, "❌ 【正常流程】获取自己主页信息失败，跳过能量收取")
-                    tc.countDebug("跳过自己的能量收取（主页获取失败）")
-                }
-                obj
-            }
-
-            // 然后执行传统的好友排行榜收取（协程）
-            Log.forest(TAG, "🚀 执行好友能量收取（协程）")
-            collectFriendEnergyCoroutine() // 内部会自动调用 usePropBeforeCollectEnergy(userId, false)
-            tc.countDebug("收取好友能量（同步）")
-
-            // -------------------------------
-            // 后续任务流程
-            // -------------------------------
-            if (selfHomeObj != null) {
-                // 检查并处理打地鼠（每天一次）
-                checkAndHandleWhackMole()
-                tc.countDebug("拼手速")
-
-                val processObj = if (isTeam(selfHomeObj)) {
-                    selfHomeObj.optJSONObject("teamHomeResult")
-                        ?.optJSONObject("mainMember")
-                } else {
-                    selfHomeObj
-                }
-
-                if (collectWateringBubble?.value == true) {
-                    wateringBubbles(processObj)
-                    tc.countDebug("收取浇水金球")
-                }
-                if (collectProp?.value == true) {
-                    givenProps(processObj)
-                    tc.countDebug("收取道具")
-                }
-                if (userPatrol?.value == true) {
-                    queryUserPatrol()
-                    tc.countDebug("动物巡护任务")
-                }
-
-                handleUserProps(selfHomeObj)
-                tc.countDebug("收取动物派遣能量")
-
-                collectEnergyBomb(selfHomeObj)
-                tc.countDebug("收取炸弹卡能量")
-
-                if (canConsumeAnimalProp && consumeAnimalProp?.value == true) {
-                    queryAndConsumeAnimal()
-                    tc.countDebug("森林巡护")
-                } else {
-                    Log.forest("已经有动物伙伴在巡护森林~")
-                }
-
-                if (combineAnimalPiece?.value == true) {
-                    queryAnimalAndPiece()
-                    tc.countDebug("合成动物碎片")
-                }
-
-                if (receiveForestTaskAward?.value == true) {
-                    receiveTaskAward()
-                    tc.countDebug("森林任务")
-                }
-                if (ecoLife?.value == true) {
-                    // 检查是否到达执行时间
-                    if (ecoLifeTime?.isReachedToday() == true) {
-                        EcoLife.ecoLife()
-                        tc.countDebug("绿色行动")
-                    } else {
-                        Log.forest(TAG, "绿色行动未到执行时间，跳过")
-                    }
-                }
-
-                waterFriends()
-                tc.countDebug("给好友浇水")
-
-                if (giveProp?.value == true) {
-                    giveProp()
-                    tc.countDebug("赠送道具")
-                }
-
-                if (vitalityExchange?.value == true) {
-                    handleVitalityExchange()
-                    tc.countDebug("活力值兑换")
-                }
-
-                if (energyRain?.value == true) {
-                    // 检查是否到达执行时间
-                    if (energyRainTime?.isReachedToday() == true) {
-                        if (energyRainChance?.value == true) {
-                            useEnergyRainChanceCard()
-                            tc.countDebug("使用能量雨卡")
-                        }
-                        EnergyRainCoroutine.execEnergyRainCompat()
-                        tc.countDebug("能量雨")
-                    } else {
-                        Log.forest(TAG, "能量雨未到执行时间，跳过")
-                    }
-                }
-
-                if (forestMarket?.value == true) {
-                    GreenLife.ForestMarket("GREEN_LIFE")
-                    //  GreenLife.ForestMarket("ANTFOREST")  二级条目暂时关闭
-                    tc.countDebug("森林集市")
-                }
-
-                if (medicalHealth?.value == true) {
-                    if (medicalHealthOption?.value?.contains("FEEDS") == true) {
-                        Healthcare.queryForestEnergy("FEEDS")
-                        tc.countDebug("绿色医疗")
-                    }
-                    if (medicalHealthOption?.value?.contains("BILL") == true) {
-                        Healthcare.queryForestEnergy("BILL")
-                        tc.countDebug("电子小票")
-                    }
-                }
-
-                //青春特权森林道具领取
-                if (youthPrivilege?.value == true) {
-                    youthPrivilege()
-                }
-
-                if (dailyCheckIn?.value == true) {
-                    studentSignInRedEnvelope()
-                }
-
-                if (forestChouChouLe?.value == true) {
-                    val chouChouLe = ForestChouChouLe()
-                    chouChouLe.chouChouLe()
-                    tc.countDebug("抽抽乐")
-                }
-
-                doforestgame()
-
-                if (robMultiplierCardEndTime > 0L) {
-                    updateSelfHomePage(collectRobMultiplierEnergy = true)
-                    tc.countDebug("领取N倍卡能量")
-                }
-
-                logForestEnergyInfo()
-
-                tc.stop()
-            }
+            val selfHomeObj = runForestPreparationAndCollectionWorkflow(tc)
+            runForestHomeFollowUpWorkflow(selfHomeObj, tc)
         } catch (e: CancellationException) {
             // 协程被取消是正常行为，不记录错误日志
             Log.forest(TAG, "蚂蚁森林任务协程被取消")
@@ -1257,7 +1076,15 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         }
     }
 
-    private fun logForestEnergyInfo() {
+    internal fun canRunConsumeAnimalPropWorkflow(): Boolean {
+        return canConsumeAnimalProp && consumeAnimalProp?.value == true
+    }
+
+    internal fun hasPendingRobMultiplierEnergy(): Boolean {
+        return robMultiplierCardEndTime > 0L
+    }
+
+    internal fun logForestEnergyInfo() {
         try {
             val uid = UserMap.currentUid
             if (uid.isNullOrBlank()) return
@@ -1340,7 +1167,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         } while (hasMore)
     }
 
-    private fun wateringBubbles(selfHomeObj: JSONObject?) {
+    internal fun wateringBubbles(selfHomeObj: JSONObject?) {
         processJsonArray(
             selfHomeObj,
             "wateringBubbles"
@@ -1351,7 +1178,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         }
     }
 
-    private fun givenProps(selfHomeObj: JSONObject?) {
+    internal fun givenProps(selfHomeObj: JSONObject?) {
         processJsonArray(selfHomeObj, "givenProps") { givenProps: JSONArray? ->
             this.collectGivenProps(
                 givenProps!!
@@ -1515,7 +1342,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      *
      * @param selfHomeObj 用户主页信息的JSON对象
      */
-    private fun handleUserProps(selfHomeObj: JSONObject) {
+    internal fun handleUserProps(selfHomeObj: JSONObject) {
         try {
             val usingUserProps = if (isTeam(selfHomeObj)) {
                 selfHomeObj.optJSONObject("teamHomeResult")
@@ -1580,7 +1407,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      *
      * @param selfHomeObj 用户主页信息的JSON对象
      */
-    private fun collectEnergyBomb(selfHomeObj: JSONObject) {
+    internal fun collectEnergyBomb(selfHomeObj: JSONObject) {
         try {
             val usingUserProps = if (isTeam(selfHomeObj)) {
                 selfHomeObj.optJSONObject("teamHomeResult")
@@ -1646,7 +1473,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     /**
      * 给好友浇水
      */
-    private fun waterFriends() {
+    internal fun waterFriends() {
         try {
             val taskUid = UserMap.currentUid
             if (taskUid.isNullOrBlank()) {
@@ -1709,7 +1536,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         }
     }
 
-    private fun handleVitalityExchange() {
+    internal fun handleVitalityExchange() {
         try {
 //            JSONObject bag = getBag();
 
@@ -1750,7 +1577,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      *
      * @return 用户的主页信息，如果发生错误则返回null。
      */
-    private fun querySelfHome(): JSONObject? {
+    internal fun querySelfHome(): JSONObject? {
         var userHomeObj: JSONObject? = null
         try {
             val start = System.currentTimeMillis()
@@ -1838,7 +1665,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     /**
      * 检查并处理6秒拼手速逻辑（每天主动执行一次）
      */
-    private fun checkAndHandleWhackMole() {
+    internal fun checkAndHandleWhackMole() {
         try {
             // 获取当前选择的索引 (0, 1, 或 2)
             val modeIndex = whackMoleMode?.value ?: 0
@@ -1881,7 +1708,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * @param userHomeObj 用户主页的JSON对象，包含用户的蚂蚁森林信息
      * @return 更新后的用户主页JSON对象，如果发生异常返回null
      */
-    private fun collectEnergy(
+    internal fun collectEnergy(
         userId: String?,
         userHomeObj: JSONObject?,
         fromTag: String?
@@ -2418,7 +2245,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     /**
      * 协程版本：收取PK好友能量
      */
-    private suspend fun collectPKEnergyCoroutine() {
+    internal suspend fun collectPKEnergyCoroutine() {
         if (Status.hasFlagToday(StatusFlags.FLAG_ANTFOREST_PK_SKIP_TODAY)) {
             Log.forest(TAG, "PK排行榜：今日已判定无需处理，跳过以避免风控")
             return
@@ -2449,7 +2276,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * 使用找能量功能收取好友能量（协程版本 - 修正版）
      * 逻辑：服务器自动轮询，返回空 friendId 代表无更多目标
      */
-    private fun collectEnergyByTakeLook() {
+    internal fun collectEnergyByTakeLook() {
         // 1. 冷却检查
         val currentTime = System.currentTimeMillis()
         if (currentTime < nextTakeLookTime) {
@@ -2700,7 +2527,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     /**
      * 协程版本：收取好友能量
      */
-    private suspend fun collectFriendEnergyCoroutine() {
+    internal suspend fun collectFriendEnergyCoroutine() {
         resetRebornScanStateForFriendRanking()
         var cancelled = false
         try {
@@ -3287,7 +3114,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * 更新使用中的的道具剩余时间
      */
     @Throws(JSONException::class)
-    private fun updateSelfHomePage(collectRobMultiplierEnergy: Boolean = false) {
+    internal fun updateSelfHomePage(collectRobMultiplierEnergy: Boolean = false) {
         val s = AntForestRpcCall.queryHomePage()
         val joHomePage = JSONObject(s)
         updateSelfHomePage(joHomePage, collectRobMultiplierEnergy)
@@ -3298,7 +3125,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      *
      * @param joHomePage 首页 JSON 对象
      */
-    private fun updateSelfHomePage(joHomePage: JSONObject, collectRobMultiplierEnergy: Boolean = false) {
+    internal fun updateSelfHomePage(joHomePage: JSONObject, collectRobMultiplierEnergy: Boolean = false) {
         try {
             val usingUserProps: JSONArray = if (isTeam(joHomePage)) {
                 // 组队模式
@@ -3977,7 +3804,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * 逛森林集市得能量,逛一逛618会场
      * 逛一逛点淘得红包,去一淘签到领红包
      */
-    private fun receiveTaskAward() {
+    internal fun receiveTaskAward() {
         try {
             val taskSources = listOf(
                 "popupTask" to { AntForestRpcCall.popupTask() },
@@ -4052,7 +3879,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * @param userId 用户ID
      * @param skipPropCheck 是否跳过道具检查（快速收取通道）
      */
-    private fun usePropBeforeCollectEnergy(userId: String?, skipPropCheck: Boolean = false) {
+    internal fun usePropBeforeCollectEnergy(userId: String?, skipPropCheck: Boolean = false) {
         try {
             // 🚀 快速收取通道：跳过道具检查，直接返回
             if (skipPropCheck) {
@@ -4417,7 +4244,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         return needRenew
     }
 
-    private fun giveProp() {
+    internal fun giveProp() {
         val set = whoYouWantToGiveTo?.value ?: emptySet()
         if (set.isNotEmpty()) {
             for (uid in set) {
@@ -4488,7 +4315,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     /**
      * 查询并管理用户巡护任务
      */
-    private fun queryUserPatrol() {
+    internal fun queryUserPatrol() {
         val waitTime = 300L //增大查询等待时间，减少异常
         val patrolChanceLimitFlag = "AntForest::exchangePatrolChanceLimit"
         try {
@@ -4650,7 +4477,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     /**
      * 查询并派遣伙伴
      */
-    private fun queryAndConsumeAnimal() {
+    internal fun queryAndConsumeAnimal() {
         try {
             // 查询动物属性列表
             var jo = JSONObject(AntForestRpcCall.queryAnimalPropList())
@@ -4705,7 +4532,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     /**
      * 查询动物及碎片信息，并尝试合成可合成的动物碎片。
      */
-    private fun queryAnimalAndPiece() {
+    internal fun queryAnimalAndPiece() {
         try {
             // 调用远程接口查询动物及碎片信息
             val response = JSONObject(AntForestRpcCall.queryAnimalAndPiece(0, lastPatrolId))
@@ -4836,7 +4663,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         return queryPropList(false)
     }
 
-    private fun invalidatePropBagCache() {
+    internal fun invalidatePropBagCache() {
         cachedBagObject = null
         lastQueryPropListTime = 0L
     }
@@ -5558,7 +5385,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         }
     }
 
-    private suspend fun useEnergyRainChanceCard() {
+    internal suspend fun useEnergyRainChanceCard() {
         try {
             suspend fun hasPlayableEnergyRainChance(): Boolean {
                 return try {
@@ -6403,7 +6230,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * @param homeObj 用户主页的JSON对象
      * @return 是否为团队
      */
-    private fun isTeam(homeObj: JSONObject): Boolean {
+    internal fun isTeam(homeObj: JSONObject): Boolean {
         return homeObj.optString("nextAction", "") == "Team"
     }
 

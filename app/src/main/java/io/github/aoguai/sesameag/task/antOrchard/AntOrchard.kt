@@ -15,7 +15,6 @@ import io.github.aoguai.sesameag.model.modelFieldExt.SelectModelField
 import io.github.aoguai.sesameag.task.ModelTask
 import io.github.aoguai.sesameag.util.CoroutineUtils
 import io.github.aoguai.sesameag.util.FriendGuard
-import io.github.aoguai.sesameag.util.GameTask
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.RandomUtil
 import io.github.aoguai.sesameag.util.ResChecker
@@ -38,18 +37,18 @@ class AntOrchard : ModelTask() {
         private const val XLIGHT_PAGE_FROM = "ch_url-https://render.alipay.com/p/yuyan/180020010001263018/game.html"
     }
 
-    private var userId: String? = UserMap.currentUid
-    private var treeLevel: String? = null
-    private var currentPlantScene: String = "main"
-    private var executeIntervalInt: Int = 0
-    private var skipManurePotCollectThisRound: Boolean = false
+    internal var userId: String? = UserMap.currentUid
+    internal var treeLevel: String? = null
+    internal var currentPlantScene: String = "main"
+    internal var executeIntervalInt: Int = 0
+    internal var skipManurePotCollectThisRound: Boolean = false
 
     private lateinit var executeInterval: IntegerModelField
-    private lateinit var receiveSevenDayGift: BooleanModelField
-    private lateinit var receiveOrchardTaskAward: BooleanModelField
+    internal lateinit var receiveSevenDayGift: BooleanModelField
+    internal lateinit var receiveOrchardTaskAward: BooleanModelField
     // {{ 修改：分离果树和摇钱树的施肥次数配置 }}
-    private lateinit var orchardSpreadManureCountMain: IntegerModelField
-    private lateinit var orchardSpreadManureCountYeb: IntegerModelField
+    internal lateinit var orchardSpreadManureCountMain: IntegerModelField
+    internal lateinit var orchardSpreadManureCountYeb: IntegerModelField
 
     private lateinit var assistFriendList: SelectModelField
     //模式选择
@@ -147,75 +146,8 @@ class AntOrchard : ModelTask() {
                 userId = UserMap.currentUid
             }
 
-            // 施肥活动奖励（丰收奖励）：抓包可见 spreadManureActivity.status=FINISHED 但 manureTaskAwardReceive=false
-            tryReceiveSpreadManureActivityAward(indexJson)
-
-            // 七日礼包
-            if (receiveSevenDayGift.value == true) {
-                if (indexJson.has("lotteryPlusInfo")) {
-                    drawLotteryPlus(indexJson.getJSONObject("lotteryPlusInfo"))
-                } else {
-                    checkLotteryPlus()
-                }
-            }
-
-            // 每日肥料 (Entry入口)
-            extraInfoGet("entry")
-
-            // 砸金蛋
-            val goldenEggInfo = indexJson.optJSONObject("goldenEggInfo")
-            if (goldenEggInfo != null) {
-                val unsmashed = goldenEggInfo.optInt("unsmashedGoldenEggs")
-                val limit = goldenEggInfo.optInt("goldenEggLimit")
-                val smashed = goldenEggInfo.optInt("smashedGoldenEggs")
-
-                if (unsmashed > 0) {
-                    // 现成的蛋先砸了
-                    smashedGoldenEgg(unsmashed)
-                } else {
-                    val remain = limit - smashed
-                    if (remain > 0) {
-                        GameTask.Orchard_ncscc.report(remain)
-                    }
-                }
-            }
-
-            // 农场任务
-            if (receiveOrchardTaskAward.value == true) {
-                doOrchardDailyTask(userId!!)
-                triggerTbTask()
-                handleYebExpGoldTasks()
-            }
-
-            // 摇钱树余额奖励 (每天7点后)
-            receiveMoneyTreeReward()
-
-            // 回访奖励
-            if (!Status.hasFlagToday(StatusFlags.FLAG_ANTORCHARD_WIDGET_DAILY_AWARD)) {
-                receiveOrchardVisitAward()
-            }
-
-            limitedTimeChallenge()
-
-            // 施肥逻辑
-            // {{ 修改：调用新的施肥分发逻辑 }}
-            if ((orchardSpreadManureCountMain.value ?: 0) != 0 || (orchardSpreadManureCountYeb.value ?: 0) != 0) {
-                CoroutineUtils.sleepCompat(200)
-                orchardSpreadManure()
-                // 施肥后刷新并尝试领取丰收奖励（例如：施肥满5次可领）
-                tryReceiveSpreadManureActivityAwardByQueryIndex()
-            }
-
-            // 许愿 (仅根据果树计数判断，或者可以改为独立配置，此处保持原逻辑使用果树计数)
-            val wateredMain = Status.getIntFlagToday(StatusFlags.FLAG_ANTORCHARD_SPREAD_MANURE_COUNT) ?: 0
-            if (wateredMain in 3..<10) {
-                querySubplotsActivity(3)
-            } else if (wateredMain >= 10) {
-                querySubplotsActivity(10)
-            }
-
-            // 助力
-            orchardAssistFriend()
+            runOrchardRewardWorkflow(indexJson, userId!!)
+            runOrchardCultivationWorkflow()
 
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "start.run err:", t)
@@ -224,7 +156,7 @@ class AntOrchard : ModelTask() {
         }
     }
 
-    private fun orchardSpreadManure() {
+    internal fun orchardSpreadManure() {
         try {
             val modeSet = plantModeField.value
             // {{ 修改：分别获取两个配置的上限值 }}
@@ -436,7 +368,7 @@ class AntOrchard : ModelTask() {
     }
 
     // ... 其余方法保持不变 ...
-    private fun receiveMoneyTreeReward() {
+    internal fun receiveMoneyTreeReward() {
         try {
             val cal = Calendar.getInstance()
             val hour = cal.get(Calendar.HOUR_OF_DAY)
@@ -465,7 +397,7 @@ class AntOrchard : ModelTask() {
         }
     }
 
-    private fun handleYebExpGoldTasks() {
+    internal fun handleYebExpGoldTasks() {
         try {
             val enterSceneResponse = JSONObject(AntOrchardRpcCall.refinedOperation())
             if (enterSceneResponse.optString("resultCode").isNotEmpty() &&
@@ -1135,7 +1067,7 @@ class AntOrchard : ModelTask() {
      * 获取额外信息（包含每日肥料、施肥礼盒）
      * @param from "entry" 或 "water"
      */
-    private fun extraInfoGet(from: String = "entry", scene: String = currentPlantScene) {
+    internal fun extraInfoGet(from: String = "entry", scene: String = currentPlantScene) {
         try {
             val source = if (from == "entry") ORCHARD_SOURCE else getSceneSource(scene)
             val response = AntOrchardRpcCall.extraInfoGet(from, source)
@@ -1161,7 +1093,7 @@ class AntOrchard : ModelTask() {
         }
     }
 
-    private fun checkLotteryPlus() {
+    internal fun checkLotteryPlus() {
         try {
             if (treeLevel == null) return
             val response = AntOrchardRpcCall.querySubplotsActivity(treeLevel!!)
@@ -1185,7 +1117,7 @@ class AntOrchard : ModelTask() {
         }
     }
 
-    private fun drawLotteryPlus(lotteryPlusInfo: JSONObject) {
+    internal fun drawLotteryPlus(lotteryPlusInfo: JSONObject) {
         try {
             if (!lotteryPlusInfo.has("userSevenDaysGiftsItem")) return
 
@@ -1226,7 +1158,7 @@ class AntOrchard : ModelTask() {
         }
     }
 
-    private fun doOrchardDailyTask(userId: String) {
+    internal fun doOrchardDailyTask(userId: String) {
         try {
             val response = AntOrchardRpcCall.orchardListTask()
             val responseJson = JSONObject(response)
@@ -1492,7 +1424,7 @@ class AntOrchard : ModelTask() {
         return if (scene == "yeb") YEB_SOURCE else ORCHARD_SOURCE
     }
 
-    private fun tryReceiveSpreadManureActivityAward(indexJson: JSONObject) {
+    internal fun tryReceiveSpreadManureActivityAward(indexJson: JSONObject) {
         try {
             // manureTaskAwardReceive=false + spreadManureStage.status=FINISHED 时，可通过 antiep.receiveTaskAward 领奖
             val alreadyReceived = indexJson.optBoolean("manureTaskAwardReceive", true)
@@ -1522,7 +1454,7 @@ class AntOrchard : ModelTask() {
         }
     }
 
-    private fun tryReceiveSpreadManureActivityAwardByQueryIndex() {
+    internal fun tryReceiveSpreadManureActivityAwardByQueryIndex() {
         try {
             val refreshed = JSONObject(AntOrchardRpcCall.orchardIndex())
             if (refreshed.optString("resultCode") != "100") {
@@ -1559,7 +1491,7 @@ class AntOrchard : ModelTask() {
         }
     }
 
-    private fun smashedGoldenEgg(count: Int) {
+    internal fun smashedGoldenEgg(count: Int) {
         try {
             var remaining = count.coerceAtLeast(0)
             while (remaining > 0) {
@@ -1590,7 +1522,7 @@ class AntOrchard : ModelTask() {
         }
     }
 
-    private fun triggerTbTask() {
+    internal fun triggerTbTask() {
         try {
             val response = AntOrchardRpcCall.orchardListTask()
             val jo = JSONObject(response)
@@ -1634,7 +1566,7 @@ class AntOrchard : ModelTask() {
         return lastResponse
     }
 
-    private fun receiveOrchardVisitAward() {
+    internal fun receiveOrchardVisitAward() {
         try {
             val awardSources = listOf(
                 Pair("tmall", "upgrade_tmall_exchange_task"),
@@ -1676,7 +1608,7 @@ class AntOrchard : ModelTask() {
         }
     }
 
-    private fun limitedTimeChallenge() {
+    internal fun limitedTimeChallenge() {
         try {
             val wua = SecurityBodyHelper.getSecurityBodyData(4).toString()
             val response = AntOrchardRpcCall.orchardSyncIndex(wua)
@@ -1776,7 +1708,7 @@ class AntOrchard : ModelTask() {
         }
     }
 
-    private fun querySubplotsActivity(taskRequire: Int) {
+    internal fun querySubplotsActivity(taskRequire: Int) {
         try {
             val level = treeLevel
             if (level.isNullOrEmpty() || level == "0") return
@@ -1835,7 +1767,7 @@ class AntOrchard : ModelTask() {
         }
     }
 
-    private fun orchardAssistFriend() {
+    internal fun orchardAssistFriend() {
         try {
             if (!Status.canAntOrchardAssistFriendToday()) {
                 Log.orchard(TAG, "今日已助力，跳过农场助力")
