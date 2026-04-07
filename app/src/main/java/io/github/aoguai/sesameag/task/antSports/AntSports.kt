@@ -2194,6 +2194,13 @@ class AntSports : ModelTask() {
         private val TASK_LOOP_DELAY: Long = 1000
 
         /**
+         * @brief 将健康岛浏览任务的等待秒数统一转换为毫秒
+         */
+        private fun resolveHealthIslandViewWaitMillis(viewSec: Int): Long {
+            return viewSec.coerceAtLeast(0).toLong() * 1000L
+        }
+
+        /**
          * @brief 健康岛任务入口
          */
         fun runNeverland() {
@@ -2476,17 +2483,25 @@ class AntSports : ModelTask() {
 
                     for (i in 0 until taskInfos.length()) {
                         val taskInfo = taskInfos.getJSONObject(i)
+                        val taskTitle = taskInfo.optString("title", taskInfo.optString("taskName", "未知任务"))
                         val encryptValue = taskInfo.optString("encryptValue")
                         val energyNum = taskInfo.optInt("energyNum", 0)
                         val viewSec = taskInfo.optInt("viewSec", 15)
+                        val waitMillis = resolveHealthIslandViewWaitMillis(viewSec)
 
                         if (encryptValue.isEmpty()) {
-                            Log.error(TAG, "健康岛任务 encryptValue 为空，跳过")
+                            Log.error(
+                                TAG,
+                                "健康岛任务[$taskTitle] encryptValue 为空，跳过 [viewSec=$viewSec][energyNum=$energyNum]"
+                            )
                             continue
                         }
 
-                        Log.sports(TAG, "健康岛浏览任务：能量+$energyNum，需等待${viewSec}秒")
-                        GlobalThreadPools.sleepCompat((viewSec / 3).toLong())
+                        Log.sports(
+                            TAG,
+                            "健康岛浏览任务[$taskTitle]：能量+$energyNum，需等待${waitMillis}ms(${viewSec}s)"
+                        )
+                        GlobalThreadPools.sleepCompat(waitMillis)
 
                         val receiveResp = JSONObject(
                             AntSportsRpcCall.NeverlandRpcCall.energyReceive(
@@ -2499,9 +2514,12 @@ class AntSports : ModelTask() {
                         if (ResChecker.checkRes(TAG + "领取健康岛任务奖励:", receiveResp) &&
                             ResChecker.checkRes(TAG, receiveResp)
                         ) {
-                            Log.sports("✅ 健康岛浏览任务完成，获得能量+$energyNum")
+                            Log.sports("✅ 健康岛浏览任务[$taskTitle]完成，获得能量+$energyNum")
                         } else {
-                            Log.error(TAG, "健康岛任务领取失败: $receiveResp")
+                            Log.error(
+                                TAG,
+                                "健康岛任务领取失败[$taskTitle][viewSec=$viewSec][waitMillis=$waitMillis][energyNum=$energyNum][encryptValue=$encryptValue]: $receiveResp"
+                            )
                         }
 
                         GlobalThreadPools.sleepCompat(1000)
