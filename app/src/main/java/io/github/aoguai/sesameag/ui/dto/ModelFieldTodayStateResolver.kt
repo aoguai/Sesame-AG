@@ -159,8 +159,8 @@ object ModelFieldTodayStateResolver {
         return if (Status.hasFlagToday(flag)) inactive(reason) else ModelFieldTodayState()
     }
 
-    private fun allFlags(flagA: String, flagB: String, reason: String): ModelFieldTodayState {
-        return if (Status.hasFlagToday(flagA) && Status.hasFlagToday(flagB)) {
+    private fun allFlags(vararg flags: String, reason: String): ModelFieldTodayState {
+        return if (flags.isNotEmpty() && flags.all { Status.hasFlagToday(it) }) {
             inactive(reason)
         } else {
             ModelFieldTodayState()

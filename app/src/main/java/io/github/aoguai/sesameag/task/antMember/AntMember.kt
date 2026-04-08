@@ -2859,7 +2859,7 @@ class AntMember : ModelTask() {
                 if (!ResChecker.checkRes(TAG, triggerJson)) {
                     val triggerDesc = triggerJson.optString("resultDesc", triggerJson.optString("memo"))
                     if (triggerDesc.isNotBlank()) {
-                        Log.error("黄金票🎫[$source任务领取失败] $title#$taskId#$status#$triggerDesc")
+                        Log.error("黄金票🎫[${source}任务领取失败] $title#$taskId#$status#$triggerDesc")
                     }
                     return false
                 }
@@ -2871,14 +2871,14 @@ class AntMember : ModelTask() {
 
             val pushRes = AntMemberRpcCall.taskQueryPush(taskId)
             if (pushRes.isNullOrBlank()) {
-                Log.member("黄金票🎫[$source任务推送无返回] $title#$taskId#$status")
+                Log.member("黄金票🎫[${source}任务推送无返回] $title#$taskId#$status")
                 return false
             }
             val pushJson = JSONObject(pushRes)
             if (!ResChecker.checkRes(TAG, pushJson)) {
                 val pushDesc = pushJson.optString("resultDesc", pushJson.optString("memo"))
                 if (pushDesc.isNotBlank()) {
-                    Log.member("黄金票🎫[$source任务推送提示] $title#$taskId#$status#$pushDesc")
+                    Log.member("黄金票🎫[${source}任务推送提示] $title#$taskId#$status#$pushDesc")
                 }
                 return false
             }
@@ -2886,15 +2886,15 @@ class AntMember : ModelTask() {
                 ?.optJSONObject("pushResult")
                 ?.optBoolean("done", true)
             if (pushDone == false) {
-                Log.member("黄金票🎫[$source任务推送未完成] $title#$taskId#$status")
+                Log.member("黄金票🎫[${source}任务推送未完成] $title#$taskId#$status")
                 return false
             }
 
             val amount = task.optString("amount")
             if (amount.isNotBlank()) {
-                Log.member("黄金票🎫[$source任务领取成功]#$title#+${amount}份")
+                Log.member("黄金票🎫[${source}任务领取成功]#$title#+${amount}份")
             } else {
-                Log.member("黄金票🎫[$source任务领取成功]#$title")
+                Log.member("黄金票🎫[${source}任务领取成功]#$title")
             }
             true
         } catch (e: Exception) {
