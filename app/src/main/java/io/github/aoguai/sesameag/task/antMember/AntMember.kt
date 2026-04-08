@@ -2446,9 +2446,10 @@ class AntMember : ModelTask() {
     internal fun doGoldTicketTask(doSignIn: Boolean, doConsume: Boolean) {
         val needSignIn = doSignIn && !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_SIGN_DONE)
         val needHomeCheck = doSignIn && !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_HOME_DONE)
+        val needWelfareCheck = doSignIn && !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_WELFARE_DONE)
         val needConsume = doConsume && !hasFlagToday(StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_CONSUME_DONE)
 
-        if (!needSignIn && !needHomeCheck && !needConsume) {
+        if (!needSignIn && !needHomeCheck && !needWelfareCheck && !needConsume) {
             Log.member("黄金票🎫[今日已处理] 跳过执行")
             return
         }
@@ -2477,6 +2478,15 @@ class AntMember : ModelTask() {
                     doGoldTicketCollect(homeUpsertData)
                     handleGoldTicketTasks(homeUpsertData)
                     setFlagToday(StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_HOME_DONE)
+                }
+            }
+
+            if (needWelfareCheck) {
+                val welfareHandled = handleGoldTicketWelfareTasks()
+                if (!welfareHandled) {
+                    Log.error("黄金票🎫[福利中心任务查询失败]")
+                } else {
+                    setFlagToday(StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_WELFARE_DONE)
                 }
             }
 
@@ -2638,25 +2648,89 @@ class AntMember : ModelTask() {
     }
 
     private fun shouldAutoReceiveGoldTicketTask(task: JSONObject): Boolean {
-        if (task.optString("taskProcessStatus") != "NONE_SIGNUP") {
-            return false
+        val taskStatus = task.optString("taskProcessStatus")
+        val taskType = task.optString("taskType").uppercase(Locale.ROOT)
+        return when (taskStatus) {
+            "NONE_SIGNUP" -> {
+                isGoldTicketSesameBrowseTask(task) && (
+                    taskType == "BROWSE" || taskType == "COUNT_DOWN"
+                    )
+            }
+            "SIGNUP_EXPIRED" -> {
+                isGoldTicketSesameBrowseTask(task) && (
+                    taskType == "BROWSE" || taskType == "COUNT_DOWN"
+                    )
+            }
+
+            else -> false
+        }
+    }
+
+    private fun isGoldTicketSesameBrowseTask(task: JSONObject): Boolean {
+        val taskId = task.optString("taskId")
+        if (taskId == "AP16338809") {
+            return true
+        }
+        val title = task.optString("title")
+        if (title.contains("芝麻攒粒") || title.contains("芝麻粒")) {
+            return true
+        }
+        return task.optString("link").contains("zmlshouye", ignoreCase = true)
+    }
+
+    private fun isGoldTicketEggSignTask(task: JSONObject): Boolean {
+        val taskId = task.optString("taskId")
+        if (taskId == "AP11249033") {
+            return true
+        }
+        return task.optString("title").contains("蛋定生财")
+    }
+
+    private fun resolveGoldTicketTaskWaitMillis(task: JSONObject): Long {
+        val browseDuration = when (val browseValue = task.opt("browseDuration")) {
+            is Number -> browseValue.toLong()
+            is String -> browseValue.toLongOrNull() ?: 0L
+            else -> 0L
+        }
+        if (browseDuration > 0L) {
+            return browseDuration * 1000L + 1200L
         }
 
-        val taskType = task.optString("taskType").uppercase(Locale.ROOT)
-        val browseDuration = when (val browseValue = task.opt("browseDuration")) {
-            is Number -> browseValue.toInt()
-            is String -> browseValue.toIntOrNull() ?: 0
-            else -> 0
+        val vstTime = when (val vstValue = task.opt("vstTime")) {
+            is Number -> vstValue.toLong()
+            is String -> vstValue.toLongOrNull() ?: 0L
+            else -> 0L
         }
-        return taskType == "BROWSE" || browseDuration > 0
+        if (vstTime > 0L) {
+            return if (vstTime >= 1000L) vstTime + 1200L else vstTime * 1000L + 1200L
+        }
+
+        for (rawText in arrayOf(task.optString("joinRulesDesc"), task.optString("desc"), task.optString("subTitle"))) {
+            if (rawText.isBlank()) {
+                continue
+            }
+            val matcher = Pattern.compile("(\\d+)\\s*秒", Pattern.CASE_INSENSITIVE).matcher(rawText)
+            if (!matcher.find()) {
+                continue
+            }
+            val seconds = matcher.group(1)?.toLongOrNull() ?: continue
+            if (seconds > 0L) {
+                return seconds * 1000L + 1200L
+            }
+        }
+
+        return when (task.optString("taskType").uppercase(Locale.ROOT)) {
+            "BROWSE", "COUNT_DOWN" -> 12_000L
+            else -> 0L
+        }
     }
 
     /**
      * 黄金票任务扫描
      *
-     * 已抓到的黄金票日志显示，`NONE_SIGNUP` 的浏览任务会直接走
-     * `goldbill.v4.task.trigger -> needle.taskQueryPush` 闭环完成，
-     * 因此这类任务可自动处理；其余类型仍保守记录为手动任务。
+     * 首页里已确认的芝麻粒浏览任务会以
+     * `SIGNUP_EXPIRED -> goldbill.v4.task.trigger -> needle.taskQueryPush`
+     * 闭环完成，其余首页任务仍保守记录为手动任务。
      */
     private fun handleGoldTicketTasks(homeUpsertData: JSONObject) {
         try {
@@ -2680,7 +2754,7 @@ class AntMember : ModelTask() {
                         }
                     }
 
-                    "NONE_SIGNUP" -> {
+                    "NONE_SIGNUP", "SIGNUP_EXPIRED" -> {
                         if (shouldAutoReceiveGoldTicketTask(task)) {
                             if (tryReceiveGoldTicketTask(task)) {
                                 autoReceivedCount++
@@ -2696,7 +2770,10 @@ class AntMember : ModelTask() {
                         }
                     }
 
-                    "SIGNUP_COMPLETE", "SIGNUP_EXPIRED" -> {
+                    "SIGNUP_COMPLETE" -> {
+                        if (isGoldTicketEggSignTask(task)) {
+                            continue
+                        }
                         val link = task.optString("link")
                         val canAccess = task.optBoolean("canAccess", false)
                         if (link.isNotBlank() || canAccess) {
@@ -2717,50 +2794,107 @@ class AntMember : ModelTask() {
         }
     }
 
-    private fun tryReceiveGoldTicketTask(task: JSONObject): Boolean {
+    /**
+     * 福利中心金票任务仅补已确认闭环的“蛋定生财”链路：
+     * `SIGNUP_COMPLETE -> needle.taskQueryPush`
+     */
+    private fun handleGoldTicketWelfareTasks(): Boolean {
+        try {
+            val welfareResponse = AntMemberRpcCall.queryWelfareHome() ?: return false
+            val welfareJson = JSONObject(welfareResponse)
+            if (!ResChecker.checkRes(TAG, welfareJson)) {
+                return false
+            }
+
+            val todoTasks = welfareJson.optJSONObject("result")
+                ?.optJSONObject("goldbillTasks")
+                ?.optJSONArray("todo") ?: return true
+
+            var autoReceivedCount = 0
+            var manualCount = 0
+            for (i in 0 until todoTasks.length()) {
+                val task = todoTasks.optJSONObject(i) ?: continue
+                if (!isGoldTicketEggSignTask(task)) {
+                    continue
+                }
+
+                when (task.optString("taskProcessStatus")) {
+                    "SIGNUP_COMPLETE" -> {
+                        if (tryReceiveGoldTicketTask(task, "福利中心")) {
+                            autoReceivedCount++
+                        } else {
+                            manualCount++
+                        }
+                    }
+
+                    else -> manualCount++
+                }
+            }
+
+            if (autoReceivedCount > 0) {
+                Log.member("黄金票🎫[福利中心任务自动领取] ${autoReceivedCount}项")
+            }
+            if (manualCount > 0) {
+                Log.member("黄金票🎫[福利中心任务待手动处理] ${manualCount}项")
+            }
+            return true
+        } catch (e: Exception) {
+            Log.printStackTrace(TAG, e)
+            return false
+        }
+    }
+
+    private fun tryReceiveGoldTicketTask(task: JSONObject, source: String = "首页"): Boolean {
         val taskId = task.optString("taskId")
         if (taskId.isBlank()) {
             return false
         }
         val title = task.optString("title", taskId)
+        val status = task.optString("taskProcessStatus")
+        val waitMillis = resolveGoldTicketTaskWaitMillis(task)
         return try {
-            val triggerRes = AntMemberRpcCall.goldBillTaskTrigger(taskId) ?: return false
-            val triggerJson = JSONObject(triggerRes)
-            if (!ResChecker.checkRes(TAG, triggerJson)) {
-                val triggerDesc = triggerJson.optString("resultDesc", triggerJson.optString("memo"))
-                if (triggerDesc.isNotBlank()) {
-                    Log.error("黄金票🎫[任务领取失败] $title#$triggerDesc")
+            if (status != "SIGNUP_COMPLETE") {
+                val triggerRes = AntMemberRpcCall.goldBillTaskTrigger(taskId) ?: return false
+                val triggerJson = JSONObject(triggerRes)
+                if (!ResChecker.checkRes(TAG, triggerJson)) {
+                    val triggerDesc = triggerJson.optString("resultDesc", triggerJson.optString("memo"))
+                    if (triggerDesc.isNotBlank()) {
+                        Log.error("黄金票🎫[$source任务领取失败] $title#$taskId#$status#$triggerDesc")
+                    }
+                    return false
+                }
+
+                if (waitMillis > 0L) {
+                    CoroutineUtils.sleepCompat(waitMillis)
+                }
+            }
+
+            val pushRes = AntMemberRpcCall.taskQueryPush(taskId)
+            if (pushRes.isNullOrBlank()) {
+                Log.member("黄金票🎫[$source任务推送无返回] $title#$taskId#$status")
+                return false
+            }
+            val pushJson = JSONObject(pushRes)
+            if (!ResChecker.checkRes(TAG, pushJson)) {
+                val pushDesc = pushJson.optString("resultDesc", pushJson.optString("memo"))
+                if (pushDesc.isNotBlank()) {
+                    Log.member("黄金票🎫[$source任务推送提示] $title#$taskId#$status#$pushDesc")
                 }
                 return false
             }
-
-            CoroutineUtils.sleepCompat(12_000L)
-
-            AntMemberRpcCall.taskQueryPush(taskId)?.let { pushRes ->
-                if (pushRes.isNotBlank()) {
-                    val pushJson = JSONObject(pushRes)
-                    if (!ResChecker.checkRes(TAG, pushJson)) {
-                        val pushDesc = pushJson.optString("resultDesc", pushJson.optString("memo"))
-                        if (pushDesc.isNotBlank()) {
-                            Log.member("黄金票🎫[任务推送提示] $title#$pushDesc")
-                        }
-                        return false
-                    }
-                    val pushDone = pushJson.optJSONObject("result")
-                        ?.optJSONObject("pushResult")
-                        ?.optBoolean("done", true)
-                    if (pushDone == false) {
-                        Log.member("黄金票🎫[任务推送未完成] $title")
-                        return false
-                    }
-                }
+            val pushDone = pushJson.optJSONObject("result")
+                ?.optJSONObject("pushResult")
+                ?.optBoolean("done", true)
+            if (pushDone == false) {
+                Log.member("黄金票🎫[$source任务推送未完成] $title#$taskId#$status")
+                return false
             }
 
             val amount = task.optString("amount")
             if (amount.isNotBlank()) {
-                Log.member("黄金票🎫[任务领取成功]#$title#+${amount}份")
+                Log.member("黄金票🎫[$source任务领取成功]#$title#+${amount}份")
             } else {
-                Log.member("黄金票🎫[任务领取成功]#$title")
+                Log.member("黄金票🎫[$source任务领取成功]#$title")
             }
             true
         } catch (e: Exception) {

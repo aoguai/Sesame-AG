@@ -72,6 +72,7 @@ object ModelFieldTodayStateResolver {
                 allFlags(
                     StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_SIGN_DONE,
                     StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_HOME_DONE,
+                    StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_WELFARE_DONE,
                     reason = "今日黄金票签到已处理"
                 )
 

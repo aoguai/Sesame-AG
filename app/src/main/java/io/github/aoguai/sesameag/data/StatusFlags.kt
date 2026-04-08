@@ -81,6 +81,9 @@ object StatusFlags {
     /** 黄金票：首页收取/任务扫描是否已处理 */
     const val FLAG_ANTMEMBER_GOLD_TICKET_HOME_DONE: String = "AntMember::goldTicketHomeDone"
 
+    /** 黄金票：福利中心任务是否已处理 */
+    const val FLAG_ANTMEMBER_GOLD_TICKET_WELFARE_DONE: String = "AntMember::goldTicketWelfareDone"
+
     /** 黄金票：今日是否已完成提取检查，无需再次尝试 */
     const val FLAG_ANTMEMBER_GOLD_TICKET_CONSUME_DONE: String = "AntMember::goldTicketConsumeDone"
 
