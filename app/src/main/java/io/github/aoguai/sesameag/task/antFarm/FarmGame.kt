@@ -35,7 +35,7 @@ object FarmGame {
 
         val isAccelEnabled = antFarm.useAccelerateTool!!.value
         val isAccelLimitReached = Status.hasFlagToday(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT) || !Status.canUseAccelerateTool()
-        val isInsideTimeRange = antFarm.farmGameTrigger?.getTriggerSpec()?.let {
+        val isInsideTimeRange = antFarm.farmGameTime?.getTriggerSpec()?.let {
             TimeTriggerEvaluator.evaluateNow(it).allowNow
         } == true
         val ignoreAcceLimitMode = !isAccelEnabled!! || antFarm.ignoreAcceLimit!!.value == true

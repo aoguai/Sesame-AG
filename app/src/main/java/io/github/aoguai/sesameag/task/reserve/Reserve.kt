@@ -17,6 +17,7 @@ import io.github.aoguai.sesameag.util.maps.ReserveaMap
 import io.github.aoguai.sesameag.util.RandomUtil
 import io.github.aoguai.sesameag.util.ResChecker
 import io.github.aoguai.sesameag.data.Status
+import io.github.aoguai.sesameag.model.buildModelFields
 import kotlinx.coroutines.delay
 
 class Reserve : ModelTask() {
@@ -29,19 +30,8 @@ class Reserve : ModelTask() {
 
     override fun getIcon(): String = "Reserve.png"
 
-    override fun getFields(): ModelFields {
-        val modelFields = ModelFields()
-        modelFields.addField(
-            SelectAndCountModelField(
-                "reserveList",
-                "保护地列表",
-                LinkedHashMap(),
-                ReserveEntity::getListAsMapperEntity
-            ).withDesc("选择要自动申请的保护地及每日申请次数；数量大于 0 才会执行，对应条目填 0 或不选则跳过。").also {
-                reserveList = it
-            }
-        )
-        return modelFields
+    override fun getFields(): ModelFields = buildModelFields {
+        selectAndCount("reserveList", "保护地列表", LinkedHashMap(), { ReserveEntity.getList() }, "选择要自动申请的保护地及每日申请次数；数量大于 0 才会执行，对应条目填 0 或不选则跳过。") { reserveList = it }
     }
 
     override fun check(): Boolean {

@@ -101,7 +101,7 @@ class ChouChouLe {
 
         val isGameFinished = Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)
         val isGameEnabled = antFarm.recordFarmGame?.value == true
-        val isTimeReached = antFarm.chouChouLeTrigger?.getTriggerSpec()?.let {
+        val isTimeReached = antFarm.chouchouleTime?.getTriggerSpec()?.let {
             TimeTriggerEvaluator.evaluateNow(it).allowNow
         } == true
         val ignoreAcceLimitMode = !isGameEnabled || antFarm.ignoreAcceLimit?.value == true

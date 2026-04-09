@@ -7,6 +7,7 @@ import io.github.aoguai.sesameag.entity.AlipayUser
 import io.github.aoguai.sesameag.hook.internal.SecurityBodyHelper
 import io.github.aoguai.sesameag.model.ModelFields
 import io.github.aoguai.sesameag.model.ModelGroup
+import io.github.aoguai.sesameag.model.buildModelFields
 import io.github.aoguai.sesameag.model.withDesc
 import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.ChoiceModelField
@@ -61,54 +62,14 @@ class AntOrchard : ModelTask() {
 
     override fun getIcon(): String = "AntOrchard.png"
 
-    override fun getFields(): ModelFields {
-        val modelFields = ModelFields()
-
-
-        modelFields.addField(
-            ChoiceModelField(
-                "plantMode",
-                "种植模式",
-                PlantModeType.MAIN,
-                PlantModeType.nickNames,
-                "选择优先推进果树、摇钱树或先摇钱树后果树的混合策略。"
-            ).also { plantModeField = it }
-        )
-
-        modelFields.addField(
-            IntegerModelField("executeInterval", "执行间隔(毫秒)", 500, 500, null).withDesc(
-                "单次农场操作之间的等待时间，过小可能增加风控。"
-            ).also { executeInterval = it }
-        )
-        modelFields.addField(
-            BooleanModelField("receiveSevenDayGift", "收取七日礼包", true).withDesc(
-                "自动领取芭芭农场七日礼包奖励。"
-            ).also { receiveSevenDayGift = it }
-        )
-        modelFields.addField(
-            BooleanModelField("receiveOrchardTaskAward", "收取农场任务奖励", false).withDesc(
-                "自动领取芭芭农场任务奖励，包括肥料等常规收益。"
-            ).also { receiveOrchardTaskAward = it }
-        )
-        // {{ 修改：添加果树和摇钱树的独立设置项 }}
-        modelFields.addField(
-            IntegerModelField("orchardSpreadManureCount", "果树每日施肥次数", 0).withDesc(
-                "每日给果树施肥的次数；施肥可推进成熟并产出庄园食材。-1 表示施肥到当日上限。"
-            ).also { orchardSpreadManureCountMain = it }
-        )
-        modelFields.addField(
-            IntegerModelField("orchardSpreadManureCountYeb", "摇钱树每日施肥次数", 0).withDesc(
-                "每日给摇钱树施肥的次数；0 表示不处理摇钱树，-1 表示施肥到当日上限。"
-            ).also { orchardSpreadManureCountYeb = it }
-        )
-
-        modelFields.addField(
-            SelectModelField("assistFriendList", "助力好友列表", LinkedHashSet(), AlipayUser::getFriendList).withDesc(
-                "仅对选中的好友执行助力流程。"
-            ).also { assistFriendList = it }
-        )
-
-        return modelFields
+    override fun getFields(): ModelFields = buildModelFields {
+        choice("plantMode", "种植模式", PlantModeType.MAIN, PlantModeType.nickNames, "选择优先推进果树、摇钱树或先摇钱树后果树的混合策略。") { plantModeField = it }
+        integer("executeInterval", "执行间隔(毫秒)", 500, 500, null, "单次农场操作之间的等待时间，过小可能增加风控。") { executeInterval = it }
+        boolean("receiveSevenDayGift", "收取七日礼包", true, "自动领取芭芭农场七日礼包奖励。") { receiveSevenDayGift = it }
+        boolean("receiveOrchardTaskAward", "收取农场任务奖励", false, "自动领取芭芭农场任务奖励，包括肥料等常规收益。") { receiveOrchardTaskAward = it }
+        integer("orchardSpreadManureCount", "果树每日施肥次数", 0, desc = "每日给果树施肥的次数；施肥可推进成熟并产出庄园食材。-1 表示施肥到当日上限。") { orchardSpreadManureCountMain = it }
+        integer("orchardSpreadManureCountYeb", "摇钱树每日施肥次数", 0, desc = "每日给摇钱树施肥的次数；0 表示不处理摇钱树，-1 表示施肥到当日上限。") { orchardSpreadManureCountYeb = it }
+        select("assistFriendList", "助力好友列表", LinkedHashSet(), "仅对选中的好友执行助力流程。", setter = { assistFriendList = it }, dataProvider = { AlipayUser.getList() })
     }
 
     override suspend fun runSuspend() {

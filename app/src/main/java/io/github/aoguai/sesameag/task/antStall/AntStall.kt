@@ -6,6 +6,7 @@ import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.entity.AlipayUser
 import io.github.aoguai.sesameag.model.ModelFields
 import io.github.aoguai.sesameag.model.ModelGroup
+import io.github.aoguai.sesameag.model.buildModelFields
 import io.github.aoguai.sesameag.model.withDesc
 import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.ChoiceModelField
@@ -75,193 +76,33 @@ class AntStall : ModelTask() {
 
     override fun getIcon(): String = "AntStall.png"
 
-    override fun getFields(): ModelFields {
-        return ModelFields().apply {
-            addField(BooleanModelField("stallAutoOpen", "摆摊 | 开启", false).withDesc(
-                "自动把空闲小摊派到好友村庄摆摊；关闭后不会执行摆摊流程。"
-            ).also { stallAutoOpen = it })
-            addField(
-                ChoiceModelField(
-                    "stallOpenType",
-                    "摆摊 | 动作",
-                    StallOpenType.OPEN,
-                    StallOpenType.nickNames
-                ).withDesc("决定“摆摊 | 好友列表”是作为允许名单还是排除名单。需开启“摆摊 | 开启”。")
-                    .also { stallOpenType = it })
-            addField(
-                SelectModelField(
-                    "stallOpenList",
-                    "摆摊 | 好友列表",
-                    LinkedHashSet(),
-                    AlipayUser::getFriendList
-                ).withDesc("配置摆摊规则作用的好友村庄名单。需开启“摆摊 | 开启”。")
-                    .also { stallOpenList = it })
-            addField(
-                BooleanModelField(
-                    "stallAutoClose",
-                    "收摊 | 开启",
-                    false
-                ).withDesc("按设定摆摊时长自动收回自己的小摊，并可衔接再次摆摊。")
-                    .also { stallAutoClose = it })
-            addField(
-                IntegerModelField(
-                    "stallSelfOpenTime",
-                    "收摊 | 摆摊时长(分钟)",
-                    120,
-                    0,
-                    null
-                ).withDesc("单个摊位摆出多久后自动收摊；需开启“收摊 | 开启”。")
-                    .also { stallSelfOpenTime = it })
-            addField(
-                BooleanModelField(
-                    "stallAutoTicket",
-                    "贴罚单 | 开启",
-                    false
-                ).withDesc("自动巡逻并给符合条件的好友小摊贴罚单。")
-                    .also { stallAutoTicket = it })
-            addField(
-                ChoiceModelField(
-                    "stallTicketType",
-                    "贴罚单 | 动作",
-                    StallTicketType.DONT_TICKET,
-                    StallTicketType.nickNames
-                ).withDesc("决定“贴罚单 | 好友列表”是贴还是跳过。需开启“贴罚单 | 开启”。")
-                    .also { stallTicketType = it })
-            addField(
-                SelectModelField(
-                    "stallTicketList",
-                    "贴罚单 | 好友列表",
-                    LinkedHashSet(),
-                    AlipayUser::getFriendList
-                ).withDesc("配置贴罚单规则作用的好友名单。需开启“贴罚单 | 开启”。")
-                    .also { stallTicketList = it })
-            addField(
-                BooleanModelField(
-                    "stallThrowManure",
-                    "丢肥料 | 开启",
-                    false
-                ).withDesc("按名单规则自动给动态中的好友丢肥料。")
-                    .also { stallThrowManure = it })
-            addField(
-                ChoiceModelField(
-                    "stallThrowManureType",
-                    "丢肥料 | 动作",
-                    StallThrowManureType.DONT_THROW,
-                    StallThrowManureType.nickNames
-                ).withDesc("决定“丢肥料 | 好友列表”是丢还是跳过。需开启“丢肥料 | 开启”。")
-                    .also { stallThrowManureType = it })
-            addField(
-                SelectModelField(
-                    "stallThrowManureList",
-                    "丢肥料 | 好友列表",
-                    LinkedHashSet(),
-                    AlipayUser::getFriendList
-                ).withDesc("配置丢肥料规则作用的好友名单。需开启“丢肥料 | 开启”。")
-                    .also { stallThrowManureList = it })
-            addField(
-                BooleanModelField(
-                    "stallInviteShop",
-                    "邀请摆摊 | 开启",
-                    false
-                ).withDesc("自家有空位或请走别人后，自动邀请好友来你家摆摊。")
-                    .also { stallInviteShop = it })
-            addField(
-                ChoiceModelField(
-                    "stallInviteShopType",
-                    "邀请摆摊 | 动作",
-                    StallInviteShopType.INVITE,
-                    StallInviteShopType.nickNames
-                ).withDesc("决定“邀请摆摊 | 好友列表”是邀请还是排除。需开启“邀请摆摊 | 开启”。")
-                    .also { stallInviteShopType = it })
-            addField(
-                SelectModelField(
-                    "stallInviteShopList",
-                    "邀请摆摊 | 好友列表",
-                    LinkedHashSet(),
-                    AlipayUser::getFriendList
-                ).withDesc("配置允许自动邀请来摆摊的好友名单。需开启“邀请摆摊 | 开启”。")
-                    .also { stallInviteShopList = it })
-            addField(
-                BooleanModelField(
-                    "stallAllowOpenReject",
-                    "请走小摊 | 开启",
-                    false
-                ).withDesc("按时长、黑白名单规则自动请走占位小摊。")
-                    .also { stallAllowOpenReject = it })
-            addField(
-                IntegerModelField(
-                    "stallAllowOpenTime",
-                    "请走小摊 | 允许摆摊时长(分钟)",
-                    121,
-                    0,
-                    null
-                ).withDesc("好友在你家摆摊超过该时长后会被自动请走；白名单除外。需开启“请走小摊 | 开启”。")
-                    .also { stallAllowOpenTime = it })
-            addField(
-                SelectModelField(
-                    "stallWhiteList",
-                    "请走小摊 | 白名单(超时也不赶)",
-                    LinkedHashSet(),
-                    AlipayUser::getFriendList
-                ).withDesc("这些好友即使超时也不会被请走。需开启“请走小摊 | 开启”。")
-                    .also { stallWhiteList = it })
-            addField(
-                SelectModelField(
-                    "stallBlackList",
-                    "请走小摊 | 黑名单(不超时也赶)",
-                    LinkedHashSet(),
-                    AlipayUser::getFriendList
-                ).withDesc("这些好友即使未超时也会被立即请走。需开启“请走小摊 | 开启”。")
-                    .also { stallBlackList = it })
-            addField(BooleanModelField("stallAutoTask", "自动任务", false).withDesc(
-                "执行新村签到、可自动完成的每日任务及部分特殊任务。"
-            ).also { stallAutoTask = it })
-            addField(
-                BooleanModelField(
-                    "stallReceiveAward",
-                    "自动领奖",
-                    false
-                ).withDesc("自动领取已完成新村任务的奖励。建议配合“自动任务”一起开启。")
-                    .also { stallReceiveAward = it })
-            addField(
-                BooleanModelField("stallDonate", "自动捐赠", false).withDesc(
-                    "金币满足条件时自动向新村公益项目捐赠。"
-                ).also { stallDonate = it }
-            )
-            addField(
-                BooleanModelField("roadmap", "自动进入下一村", false).withDesc(
-                    "发现可解锁的新村时自动进入打卡，每个村每天只处理一次。"
-                ).also { roadmap = it }
-            )
-            addField(
-                BooleanModelField(
-                    "stallInviteRegister",
-                    "邀请 | 邀请好友开通新村",
-                    false
-                ).withDesc("在自动任务中尝试邀请指定好友开通蚂蚁新村。需开启“自动任务”。")
-                    .also { stallInviteRegister = it })
-            addField(
-                SelectModelField(
-                    "stallInviteRegisterList",
-                    "邀请 | 好友列表",
-                    LinkedHashSet(),
-                    AlipayUser::getFriendList
-                ).withDesc("仅邀请列表中的好友开通新村。需开启“邀请 | 邀请好友开通新村”。")
-                    .also { stallInviteRegisterList = it })
-            addField(
-                BooleanModelField("stallAssistFriend", "新村助力", false).withDesc(
-                    "按“助力好友列表”自动执行新村助力；关闭后不会发起助力。"
-                ).also { stallAssistFriend = it }
-            )
-            addField(
-                SelectModelField(
-                    "assistFriendList",
-                    "助力好友列表",
-                    LinkedHashSet(),
-                    AlipayUser::getFriendList
-                ).withDesc("配置允许自动新村助力的好友列表。需开启“新村助力”。")
-                    .also { assistFriendList = it })
-        }
+    override fun getFields(): ModelFields = buildModelFields {
+        boolean("stallAutoOpen", "摆摊 | 开启", false, "自动把空闲小摊派到好友村庄摆摊；关闭后不会执行摆摊流程。") { stallAutoOpen = it }
+        choice("stallOpenType", "摆摊 | 动作", StallOpenType.OPEN, StallOpenType.nickNames, "决定“摆摊 | 好友列表”是作为允许名单还是排除名单。需开启“摆摊 | 开启”。", dependency = "stallAutoOpen") { stallOpenType = it }
+        select("stallOpenList", "摆摊 | 好友列表", LinkedHashSet(), "配置摆摊规则作用的好友村庄名单。需开启“摆摊 | 开启”。", dependency = "stallAutoOpen", setter = { stallOpenList = it }) { AlipayUser.getList() }
+        boolean("stallAutoClose", "收摊 | 开启", false, "按设定摆摊时长自动收回自己的小摊，并可衔接再次摆摊。") { stallAutoClose = it }
+        integer("stallSelfOpenTime", "收摊 | 摆摊时长(分钟)", 120, desc = "单个摊位摆出多久后自动收摊；需开启“收摊 | 开启”。", dependency = "stallAutoClose") { stallSelfOpenTime = it }
+        boolean("stallAutoTicket", "贴罚单 | 开启", false, "自动巡逻并给符合条件的好友小摊贴罚单。") { stallAutoTicket = it }
+        choice("stallTicketType", "贴罚单 | 动作", StallTicketType.DONT_TICKET, StallTicketType.nickNames, "决定“贴罚单 | 好友列表”是贴还是跳过。需开启“贴罚单 | 开启”。", dependency = "stallAutoTicket") { stallTicketType = it }
+        select("stallTicketList", "贴罚单 | 好友列表", LinkedHashSet(), "配置贴罚单规则作用的好友名单。需开启“贴罚单 | 开启”。", dependency = "stallAutoTicket", setter = { stallTicketList = it }) { AlipayUser.getList() }
+        boolean("stallThrowManure", "丢肥料 | 开启", false, "按名单规则自动给动态中的好友丢肥料。") { stallThrowManure = it }
+        choice("stallThrowManureType", "丢肥料 | 动作", StallThrowManureType.DONT_THROW, StallThrowManureType.nickNames, "决定“丢肥料 | 好友列表”是丢还是跳过。需开启“丢肥料 | 开启”。", dependency = "stallThrowManure") { stallThrowManureType = it }
+        select("stallThrowManureList", "丢肥料 | 好友列表", LinkedHashSet(), "配置丢肥料规则作用的好友名单。需开启“丢肥料 | 开启”。", dependency = "stallThrowManure", setter = { stallThrowManureList = it }) { AlipayUser.getList() }
+        boolean("stallInviteShop", "邀请摆摊 | 开启", false, "自家有空位或请走别人后，自动邀请好友来你家摆摊。") { stallInviteShop = it }
+        choice("stallInviteShopType", "邀请摆摊 | 动作", StallInviteShopType.INVITE, StallInviteShopType.nickNames, "决定“邀请摆摊 | 好友列表”是邀请还是排除。需开启“邀请摆摊 | 开启”。", dependency = "stallInviteShop") { stallInviteShopType = it }
+        select("stallInviteShopList", "邀请摆摊 | 好友列表", LinkedHashSet(), "配置允许自动邀请来摆摊的好友名单。需开启“邀请摆摊 | 开启”。", dependency = "stallInviteShop", setter = { stallInviteShopList = it }) { AlipayUser.getList() }
+        boolean("stallAllowOpenReject", "请走小摊 | 开启", false, "按时长、黑白名单规则自动请走占位小摊。") { stallAllowOpenReject = it }
+        integer("stallAllowOpenTime", "请走小摊 | 允许摆摊时长(分钟)", 121, desc = "好友在你家摆摊超过该时长后会被自动请走；白名单除外。需开启“请走小摊 | 开启”。", dependency = "stallAllowOpenReject") { stallAllowOpenTime = it }
+        select("stallWhiteList", "请走小摊 | 白名单(超时也不赶)", LinkedHashSet(), "这些好友即使超时也不会被请走。需开启“请走小摊 | 开启”。", dependency = "stallAllowOpenReject", setter = { stallWhiteList = it }) { AlipayUser.getList() }
+        select("stallBlackList", "请走小摊 | 黑名单(不超时也赶)", LinkedHashSet(), "这些好友即使未超时也会被立即请走。需开启“请走小摊 | 开启”。", dependency = "stallAllowOpenReject", setter = { stallBlackList = it }) { AlipayUser.getList() }
+        boolean("stallAutoTask", "自动任务", false, "执行新村签到、可自动完成的每日任务及部分特殊任务。") { stallAutoTask = it }
+        boolean("stallReceiveAward", "自动领奖", false, "自动领取已完成新村任务的奖励。建议配合“自动任务”一起开启。") { stallReceiveAward = it }
+        boolean("stallDonate", "自动捐赠", false, "金币满足条件时自动向新村公益项目捐赠。") { stallDonate = it }
+        boolean("roadmap", "自动进入下一村", false, "发现可解锁的新村时自动进入打卡，每个村每天只处理一次。") { roadmap = it }
+        boolean("stallInviteRegister", "邀请 | 邀请好友开通新村", false, "在自动任务中尝试邀请指定好友开通蚂蚁新村。需开启“自动任务”。") { stallInviteRegister = it }
+        select("stallInviteRegisterList", "邀请 | 好友列表", LinkedHashSet(), "仅邀请列表中的好友开通新村。需开启“邀请 | 邀请好友开通新村”。", dependency = "stallInviteRegister", setter = { stallInviteRegisterList = it }) { AlipayUser.getList() }
+        boolean("stallAssistFriend", "新村助力", false, "按“助力好友列表”自动执行新村助力；关闭后不会发起助力。") { stallAssistFriend = it }
+        select("assistFriendList", "助力好友列表", LinkedHashSet(), "配置允许自动新村助力的好友列表。需开启“新村助力”。", dependency = "assistFriend", setter = { assistFriendList = it }) { AlipayUser.getList() }
     }
 
     override fun runJava() {

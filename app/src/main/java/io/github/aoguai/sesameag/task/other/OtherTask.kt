@@ -3,7 +3,7 @@ package io.github.aoguai.sesameag.task.other
 import io.github.aoguai.sesameag.entity.OtherEntityProvider.listCreditOptions
 import io.github.aoguai.sesameag.model.ModelFields
 import io.github.aoguai.sesameag.model.ModelGroup
-import io.github.aoguai.sesameag.model.withDesc
+import io.github.aoguai.sesameag.model.buildModelFields
 import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectAndCountModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectModelField
@@ -38,43 +38,10 @@ class OtherTask : ModelTask() {
     private var creditOnceOptions: SelectModelField? = null
 
 
-    override fun getFields(): ModelFields {
-        val fields = ModelFields()
-        fields.addField(
-            BooleanModelField(
-                "credit2101", "信用2101", false
-            ).withDesc("开启后执行信用2101的签到、任务领奖、天赋升级，并按下方配置处理探测事件。").also {
-                credit2101 = it
-            })
-
-        fields.addField(
-            BooleanModelField(
-                "AutoOpenChest", "信用2101 | 自动开宝箱", false
-            ).withDesc("自动打开信用2101中的印记宝箱。需开启“信用2101”主开关。").also {
-                autoOpenChest = it
-            })
-
-
-        fields.addField(
-            SelectAndCountModelField(
-                "CreditOptions",
-                "信用2101 | 事件类型",
-                LinkedHashMap(),
-                listCreditOptions(),
-                "设置各事件每日运行次数，0为不执行，-1为不限。"
-            ).also {
-                creditOptions = it
-            })
-
-
-
-
-
-
-
-
-
-        return fields
+    override fun getFields(): ModelFields = buildModelFields {
+        boolean("credit2101", "信用2101", false, desc = "开启后执行信用2101的签到、任务领奖、天赋升级，并按下方配置处理探测事件。") { credit2101 = it }
+        boolean("AutoOpenChest", "信用2101 | 自动开宝箱", false, desc = "自动打开信用2101中的印记宝箱。需开启“信用2101”主开关。", dependency = "credit2101") { autoOpenChest = it }
+        selectAndCount("CreditOptions", "信用2101 | 事件类型", LinkedHashMap(), { listCreditOptions() }, desc = "设置各事件每日运行次数，0为不执行，-1为不限。", dependency = "credit2101") { creditOptions = it }
     }
 
     override suspend fun runSuspend() {
@@ -99,4 +66,3 @@ class OtherTask : ModelTask() {
         }
     }
 }
-

@@ -20,6 +20,7 @@ import io.github.aoguai.sesameag.util.GlobalThreadPools
 import io.github.aoguai.sesameag.util.JsonUtil
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.data.Status
+import io.github.aoguai.sesameag.model.buildModelFields
 import io.github.aoguai.sesameag.util.TimeUtil
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -40,30 +41,14 @@ class GreenFinance : ModelTask() {
 
     override fun getIcon(): String = "GreenFinance.png"
 
-    override fun getFields(): ModelFields {
-        val modelFields = ModelFields()
-        modelFields.addField(BooleanModelField("greenFinanceLsxd", "打卡 | 绿色行动", false).withDesc(
-            "执行绿色经营中绿色行动分类的待打卡项。"
-        ).also { greenFinanceLsxd = it })
-        modelFields.addField(BooleanModelField("greenFinanceLscg", "打卡 | 绿色采购", false).withDesc(
-            "执行绿色经营中绿色采购分类的待打卡项。"
-        ).also { greenFinanceLscg = it })
-        modelFields.addField(BooleanModelField("greenFinanceLsbg", "打卡 | 绿色办公", false).withDesc(
-            "执行绿色经营中绿色办公分类的待打卡项。"
-        ).also { greenFinanceLsbg = it })
-        modelFields.addField(BooleanModelField("greenFinanceWdxd", "打卡 | 绿色销售", false).withDesc(
-            "执行绿色经营中绿色销售分类的待打卡项。"
-        ).also { greenFinanceWdxd = it })
-        modelFields.addField(BooleanModelField("greenFinanceLswl", "打卡 | 绿色物流", false).withDesc(
-            "执行绿色经营中绿色物流分类的待打卡项。"
-        ).also { greenFinanceLswl = it })
-        modelFields.addField(BooleanModelField("greenFinancePointFriend", "收取 | 好友金币", false).withDesc(
-            "巡查好友排行榜并收取可领取的好友金币，每日仅处理一次。"
-        ).also { greenFinancePointFriend = it })
-        modelFields.addField(BooleanModelField("greenFinanceDonation", "捐助 | 快过期金币", false).withDesc(
-            "检测 1 天内将过期的经营金币并自动分批捐助，避免过期失效。"
-        ).also { greenFinanceDonation = it })
-        return modelFields
+    override fun getFields(): ModelFields = buildModelFields {
+        boolean("greenFinanceLsxd", "打卡 | 绿色行动", false, "执行绿色经营中绿色行动分类的待打卡项。") { greenFinanceLsxd = it }
+        boolean("greenFinanceLscg", "打卡 | 绿色采购", false, "执行绿色经营中绿色采购分类的待打卡项。") { greenFinanceLscg = it }
+        boolean("greenFinanceLsbg", "打卡 | 绿色办公", false, "执行绿色经营中绿色办公分类的待打卡项。") { greenFinanceLsbg = it }
+        boolean("greenFinanceWdxd", "打卡 | 绿色销售", false, "执行绿色经营中绿色销售分类的待打卡项。") { greenFinanceWdxd = it }
+        boolean("greenFinanceLswl", "打卡 | 绿色物流", false, "执行绿色经营中绿色物流分类的待打卡项。") { greenFinanceLswl = it }
+        boolean("greenFinancePointFriend", "收取 | 好友金币", false, "巡查好友排行榜并收取可领取的好友金币，每日仅处理一次。") { greenFinancePointFriend = it }
+        boolean("greenFinanceDonation", "捐助 | 快过期金币", false, "检测 1 天内将过期的经营金币并自动分批捐助，避免过期失效。") { greenFinanceDonation = it }
     }
 
     override fun check(): Boolean {

@@ -3,15 +3,13 @@ package io.github.aoguai.sesameag.task.antCooperate
 import io.github.aoguai.sesameag.data.Status
 import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.entity.CooperateEntity.Companion.getList
-import io.github.aoguai.sesameag.model.BaseModel
 import io.github.aoguai.sesameag.model.ModelFields
 import io.github.aoguai.sesameag.model.ModelGroup
-import io.github.aoguai.sesameag.model.withDesc
+import io.github.aoguai.sesameag.model.buildModelFields
 import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.IntegerModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectAndCountModelField
 import io.github.aoguai.sesameag.task.ModelTask
-import io.github.aoguai.sesameag.task.TaskCommon
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.ResChecker
 import io.github.aoguai.sesameag.util.TimeUtil
@@ -47,48 +45,22 @@ class AntCooperate : ModelTask() {
         return "AntCooperate.png"
     }
 
-    private val cooperateWater = BooleanModelField("cooperateWater", "合种浇水|开启", false).withDesc(
-        "按下面的合种列表自动浇水；未配置浇水克数的合种会跳过。"
-    )
-    private val cooperateWaterList = SelectAndCountModelField(
-        "cooperateWaterList",
-        "合种浇水列表",
-        LinkedHashMap(),
-        { getList() },
-        "设置每个合种单次最多浇多少克；首次开启并执行一次后，返回设置页可刷新出合种列表。"
-    )
-    private val cooperateWaterTotalLimitList = SelectAndCountModelField(
-        "cooperateWaterTotalLimitList",
-        "浇水总量限制列表",
-        LinkedHashMap(),
-        { getList() },
-        "限制每个合种的累计总浇水量；达到后即使当天还有额度也不再浇。"
-    )
-    private val cooperateSendCooperateBeckon =
-        BooleanModelField("cooperateSendCooperateBeckon", "合种 | 召唤队友浇水| 仅队长 ", false).withDesc(
-            "仅队长可用，18:00 后自动召唤还能浇水的队友；可单独开启，不依赖“合种浇水|开启”。"
-        )
-    private val loveCooperateWater = BooleanModelField("loveCooperateWater", "真爱合种 | 浇水", false).withDesc(
-        "自动给真爱合种浇水一次。"
-    )
-    private val loveCooperateWaterNum = IntegerModelField("loveCooperateWaterNum", "真爱合种 | 浇水克数(默认20g)", 20).withDesc(
-        "真爱合种每次浇水克数，需开启“真爱合种 | 浇水”。"
-    )
-    private val teamCooperateWaterNum = IntegerModelField("teamCooperateWaterNum", "组队合种 | 浇水克数(0为关闭，10-5000)", 0).withDesc(
-        "组队合种每天目标浇水总量；填 0 关闭，实际会受官方剩余额度和当前能量限制。"
-    )
-    override fun getFields(): ModelFields {
-        val modelFields = ModelFields()
-        modelFields.addField(cooperateWater)
-        modelFields.addField(cooperateWaterList)
-        modelFields.addField(cooperateWaterTotalLimitList)
-        modelFields.addField(cooperateSendCooperateBeckon)
-        // 真爱合种配置
-        modelFields.addField(loveCooperateWater)
-        modelFields.addField(loveCooperateWaterNum)
-        // 组队合种配置
-        modelFields.addField(teamCooperateWaterNum)
-        return modelFields
+    private var cooperateWater: BooleanModelField? = null
+    private var cooperateWaterList: SelectAndCountModelField? = null
+    private var cooperateWaterTotalLimitList: SelectAndCountModelField? = null
+    private var cooperateSendCooperateBeckon: BooleanModelField? = null
+    private var loveCooperateWater: BooleanModelField? = null
+    private var loveCooperateWaterNum: IntegerModelField? = null
+    private var teamCooperateWaterNum: IntegerModelField? = null
+
+    override fun getFields(): ModelFields = buildModelFields {
+        boolean("cooperateWater", "合种浇水|开启", false, desc = "按下面的合种列表自动浇水；未配置浇水克数的合种会跳过。") { cooperateWater = it }
+        selectAndCount("cooperateWaterList", "合种浇水列表", LinkedHashMap(), { getList() }, desc = "设置每个合种单次最多浇多少克；首次开启并执行一次后，返回设置页可刷新出合种列表。", dependency = "cooperateWater") { cooperateWaterList = it }
+        selectAndCount("cooperateWaterTotalLimitList", "浇水总量限制列表", LinkedHashMap(), { getList() }, desc = "限制每个合种的累计总浇水量；达到后即使当天还有额度也不再浇。", dependency = "cooperateWater") { cooperateWaterTotalLimitList = it }
+        boolean("cooperateSendCooperateBeckon", "合种 | 召唤队友浇水| 仅队长 ", false, desc = "仅队长可用，18:00 后自动召唤还能浇水的队友；可单独开启，不依赖“合种浇水|开启”。") { cooperateSendCooperateBeckon = it }
+        boolean("loveCooperateWater", "真爱合种 | 浇水", false, desc = "自动给真爱合种浇水一次。") { loveCooperateWater = it }
+        integer("loveCooperateWaterNum", "真爱合种 | 浇水克数(默认20g)", 20, desc = "真爱合种每次浇水克数，需开启“真爱合种 | 浇水”。", dependency = "loveCooperateWater") { loveCooperateWaterNum = it }
+        integer("teamCooperateWaterNum", "组队合种 | 浇水克数(0为关闭，10-5000)", 0, desc = "组队合种每天目标浇水总量；填 0 关闭，实际会受官方剩余额度和当前能量限制。") { teamCooperateWaterNum = it }
     }
 
     /**
@@ -96,21 +68,21 @@ class AntCooperate : ModelTask() {
      */
     override suspend fun runSuspend() {
         try {
-            Log.forest(TAG, "执行开始-${getName() ?: ""}")
+            Log.forest(TAG, "执行开始-${getName()}")
 
             // 1. 真爱合种
-            if (loveCooperateWater.value == true) {
+            if (loveCooperateWater?.value == true) {
                 loveCooperateWater()
             }
 
             // 2. 组队合种
-            if ((teamCooperateWaterNum.value ?: 0) > 0) {
+            if ((teamCooperateWaterNum?.value ?: 0) > 0) {
                 teamCooperateWater()
 
             }
             // 3. 普通合种/召唤队友浇水
-            val enableCooperateWater = cooperateWater.value == true
-            val enableCooperateBeckon = cooperateSendCooperateBeckon.value == true
+            val enableCooperateWater = cooperateWater?.value == true
+            val enableCooperateBeckon = cooperateSendCooperateBeckon?.value == true
             if (enableCooperateWater || enableCooperateBeckon) {
                 val queryUserCooperatePlantList = JSONObject(AntCooperateRpcCall.queryUserCooperatePlantList())
                 if (ResChecker.checkRes(TAG, queryUserCooperatePlantList)) {
@@ -155,8 +127,8 @@ class AntCooperate : ModelTask() {
                         Log.forest(TAG, "获取合种[$name] 浇水信息: 剩余可浇 $waterDayLimit g / 总限制 $waterLimit g")
 
                         // 5. 获取配置
-                        val configPerRound = cooperateWaterList.value?.get(cooperationId) // 本轮配置浇水量
-                        val configTotalLimit = cooperateWaterTotalLimitList.value?.get(cooperationId) // 配置的总浇水上限(累计)
+                        val configPerRound = cooperateWaterList?.value?.get(cooperationId) // 本轮配置浇水量
+                        val configTotalLimit = cooperateWaterTotalLimitList?.value?.get(cooperationId) // 配置的总浇水上限(累计)
 
                         if (configPerRound == null) {
                             Log.forest(TAG, "浇水列表中没有为[$name]配置，跳过")
@@ -213,7 +185,7 @@ class AntCooperate : ModelTask() {
             Log.printStackTrace(TAG, t)
         } finally {
             io.github.aoguai.sesameag.util.maps.IdMapManager.getInstance(CooperateMap::class.java).save(UserMap.currentUid)
-            Log.forest(TAG, "执行结束-${getName() ?: ""}")
+            Log.forest(TAG, "执行结束-${getName()}")
         }
     }
 
@@ -272,7 +244,7 @@ class AntCooperate : ModelTask() {
             }
 
             // 6. 执行浇水
-            val waterAmount = loveCooperateWaterNum.value ?: 0 // 防止空指针
+            val waterAmount = loveCooperateWaterNum?.value ?: 0 // 防止空指针
             if (waterAmount <= 0) {
                 Log.error(TAG, "配置的浇水数值无效: $waterAmount")
                 return
@@ -298,7 +270,7 @@ class AntCooperate : ModelTask() {
         try {
             // --- 1. 基础配置与本地校验 ---
             // 用户设置的“每日目标浇水量”
-            val userDailyTarget = (teamCooperateWaterNum.value ?: 10).coerceIn(10, 5000)
+            val userDailyTarget = (teamCooperateWaterNum?.value ?: 10).coerceIn(10, 5000)
 
             // 获取今日已浇水量
             val todayUsed = Status.getIntFlagToday(StatusFlags.FLAG_TEAM_WATER_DAILY_COUNT) ?: 0
@@ -412,7 +384,7 @@ class AntCooperate : ModelTask() {
     }
 
     companion object {
-        private val TAG: String = AntCooperate::class.java.getSimpleName()
+        private val TAG: String = AntCooperate::class.java.simpleName
 
 
         /**
@@ -501,4 +473,3 @@ class AntCooperate : ModelTask() {
         }
     }
 }
-

@@ -19,7 +19,7 @@ import io.github.aoguai.sesameag.hook.rpc.intervallimit.RpcIntervalLimit.addInte
 import io.github.aoguai.sesameag.model.BaseModel
 import io.github.aoguai.sesameag.model.ModelFields
 import io.github.aoguai.sesameag.model.ModelGroup
-import io.github.aoguai.sesameag.model.withDesc
+import io.github.aoguai.sesameag.model.buildModelFields
 import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.ChoiceModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.IntegerModelField
@@ -62,8 +62,6 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.Objects
 import java.util.Random
-import kotlin.compareTo
-import kotlin.dec
 import kotlin.math.min
 
 @Suppress("unused", "EnumEntryName", "EnumEntryName", "EnumEntryName", "EnumEntryName")
@@ -192,7 +190,7 @@ class AntFarm : ModelTask() {
     /**
      * 小鸡游戏时间
      */
-    internal var farmGameTrigger: TimeTriggerModelField? = null
+    internal var farmGameTime: TimeTriggerModelField? = null
 
     /**
      * 小鸡厨房
@@ -241,8 +239,8 @@ class AntFarm : ModelTask() {
     private var diaryTietie: BooleanModelField? = null
     private var collectChickenDiary: ChoiceModelField? = null
     private lateinit var remainingTime: IntegerModelField
-    internal var enableChouchoule: BooleanModelField? = null
-    internal var chouChouLeTrigger: TimeTriggerModelField? = null // 抽抽乐触发时间
+    internal var chouchouleEnable: BooleanModelField? = null
+    internal var chouchouleTime: TimeTriggerModelField? = null // 抽抽乐触发时间
     var autoExchange: BooleanModelField? = null
     var doChouChouLeDonationTask: BooleanModelField? = null
     internal var exchangeDaysBeforeEndIp: IntegerModelField? = null  // IP 抽抽乐活动结束前兑换天数
@@ -287,451 +285,69 @@ class AntFarm : ModelTask() {
     }
 
     override fun getFields(): ModelFields {
-        val modelFields = ModelFields()
-        modelFields.addField(
-            ChoiceModelField(
-                "recallAnimalType",
-                "召回小鸡",
-                RecallAnimalType.ALWAYS,
-                RecallAnimalType.nickNames
-            ).withDesc("控制遇到小鸡外出、偷吃或饥饿时是否主动召回。").also { recallAnimalType = it })
-        modelFields.addField(
-            BooleanModelField(
-                "feedAnimal",
-                "自动喂小鸡",
-                false
-            ).withDesc("自动给自家小鸡喂食。").also { feedAnimal = it })
-        modelFields.addField(
-            BooleanModelField(
-                "doFarmTask",
-                "做饲料任务",
-                false
-            ).withDesc("执行庄园每日任务获取饲料、道具和抽奖机会。").also { doFarmTask = it })
-        modelFields.addField(
-            TimeTriggerModelField(
-                "farmTaskTrigger",
-                "饲料任务触发时间",
-                "0830,2200",
-                TimeTriggerParseOptions(
-                    allowCheckpoints = true,
-                    allowWindows = false,
-                    allowBlockedWindows = false,
-                    tag = TAG
-                )
-            ).withDesc("按检查点槽位尝试执行饲料任务；格式 HHmm 或 HHmmss，多个时间点用逗号分隔，填 -1 关闭。").also {
-                farmTaskTrigger = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "receiveFarmTaskAward",
-                "收取饲料奖励",
-                false
-            ).withDesc("自动领取已完成饲料任务的奖励。").also { receiveFarmTaskAward = it })
-        modelFields.addField(
-            BooleanModelField(
-                "useBigEaterTool",
-                "加饭卡 | 使用",
-                false
-            ).withDesc("自动使用加饭卡，延长单次进食时长。").also { useBigEaterTool = it })
-        modelFields.addField(
-            BooleanModelField(
-                "useAccelerateTool",
-                "加速卡 | 使用",
-                false
-            ).withDesc("自动使用加速卡缩短进食时间。").also { useAccelerateTool = it })
-        modelFields.addField(
-            BooleanModelField(
-                "useAccelerateToolContinue",
-                "加速卡 | 连续使用",
-                false
-            ).withDesc("满足条件时连续使用多张加速卡，快速清空库存。").also { useAccelerateToolContinue = it })
-        modelFields.addField(
-            IntegerModelField("remainingTime", "饲料剩余时间大于多少时直接使用加速（分钟）（-1关闭）", 40, -1, 60).withDesc(
-                "饲料剩余时间超过该值时才使用加速卡，-1 为关闭。"
-            ).also { remainingTime = it }
-        )
-        modelFields.addField(
-            BooleanModelField(
-                "useAccelerateToolWhenMaxEmotion",
-                "加速卡 | 仅在满状态时使用",
-                false
-            ).withDesc("仅在小鸡心情值满状态时才使用加速卡。需开启“加速卡 | 使用”。").also {
-                useAccelerateToolWhenMaxEmotion = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "ignoreAcceLimit",
-                "按设置的时间进行游戏改分和抽抽乐",
-                false
-            ).withDesc("开启后，游戏改分和抽抽乐只按设定时间执行，不再等待加速卡或游戏改分前置流程。").also {
-                ignoreAcceLimit = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "enableChouchoule",
-                "开启小鸡抽抽乐",
-                false
-            ).withDesc("执行庄园抽抽乐，领取抽奖次数并参与抽奖。").also { enableChouchoule = it })
-        modelFields.addField(
-            BooleanModelField(
-                "autoExchange",
-                "IP抽抽乐最优兑换商店",
-                false
-            ).withDesc("IP 或活动抽抽乐按奖励价值从高到低自动兑换。").also { autoExchange = it })
-        modelFields.addField(
-            IntegerModelField("exchangeDaysBeforeEndIp", "IP抽抽乐|活动结束前几天开始兑换(0每日兑换)", 0, 0, 30).also { exchangeDaysBeforeEndIp = it }
-        )
-        modelFields.addField(
-            SelectAndCountModelField(
-                "autoExchangeList",
-                "IP抽抽乐|自定义兑换列表(无特殊需求则不设置)",
-                LinkedHashMap<String, Int>()
-            ) { AntFarmIPChouChouLeBenefit.getList() }.also {
-                autoExchangeList = it
-            })
-        modelFields.addField(
-            TimeTriggerModelField(
-                "chouChouLeTrigger",
-                "小鸡抽抽乐触发时间",
-                "0900",
-                TimeTriggerParseOptions(
-                    allowCheckpoints = true,
-                    allowWindows = true,
-                    allowBlockedWindows = false,
-                    tag = TAG
-                )
-            ).withDesc("控制抽抽乐尝试时机；支持时间点或允许时间段，格式 HHmm、HHmm-HHmm，填 -1 关闭。").also {
-                chouChouLeTrigger = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "recordFarmGame",
-                "游戏改分(星星球、登山赛、飞行赛、揍小鸡)",
-                false
-            ).withDesc("执行庄园小游戏改分逻辑，按预估上限刷取饲料。").also { recordFarmGame = it })
-        modelFields.addField(
-            IntegerModelField("gameRewardMax", "游戏改分预计最大产出饲料量(g)", 180, 0, null).withDesc(
-                "游戏改分期望产出的最大饲料值，用于提前停止。"
-            ).also { gameRewardMax = it }
-        )
-        modelFields.addField(
-            TimeTriggerModelField(
-                "farmGameTrigger",
-                "小鸡游戏时间(范围)",
-                "2200-2400",
-                TimeTriggerParseOptions(
-                    allowCheckpoints = false,
-                    allowWindows = true,
-                    allowBlockedWindows = false,
-                    tag = TAG
-                )
-            ).withDesc("仅在这些允许时间段内执行游戏改分；支持多个 HHmm-HHmm，填 -1 关闭。").also {
-                farmGameTrigger = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "enableDdrawGameCenterAward",
-                "开宝箱",
-                false
-            ).withDesc("自动领取庄园游戏中心可开启的宝箱奖励。").also { enableDdrawGameCenterAward = it })
-        modelFields.addField(
-            TimePointModelField(
-                "sleepTime",
-                "小鸡睡觉时间",
-                "2330",
-                true
-            ).withDesc("设置自动让小鸡睡觉的时间。").also { sleepTime = it })
-        modelFields.addField(
-            TimePointModelField(
-                "wakeupTime",
-                "小鸡起床时间",
-                "0530",
-                true
-            ).withDesc("设置自动让小鸡起床的时间。").also { wakeUpTime = it })
-        modelFields.addField(
-            SelectAndCountModelField(
-                "feedFriendAnimalList",
-                "帮喂小鸡 | 好友列表",
-                LinkedHashMap(),
-                { AlipayUser.getFriendList() },
-                "记得设置帮喂次数.."
-            ).withDesc("配置帮喂好友及每日次数；列表中的数量表示可帮喂次数。").also {
-                feedFriendAnimalList = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "rewardFriend",
-                "打赏好友",
-                false
-            ).withDesc("自动处理可打赏的好友奖励。").also { rewardFriend = it })
-        modelFields.addField(BooleanModelField("getFeed", "一起拿饲料", false).withDesc(
-            "处理“一起拿饲料”互动，可送给好友或随机送出。"
-        ).also {
-            getFeed = it
-        })
-        modelFields.addField(
-            ChoiceModelField(
-                "getFeedType",
-                "一起拿饲料 | 动作",
-                GetFeedType.GIVE,
-                GetFeedType.nickNames
-            ).withDesc("选择一起拿饲料的赠送策略。").also { getFeedType = it })
-        modelFields.addField(
-            SelectModelField(
-                "getFeedlList",
-                "一起拿饲料 | 好友列表",
-                LinkedHashSet<String?>()
-            ) { AlipayUser.getFriendList() }.withDesc("仅对选中的好友执行一起拿饲料。").also {
-                getFeedlList = it
-            })
-        modelFields.addField(BooleanModelField("acceptGift", "收麦子", false).withDesc(
-            "自动收取好友赠送的麦子。"
-        ).also {
-            acceptGift = it
-        })
-        modelFields.addField(
-            SelectAndCountModelField(
-                "visitFriendList",
-                "送麦子好友列表",
-                LinkedHashMap(),
-                { AlipayUser.getFriendList() },
-                "设置赠送次数？？"
-            ).withDesc("配置送麦子好友及每日赠送次数。需开启“到访小鸡送礼”。").also {
-                visitFriendList = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "hireAnimal",
-                "雇佣小鸡 | 开启",
-                false
-            ).withDesc("自动雇佣好友小鸡来打工赚取麦子。").also { hireAnimal = it })
-        modelFields.addField(
-            ChoiceModelField(
-                "hireAnimalType",
-                "雇佣小鸡 | 动作",
-                HireAnimalType.DONT_HIRE,
-                HireAnimalType.nickNames
-            ).withDesc("选择名单模式：仅雇佣选中好友，或排除选中好友。需开启“雇佣小鸡 | 开启”。").also {
-                hireAnimalType = it
-            })
-        modelFields.addField(
-            SelectModelField(
-                "hireAnimalList",
-                "雇佣小鸡 | 好友列表",
-                LinkedHashSet<String?>()
-            ) { AlipayUser.getFriendList() }.withDesc("仅在选中的好友列表内尝试雇佣小鸡。").also {
-                hireAnimalList = it
-            })
-        modelFields.addField(
-            ChoiceModelField(
-                "npcAnimalType",
-                "雇佣NPC小鸡(满产自动重雇)",
-                NpcConfig.NONE.ordinal,
-                NpcConfig.nickNames
-            ).withDesc("选择自动雇佣并在满产后重雇的 NPC 小鸡；选“关闭”则不处理。").also {
-                npcAnimalType = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "sendBackAnimal",
-                "遣返 | 开启",
-                false
-            ).withDesc("自动遣返来偷吃或做客的小鸡。").also { sendBackAnimal = it })
-        modelFields.addField(
-            IntegerModelField("timeSendBack", "投喂饲料后间隔时间赶鸡(分,<10关闭)", 0, 0, 12 * 60).withDesc(
-                "投喂后等待多少分钟再赶鸡，避免刚投喂就遣返。"
-            ).also { timeSendBack = it }
-        )
-        modelFields.addField(
-            ChoiceModelField(
-                "sendBackAnimalWay",
-                "遣返 | 方式",
-                SendBackAnimalWay.NORMAL,
-                SendBackAnimalWay.nickNames
-            ).withDesc("选择遣返方式：攻击或常规赶回。需开启“遣返 | 开启”。").also {
-                sendBackAnimalWay = it
-            })
-        modelFields.addField(
-            ChoiceModelField(
-                "sendBackAnimalType",
-                "遣返 | 动作",
-                SendBackAnimalType.NOT_BACK,
-                SendBackAnimalType.nickNames
-            ).withDesc("选择名单模式：仅遣返选中好友，或遣返未选中的好友。需开启“遣返 | 开启”。").also {
-                sendBackAnimalType = it
-            })
-        modelFields.addField(
-            SelectModelField(
-                "dontSendFriendList",
-                "遣返 | 好友列表",
-                LinkedHashSet<String?>()
-            ) { AlipayUser.getFriendList() }.withDesc("设置遣返规则作用的好友名单。").also {
-                sendBackAnimalList = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "notifyFriend",
-                "通知赶鸡 | 开启",
-                false
-            ).withDesc("自动通知好友赶回来偷吃的小鸡。").also { notifyFriend = it })
-        modelFields.addField(
-            ChoiceModelField(
-                "notifyFriendType",
-                "通知赶鸡 | 动作",
-                NotifyFriendType.NOTIFY,
-                NotifyFriendType.nickNames
-            ).withDesc("选择通知名单模式：仅通知选中好友，或排除选中好友。需开启“通知赶鸡 | 开启”。").also {
-                notifyFriendType = it
-            })
-        modelFields.addField(
-            SelectModelField(
-                "notifyFriendList",
-                "通知赶鸡 | 好友列表",
-                LinkedHashSet<String?>()
-            ) { AlipayUser.getFriendList() }.withDesc("设置通知规则作用的好友名单。需开启“通知赶鸡 | 开启”。").also {
-                notifyFriendList = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "donation",
-                "每日捐蛋 | 开启",
-                false
-            ).withDesc("自动捐赠爱心鸡蛋到公益项目。").also { donation = it })
-        modelFields.addField(
-            ChoiceModelField(
-                "donationCount",
-                "每日捐蛋 | 次数",
-                DonationCount.ONE,
-                DonationCount.nickNames
-            ).withDesc("控制每日捐蛋次数。").also { donationCount = it })
-        modelFields.addField(
-            BooleanModelField(
-                "useSpecialFood",
-                "使用特殊食品",
-                false
-            ).withDesc("自动使用特殊食物，加快爱心鸡蛋进度。").also { useSpecialFood = it })
-        modelFields.addField(
-            IntegerModelField(
-                "useSpecialFoodCount",
-                "使用特殊食品 | 每日次数限制(-1为无限制)",
-                -1,
-                -1,
-                null
-            ).withDesc("控制今日最多自动使用多少个特殊食品；-1 表示不限制。数量达到 10 个及以上时会优先按连续投喂批次处理。").also {
-                useSpecialFoodCount = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "useNewEggCard",
-                "使用新蛋卡",
-                false
-            ).withDesc("自动使用新蛋卡，切换到新的产蛋进度。").also { useNewEggCard = it })
-        modelFields.addField(
-            BooleanModelField(
-                "signRegardless",
-                "庄园签到忽略饲料余量",
-                true
-            ).withDesc("开启后签到时不再严格检查饲料槽空余，直接尝试领取签到饲料。").also {
-                signRegardless = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "receiveFarmToolReward",
-                "收取道具奖励",
-                false
-            ).withDesc("自动领取庄园任务或活动中的道具类奖励。").also { receiveFarmToolReward = it })
-        modelFields.addField(
-            BooleanModelField(
-                "harvestProduce",
-                "收获爱心鸡蛋",
-                false
-            ).withDesc("有可收取的爱心鸡蛋时自动收取。").also { harvestProduce = it })
-        modelFields.addField(BooleanModelField("kitchen", "小鸡厨房", false).withDesc(
-            "执行小鸡厨房相关任务和做美食流程。"
-        ).also { kitchen = it })
-        modelFields.addField(
-            BooleanModelField(
-                "chickenDiary",
-                "小鸡日记",
-                false
-            ).withDesc("执行小鸡日记相关流程。开启后下面的贴贴和点赞配置才会生效。").also { chickenDiary = it })
-        modelFields.addField(
-            BooleanModelField(
-                "diaryTietze",
-                "小鸡日记 | 贴贴",
-                false
-            ).withDesc("进入小鸡日记后自动执行贴贴操作。需开启“小鸡日记”。").also { diaryTietie = it })
-        modelFields.addField(
-            ChoiceModelField(
-                "collectChickenDiary",
-                "小鸡日记 | 点赞",
-                collectChickenDiaryType.CLOSE,
-                collectChickenDiaryType.nickNames
-            ).withDesc("设置小鸡日记点赞范围：不开启、一次、当月或所有。需开启“小鸡日记”。").also {
-                collectChickenDiary = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "listOrnaments",
-                "小鸡每日换装",
-                false
-            ).withDesc("每天随机切换一套已拥有的小鸡装扮。").also { listOrnaments = it })
-        modelFields.addField(BooleanModelField("family", "家庭 | 开启", false).withDesc(
-            "执行庄园家庭相关任务。"
-        ).also { family = it })
-        modelFields.addField(
-            SelectModelField(
-                "familyOptions",
-                "家庭 | 选项",
-                LinkedHashSet<String?>(),
-                farmFamilyOption()
-            ).withDesc("勾选允许自动执行的家庭任务类型。").also { familyOptions = it })
-        modelFields.addField(
-            SelectModelField(
-                "notInviteList",
-                "家庭 | 好友分享排除列表",
-                LinkedHashSet<String?>()
-            ) { AlipayUser.getFriendList() }.withDesc("家庭分享或邀请时排除这些好友。").also {
-                notInviteList = it
-            })
-        //        modelFields.addField(giftFamilyDrawFragment = new StringModelField("giftFamilyDrawFragment", "家庭 | 扭蛋碎片赠送用户ID(配置目录查看)", ""));
-        modelFields.addField(
-            BooleanModelField(
-                "paradiseCoinExchangeBenefit",
-                "小鸡乐园 | 兑换权益",
-                false
-            ).withDesc("自动使用小鸡乐园币兑换选中的权益。").also { paradiseCoinExchangeBenefit = it })
-        modelFields.addField(
-            SelectModelField(
-                "paradiseCoinExchangeBenefitList",
-                "小鸡乐园 | 权益列表",
-                LinkedHashSet<String?>()
-            ) { ParadiseCoinBenefit.getList() }.withDesc("仅兑换列表中的小鸡乐园权益。需开启“小鸡乐园 | 兑换权益”。").also {
-                paradiseCoinExchangeBenefitList = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "visitAnimal",
-                "到访小鸡送礼",
-                false
-            ).withDesc("处理到访小鸡送礼，并按“送麦子好友列表”配置给好友送麦子。").also { visitAnimal = it })
-        modelFields.addField(
-            BooleanModelField(
-                "useSmartSchedulerManager",
-                "使用SmartSchedulerManager定时蹲点任务",
-                false
-            ).withDesc("蹲点投喂、定时赶鸡等子任务优先使用 SmartSchedulerManager 调度。").also {
-                useSmartSchedulerManager = it
-            })
-        modelFields.addField(
-            BooleanModelField(
-                "doChouChouLeDonationTask",
-                "抽抽乐捐赠任务(禁止开启)",
-                false
-            ).withDesc("控制是否执行抽抽乐中的捐赠类任务；默认关闭以避免额外捐赠。需开启“小鸡抽抽乐”。").also {
-                doChouChouLeDonationTask = it
-            })
-        return modelFields
+        return buildModelFields {
+            choice("recallAnimalType", "召回小鸡", RecallAnimalType.ALWAYS, RecallAnimalType.nickNames, "控制遇到小鸡外出、偷吃或饥饿时是否主动召回。") { recallAnimalType = it }
+            boolean("feedAnimal", "自动喂小鸡", false, "自动给自家小鸡喂食。") { feedAnimal = it }
+            boolean("doFarmTask", "做饲料任务", false, "执行庄园每日任务获取饲料、道具 and 抽奖机会。") { doFarmTask = it }
+            timeTrigger("farmTaskTrigger", "饲料任务触发时间", "0830,2200", TimeTriggerParseOptions(allowCheckpoints = true, allowWindows = false, allowBlockedWindows = false, tag = TAG), desc = "按检查点槽位尝试执行饲料任务；格式 HHmm 或 HHmmss，多个时间点用逗号分隔，填 -1 关闭。", dependency = "doFarmTask") { farmTaskTrigger = it }
+            boolean("receiveFarmTaskAward", "收取饲料奖励", false, "自动领取已完成饲料任务的奖励。") { receiveFarmTaskAward = it }
+            boolean("useBigEaterTool", "加饭卡 | 使用", false, "自动使用加饭卡，延长单次进食时长。") { useBigEaterTool = it }
+            boolean("useAccelerateTool", "加速卡 | 使用", false, "自动使用加速卡缩短进食时间。") { useAccelerateTool = it }
+            boolean("useAccelerateToolContinue", "加速卡 | 连续使用", true, desc = "满足条件时连续使用多张加速卡，快速清空库存。", dependency = "useAccelerateTool") { useAccelerateToolContinue = it }
+            integer("remainingTime", "饲料剩余时间大于多少时直接使用加速（分钟）（-1关闭）", 20, desc = "饲料剩余时间超过该值时才使用加速卡，-1 为关闭。", dependency = "useAccelerateTool") { remainingTime = it }
+            boolean("useAccelerateToolWhenMaxEmotion", "加速卡 | 仅在满状态时使用", false, "仅在小鸡心情值满状态时才使用加速卡。需开启“加速卡 | 使用”。", dependency = "useAccelerateTool") { useAccelerateToolWhenMaxEmotion = it }
+            boolean("recordFarmGame", "游戏改分(星星球、登山赛、飞行赛、揍小鸡)", false, "执行庄园小游戏改分逻辑，按预估上限刷取饲料。") { recordFarmGame = it }
+            integer("gameRewardMax", "游戏改分最大获得饲料量(g)", 360, 0, null, "游戏改分期望产出的最大饲料值，饲料空余大于该值时会先领取饲料任务的奖励。必得至少630g", dependency = "recordFarmGame") { gameRewardMax = it }
+            boolean("chouchouleEnable", "开启小鸡抽抽乐", false, "执行庄园抽抽乐，领取抽奖次数并参与抽奖。") { chouchouleEnable = it }
+            boolean("autoExchange", "IP抽抽乐最优兑换商店", true, "IP 或活动抽抽乐按奖励价值从高到低自动兑换。", dependency = "chouchouleEnable") { autoExchange = it }
+            integer("exchangeDaysBeforeEndIp", "IP抽抽乐|活动结束前几天开始兑换(0每日兑换)", 0, 0, 30, dependency = "autoExchange") { exchangeDaysBeforeEndIp = it }
+            selectAndCount("autoExchangeList", "IP抽抽乐|自定义兑换列表(无特殊需求则不设置)", LinkedHashMap(), { AntFarmIPChouChouLeBenefit.getList() }, "勾选则按顺序兑换，不勾选则按默认逻辑", dependency = "autoExchange") { autoExchangeList = it }
+            boolean("doChouChouLeDonationTask", "抽抽乐捐赠任务(禁止开启)", true, "控制是否执行抽抽乐中的捐赠类任务；默认关闭以避免额外捐赠。需开启“小鸡抽抽乐”。", dependency = "chouchouleEnable") { doChouChouLeDonationTask = it }
+            boolean("gameIgnoreAcceLimit", "自定义游戏改分|抽抽乐时间(不开)", false, "开启后，游戏改分和抽抽乐只按设定时间执行，不再等待加速卡或游戏改分前置流程。", dependency = "recordFarmGame") { ignoreAcceLimit = it }
+            boolean("chouIgnoreAcceLimit", "自定义游戏改分|抽抽乐时间(不开)", false, "开启后，游戏改分和抽抽乐只按设定时间执行，不再等待加速卡或游戏改分前置流程。", dependency = "chouchouleEnable") { ignoreAcceLimit = it }
+            timeTrigger("farmGameTime", "小鸡游戏时间(范围)", "2200-2400", TimeTriggerParseOptions(allowCheckpoints = false, allowWindows = true, allowBlockedWindows = false, tag = TAG), desc = "仅在这些允许时间段内执行游戏改分；支持多个 HHmm-HHmm，填 -1 关闭。", dependency = "gameIgnoreAcceLimit") { farmGameTime = it }
+            timeTrigger("chouchouleTime", "小鸡抽抽乐触发时间", "0900", TimeTriggerParseOptions(allowCheckpoints = true, allowWindows = true, allowBlockedWindows = false, tag = TAG), desc = "控制抽抽乐尝试时机；支持时间点或允许时间段，格式 HHmm、HHmm-HHmm，填 -1 关闭。", dependency = "chouIgnoreAcceLimit") { chouchouleTime = it }
+            boolean("enableDdrawGameCenterAward", "开宝箱", false, "自动领取庄园游戏中心可开启的宝箱奖励。") { enableDdrawGameCenterAward = it }
+            timePoint("sleepTime", "小鸡睡觉时间(关闭:-1)", "2330", allowDisable = true, desc = "设置自动让小鸡睡觉的时间，填 -1 关闭睡觉定时。", dependency = "sleepAndWakeup") { sleepTime = it }
+            timePoint("wakeupTime", "小鸡起床时间(关闭:-1)", "0530", allowDisable = true, desc = "设置自动让小鸡起床的时间，填 -1 关闭起床定时。", dependency = "sleepAndWakeup") { wakeUpTime = it }
+            selectAndCount("feedFriendAnimalList", "帮喂小鸡 | 好友列表", LinkedHashMap(), { AlipayUser.getList() }, "配置帮喂好友及每日次数；列表中的数量表示可帮喂次数。", dependency = "feedFriendAnimal") { feedFriendAnimalList = it }
+            boolean("rewardFriend", "打赏好友", false, "自动处理可打赏的好友奖励。") { rewardFriend = it }
+            boolean("getFeed", "一起拿饲料", false, "处理“一起拿饲料”互动，可送给好友或随机送出。") { getFeed = it }
+            choice("getFeedType", "一起拿饲料 | 动作", GetFeedType.GIVE, GetFeedType.nickNames, "选择一起拿饲料的赠送策略。", dependency = "getFeed") { getFeedType = it }
+            select("getFeedlList", "一起拿饲料 | 好友列表", LinkedHashSet(), "仅对选中的好友执行一起拿饲料。", dependency = "getFeed") { AlipayUser.getList() }.also { getFeedlList = it }
+            boolean("acceptGift", "收麦子", false, "自动收取好友赠送的麦子。") { acceptGift = it }
+            selectAndCount("visitFriendList", "送麦子好友列表", LinkedHashMap(), { AlipayUser.getList() }, "配置送麦子好友及每日赠送次数。需开启“到访小鸡送礼”。") { visitFriendList = it }
+            boolean("hireAnimal", "雇佣小鸡 | 开启", false, "自动雇佣好友小鸡来打工赚取麦子。") { hireAnimal = it }
+            choice("hireAnimalType", "雇佣好友小鸡 | 动作", HireAnimalType.DONT_HIRE, HireAnimalType.nickNames, "选择名单模式：仅雇佣选中好友，或排除选中好友。需开启“雇佣小鸡 | 开启”。", dependency = "hireAnimal") { hireAnimalType = it }
+            select("hireAnimalList", "雇佣小鸡 | 好友列表", LinkedHashSet(), "仅在选中的好友列表内尝试雇佣小鸡。", dependency = "hireAnimal") { AlipayUser.getList() }.also { hireAnimalList = it }
+            choice("npcAnimalType", "雇佣NPC小鸡(满产自动重雇)", NpcConfig.NONE.ordinal, NpcConfig.nickNames, "选择自动雇佣并在满产后重雇的 NPC 小鸡；选“关闭”则不处理。") { npcAnimalType = it }
+            boolean("sendBackAnimal", "遣返 | 开启", false, "自动遣返来偷吃或做客的小鸡。") { sendBackAnimal = it }
+            choice("sendBackAnimalWay", "遣返 | 方式", SendBackAnimalWay.NORMAL, SendBackAnimalWay.nickNames, "选择遣返方式：攻击或常规赶回。需开启“遣返 | 开启”。", dependency = "sendBackAnimal") { sendBackAnimalWay = it }
+            choice("sendBackAnimalType", "遣返 | 动作", SendBackAnimalType.NOT_BACK, SendBackAnimalType.nickNames, "选择名单模式：仅遣返选中好友，或遣返未选中的好友。需开启“遣返 | 开启”。", dependency = "sendBackAnimal") { sendBackAnimalType = it }
+            select("dontSendFriendList", "遣返 | 好友列表", LinkedHashSet(), "设置遣返规则作用的好友名单。", dependency = "sendBackAnimal") { AlipayUser.getList() }.also { sendBackAnimalList = it }
+            boolean("notifyFriend", "通知赶鸡 | 开启", false, "自动通知好友赶回来偷吃的小鸡。") { notifyFriend = it }
+            choice("notifyFriendType", "通知赶鸡 | 动作", NotifyFriendType.NOTIFY, NotifyFriendType.nickNames, "选择通知名单模式：仅通知选中好友，或排除选中好友。需开启“通知赶鸡 | 开启”。", dependency = "notifyFriend") { notifyFriendType = it }
+            select("notifyFriendList", "通知赶鸡 | 好友列表", LinkedHashSet(), "设置通知规则作用的好友名单。需开启“通知赶鸡 | 开启”。", dependency = "notifyFriend") { AlipayUser.getList() }.also { notifyFriendList = it }
+            boolean("donation", "每日捐蛋 | 开启", false, "自动捐赠爱心鸡蛋到公益项目。") { donation = it }
+            choice("donationCount", "每日捐蛋 | 模式", DonationCount.ONE, DonationCount.nickNames, "控制每日捐蛋模式。", dependency = "donation") { donationCount = it }
+            boolean("useSpecialFood", "使用特殊食品", false, "自动使用特殊食物，加快爱心鸡蛋进度。") { useSpecialFood = it }
+            integer("useSpecialFoodCount", "每次使用数量", 1, 1, null, "控制每次使用特殊食品的数量。", dependency = "useSpecialFood") { useSpecialFoodCount = it }
+            boolean("useNewEggCard", "使用新蛋卡", false, "自动使用新蛋卡，切换到新的产蛋进度。") { useNewEggCard = it }
+            boolean("signRegardless", "庄园签到忽略饲料余量", false, "开启后签到时不再严格检查饲料槽空余，直接尝试领取签到饲料。") { signRegardless = it }
+            boolean("receiveFarmToolReward", "收取道具奖励", false, "自动领取庄园任务或活动中的道具类奖励。") { receiveFarmToolReward = it }
+            boolean("harvestProduce", "收获爱心鸡蛋", false, "有可收取的爱心鸡蛋时自动收取。") { harvestProduce = it }
+            boolean("kitchen", "小鸡厨房", false, "执行小鸡厨房相关任务和做美食流程。") { kitchen = it }
+            boolean("chickenDiary", "小鸡日记", false, "执行小鸡日记相关流程。开启后下面的贴贴和点赞配置才会生效。") { chickenDiary = it }
+            boolean("diaryTietie", "小鸡日记 | 贴贴", false, "进入小鸡日记后自动执行贴贴操作。需开启“小鸡日记”。", dependency = "chickenDiary") { diaryTietie = it }
+            choice("collectChickenDiary", "小鸡日记 | 点赞", collectChickenDiaryType.ONCE, collectChickenDiaryType.nickNames, "设置小鸡日记点赞范围：不开启、一次、当月或所有。需开启“小鸡日记”。", dependency = "chickenDiary") { collectChickenDiary = it }
+            boolean("family", "家庭 | 开启", false, "执行庄园家庭相关任务。") { family = it }
+            selectStatic("familyOptions", "家庭 | 选项", LinkedHashSet(), farmFamilyOption(), "勾选允许自动执行的家庭任务类型。", dependency = "family") { familyOptions = it }
+            select("notInviteList", "家庭 | 好友分享排除列表", LinkedHashSet(), "家庭分享或邀请时排除这些好友。", dependency = "family") { AlipayUser.getList() }.also { notInviteList = it }
+            boolean("paradiseCoinExchangeBenefit", "小鸡乐园 | 兑换权益", false, "自动使用小鸡乐园币兑换选中的权益。") { paradiseCoinExchangeBenefit = it }
+            select("paradiseCoinExchangeBenefitList", "小鸡乐园 | 权益列表", LinkedHashSet<String>(), "仅兑换列表中的小鸡乐园权益。需开启“小鸡乐园 | 兑换权益”。", dependency = "paradiseCoinExchangeBenefit"){ ParadiseCoinBenefit.getList() }.also { paradiseCoinExchangeBenefitList = it }
+            boolean("visitAnimal", "到访小鸡送礼", false, "处理到访小鸡送礼，并按“送麦子好友列表”配置给好友送麦子。") { visitAnimal = it }
+            boolean("useSmartSchedulerManager", "使用SmartSchedulerManager定时蹲点任务", true, "蹲点投喂、定时赶鸡等子任务优先使用 SmartSchedulerManager 调度。") { useSmartSchedulerManager = it }
+        }
     }
 
     override fun boot(classLoader: ClassLoader?) {
@@ -1262,7 +878,7 @@ class AntFarm : ModelTask() {
             if (recordFarmGame?.value == true) {
                 FarmGame.run(this@AntFarm)
             }
-            if (enableChouchoule?.value == true) {
+            if (chouchouleEnable?.value == true) {
                 ChouChouLe().run(this@AntFarm)
                 handleMultiStageTasksLoop()
             }
@@ -2156,7 +1772,7 @@ class AntFarm : ModelTask() {
                 val bizKey = task.optString("bizKey")
                 val taskStatus = task.optString("taskStatus")
 
-                if (bizKey == "tab3_gyg" && enableChouchoule?.value != true) {
+                if (bizKey == "tab3_gyg" && chouchouleEnable?.value != true) {
                     Log.farm(TAG, "抽抽乐任务[$title]已关闭，跳过饲料任务收敛检查")
                     continue
                 }

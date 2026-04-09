@@ -891,16 +891,16 @@ class ApplicationHook {
             val calendar = Calendar.getInstance()
             calendar.add(Calendar.DAY_OF_MONTH, 1)
             ApplicationHookUtils.resetToMidnight(calendar)
-            val delayToMidnight = calendar.getTimeInMillis() - System.currentTimeMillis()
+            val delayToMidnight = calendar.timeInMillis - System.currentTimeMillis()
 
-                if (delayToMidnight > 0) {
-                    schedule(delayToMidnight, "每日0点任务") {
-                        record(TAG, "⏰ 0点任务触发")
-                        updateDay()
-                        ApplicationHookEntry.onWakeupMidnight()
-                        setWakenAtTimeAlarm() // 递归设置明天
-                    }
+            if (delayToMidnight > 0) {
+                schedule(delayToMidnight, "每日0点任务") {
+                    record(TAG, "⏰ 0点任务触发")
+                    updateDay()
+                    ApplicationHookEntry.onWakeupMidnight()
+                    setWakenAtTimeAlarm() // 递归设置明天
                 }
+            }
 
             // 2. 下一次自定义唤醒（必要时跨日）
             SmartSchedulerManager.cancelNamedTask("自定义唤醒任务")
@@ -1058,4 +1058,3 @@ class ApplicationHook {
         }
     }
 }
-

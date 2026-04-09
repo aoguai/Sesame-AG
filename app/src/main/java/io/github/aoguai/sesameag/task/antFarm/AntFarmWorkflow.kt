@@ -126,7 +126,7 @@ internal suspend fun AntFarm.runFarmSocialWorkflow(
         tc.countDebug("通知好友赶鸡")
     }
 
-    if (enableChouchoule?.value == true) {
+    if (chouchouleEnable?.value == true) {
         tc.countDebug("抽抽乐")
         ChouChouLe().run(this)
         handleMultiStageTasksLoop()

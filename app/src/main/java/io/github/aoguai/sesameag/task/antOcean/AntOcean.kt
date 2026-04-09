@@ -8,6 +8,7 @@ import io.github.aoguai.sesameag.hook.Toast
 import io.github.aoguai.sesameag.model.BaseModel
 import io.github.aoguai.sesameag.model.ModelFields
 import io.github.aoguai.sesameag.model.ModelGroup
+import io.github.aoguai.sesameag.model.buildModelFields
 import io.github.aoguai.sesameag.model.withDesc
 import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.ChoiceModelField
@@ -35,6 +36,8 @@ import kotlinx.coroutines.isActive
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import java.util.LinkedHashMap
+import java.util.LinkedHashSet
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -182,66 +185,16 @@ class AntOcean : ModelTask() {
         return "AntOcean.png"
     }
 
-    override fun getFields(): ModelFields {
-        val modelFields = ModelFields()
-        modelFields.addField(
-            BooleanModelField("dailyOceanTask", "海洋任务", false).withDesc(
-                "完成并领取神奇海洋每日任务奖励，为清理和合成提供碎片。"
-            ).also { dailyOceanTask = it }
-        )
-        modelFields.addField(
-            BooleanModelField("cleanOcean", "清理 | 开启", false).withDesc(
-                "执行清理自己和好友海域垃圾的主流程。"
-            ).also { cleanOcean = it }
-        )
-        modelFields.addField(
-            ChoiceModelField(
-                "cleanOceanType",
-                "清理 | 动作",
-                CleanOceanType.DONT_CLEAN,
-                CleanOceanType.nickNames
-            ).withDesc("决定列表中的好友是清理还是跳过。").also { cleanOceanType = it }
-        )
-        modelFields.addField(
-            SelectModelField(
-                "cleanOceanList",
-                "清理 | 好友列表",
-                LinkedHashSet(),
-                AlipayUser::getFriendListAsMapperEntity
-            ).withDesc("配置要参与清理规则的好友列表。").also { cleanOceanList = it }
-        )
-        modelFields.addField(
-            BooleanModelField("exchangeProp", "神奇海洋 | 制作万能拼图", false).withDesc(
-                "把重复碎片制作成万能拼图。"
-            ).also { exchangeProp = it }
-        )
-        modelFields.addField(
-            BooleanModelField("usePropByType", "神奇海洋 | 使用万能拼图", false).withDesc(
-                "在可合成目标鱼类时自动消耗万能拼图。"
-            ).also { usePropByType = it }
-        )
-        modelFields.addField(
-            ChoiceModelField(
-                "userprotectType",
-                "保护 | 类型",
-                ProtectType.DONT_PROTECT,
-                ProtectType.nickNames
-            ).withDesc("控制哪些海域或沙滩不参与自动推进。").also { userprotectType = it }
-        )
-        modelFields.addField(
-            SelectAndCountModelField(
-                "protectOceanList",
-                "保护 | 海洋列表",
-                LinkedHashMap(),
-                AlipayBeach::getListAsMapperEntity
-            ).withDesc("配置需要保护的海域列表及对应数量配置。").also { protectOceanList = it }
-        )
-        modelFields.addField(
-            BooleanModelField("PDL_task", "潘多拉任务", false).withDesc(
-                "执行潘多拉活动系列的独立任务与奖励领取。"
-            ).also { PDL_task = it }
-        )
-        return modelFields
+    override fun getFields(): ModelFields = buildModelFields {
+        boolean("dailyOceanTask", "海洋任务", false, "完成并领取神奇海洋每日任务奖励，为清理和合成提供碎片。") { dailyOceanTask = it }
+        boolean("cleanOcean", "清理 | 开启", false, "执行清理自己和好友海域垃圾的主流程。") { cleanOcean = it }
+        choice("cleanOceanType", "清理 | 动作", CleanOceanType.DONT_CLEAN, CleanOceanType.nickNames, "决定列表中的好友是清理还是跳过。", dependency = "cleanOcean") { cleanOceanType = it }
+        select("cleanOceanList", "清理 | 好友列表", LinkedHashSet(), "配置要参与清理规则的好友列表。", dependency = "cleanOcean", setter = { cleanOceanList = it }, dataProvider = { AlipayUser.getList() })
+        boolean("exchangeProp", "神奇海洋 | 制作万能拼图", false, "把重复碎片制作成万能拼图。") { exchangeProp = it }
+        boolean("usePropByType", "神奇海洋 | 使用万能拼图", false, "在可合成目标鱼类时自动消耗万能拼图。") { usePropByType = it }
+        choice("userprotectType", "保护 | 类型", ProtectType.DONT_PROTECT, ProtectType.nickNames, "控制哪些海域或沙滩不参与自动推进。") { userprotectType = it }
+        selectAndCount("protectOceanList", "保护 | 海洋列表", LinkedHashMap(), { AlipayBeach.getList() }, "配置需要保护的海域列表及对应数量配置。", dependency = "userprotectType") { protectOceanList = it }
+        boolean("PDL_task", "潘多拉任务", false, "执行潘多拉活动系列的独立任务与奖励领取。") { PDL_task = it }
     }
 
     override fun check(): Boolean {

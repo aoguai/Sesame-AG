@@ -3,6 +3,7 @@ package io.github.aoguai.sesameag.task.AnswerAI
 import io.github.aoguai.sesameag.model.Model
 import io.github.aoguai.sesameag.model.ModelFields
 import io.github.aoguai.sesameag.model.ModelGroup
+import io.github.aoguai.sesameag.model.buildModelFields
 import io.github.aoguai.sesameag.model.withDesc
 import io.github.aoguai.sesameag.model.modelFieldExt.ChoiceModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.StringModelField
@@ -12,6 +13,18 @@ import io.github.aoguai.sesameag.util.LogCatalog
 import io.github.aoguai.sesameag.util.LogChannel
 
 class AnswerAI : Model() {
+
+    override fun getName(): String {
+        return "AI答题"
+    }
+
+    override fun getGroup(): ModelGroup {
+        return ModelGroup.OTHER
+    }
+
+    override fun getIcon(): String {
+        return "ic_answer_ai"
+    }
 
     object AIType {
         const val TONGYI = 0
@@ -27,78 +40,29 @@ class AnswerAI : Model() {
         )
     }
 
-    private val getTongyiAIToken = TextModelField.UrlTextModelField(
-        "getTongyiAIToken",
-        "通义千问 | 获取令牌",
-        "https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key"
-    ).withDesc("打开通义千问官方文档查看 API Key 的申请与配置方式，仅在下方 AI 类型选择通义千问时使用。")
-    private val tongYiToken = StringModelField("tongYiToken", "qwen-turbo | 设置令牌", "").withDesc(
-        "填写通义千问的 DashScope API Key；未填写或失效时无法使用通义千问答题。"
-    )
-    private val getGeminiAIToken = TextModelField.UrlTextModelField(
-        "getGeminiAIToken",
-        "Gemini | 获取令牌",
-        "https://aistudio.google.com/app/apikey"
-    ).withDesc("打开 Gemini 官方密钥页面获取 API Key，仅在下方 AI 类型选择 Gemini 时使用。")
-    private val GeminiToken = StringModelField("GeminiAIToken", "gemini-1.5-flash | 设置令牌", "").withDesc(
-        "填写 Gemini API Key；用于调用 gemini-1.5-flash 模型进行答题。"
-    )
-    private val getDeepSeekToken = TextModelField.UrlTextModelField(
-        "getDeepSeekToken",
-        "DeepSeek | 获取令牌",
-        "https://platform.deepseek.com/usage"
-    ).withDesc("打开 DeepSeek 开放平台查看 API Key 获取方式，仅在下方 AI 类型选择 DeepSeek 时使用。")
-    private val DeepSeekToken = StringModelField("DeepSeekToken", "DeepSeek-R1 | 设置令牌", "").withDesc(
-        "填写 DeepSeek API Key；用于调用 DeepSeek-R1 模型进行答题。"
-    )
-    private val getCustomServiceToken = TextModelField.ReadOnlyTextModelField(
-        "getCustomServiceToken",
-        "粉丝福利😍",
-        "下面这个不用动可以白嫖到3月10号让我们感谢讯飞大善人🙏"
-    ).withDesc("仅作当前默认自定义服务的提示说明；如果你有自己的兼容服务，可直接改下面三项配置。")
-    private val CustomServiceToken = StringModelField(
-        "CustomServiceToken",
-        "自定义服务 | 设置令牌",
-        "sk-pQF9jek0CTTh3boKDcA9DdD7340a4e929eD00a13F681Cd8e"
-    ).withDesc("填写兼容 OpenAI 接口的自定义服务令牌，仅在 AI 类型选择自定义服务时生效。")
-    private val CustomServiceUrl = StringModelField(
-        "CustomServiceBaseUrl",
-        "自定义服务 | 设置BaseUrl",
-        "https://maas-api.cn-huabei-1.xf-yun.com/v1"
-    ).withDesc("填写自定义服务的接口根地址，通常形如 https://host/v1，仅在 AI 类型选择自定义服务时生效。")
-    private val CustomServiceModel = StringModelField(
-        "CustomServiceModel",
-        "自定义服务 | 设置模型",
-        "xdeepseekr1"
-    ).withDesc("填写自定义服务实际使用的模型名称，仅在 AI 类型选择自定义服务时生效。")
+    private lateinit var getTongyiAIToken: TextModelField.UrlTextModelField
+    private lateinit var tongYiToken: StringModelField
+    private lateinit var getGeminiAIToken: TextModelField.UrlTextModelField
+    private lateinit var GeminiToken: StringModelField
+    private lateinit var getDeepSeekToken: TextModelField.UrlTextModelField
+    private lateinit var DeepSeekToken: StringModelField
+    private lateinit var getCustomServiceToken: TextModelField.ReadOnlyTextModelField
+    private lateinit var CustomServiceToken: StringModelField
+    private lateinit var CustomServiceUrl: StringModelField
+    private lateinit var CustomServiceModel: StringModelField
 
-    override fun getName(): String = "AI答题"
-
-    override fun getGroup(): ModelGroup = ModelGroup.OTHER
-
-    override fun getIcon(): String = "AnswerAI.svg"
-
-    override fun getFields(): ModelFields {
-        val modelFields = ModelFields()
-        modelFields.addField(aiType)
-        modelFields.addField(getTongyiAIToken)
-        modelFields.addField(tongYiToken)
-        modelFields.addField(getGeminiAIToken)
-        modelFields.addField(GeminiToken)
-        modelFields.addField(getDeepSeekToken)
-        modelFields.addField(DeepSeekToken)
-        modelFields.addField(getCustomServiceToken)
-        modelFields.addField(CustomServiceToken)
-        modelFields.addField(CustomServiceUrl)
-        modelFields.addField(CustomServiceModel)
-        return modelFields
-    }
-
-    override fun prepare() {
-        enable = enableField.value == true
-        if (!enable) {
-            disableAIService()
-        }
+    override fun getFields(): ModelFields = buildModelFields {
+        choice("useGeminiAI", "AI类型", AIType.TONGYI, AIType.nickNames, desc = "选择当前用于自动答题的 AI 服务；关闭模块总开关后会退回普通答题逻辑。") { aiType = it }
+        urlText("getTongyiAIToken", "通义千问 | 获取令牌", "https://help.aliyun.com/zh/dashscope/developer-reference/acquisition-and-configuration-of-api-key", desc = "打开通义千问官方文档查看 API Key 的申请与配置方式，仅在 AI 类型选择通义千问时显示。", dependency = "useGeminiAI=${AIType.TONGYI}") { getTongyiAIToken = it }
+        string("tongYiToken", "qwen-turbo | 设置令牌", "", desc = "填写通义千问的 DashScope API Key；未填写或失效时无法使用通义千问答题。", dependency = "useGeminiAI=${AIType.TONGYI}") { tongYiToken = it }
+        urlText("getGeminiAIToken", "Gemini | 获取令牌", "https://aistudio.google.com/app/apikey", desc = "打开 Gemini 官方密钥页面获取 API Key，仅在 AI 类型选择 Gemini 时显示。", dependency = "useGeminiAI=${AIType.GEMINI}") { getGeminiAIToken = it }
+        string("GeminiAIToken", "gemini-1.5-flash | 设置令牌", "", desc = "填写 Gemini API Key；用于调用 gemini-1.5-flash 模型进行答题。", dependency = "useGeminiAI=${AIType.GEMINI}") { GeminiToken = it }
+        urlText("getDeepSeekToken", "DeepSeek | 获取令牌", "https://platform.deepseek.com/usage", desc = "打开 DeepSeek 开放平台查看 API Key 获取方式，仅在 AI 类型选择 DeepSeek 时显示。", dependency = "useGeminiAI=${AIType.DEEPSEEK}") { getDeepSeekToken = it }
+        string("DeepSeekToken", "DeepSeek-R1 | 设置令牌", "", desc = "填写 DeepSeek API Key；用于调用 DeepSeek-R1 模型进行答题。", dependency = "useGeminiAI=${AIType.DEEPSEEK}") { DeepSeekToken = it }
+        readOnlyText("getCustomServiceToken", "粉丝福利😍", "下面这个不用动可以白嫖到3月10号让我们感谢讯飞大善人🙏", desc = "仅作当前默认自定义服务的提示说明；如果你有自己的兼容服务，可直接改下面三项配置。", dependency = "useGeminiAI=${AIType.CUSTOM}") { getCustomServiceToken = it }
+        string("CustomServiceToken", "自定义服务 | 设置令牌", "sk-pQF9jek0CTTh3boKDcA9DdD7340a4e929eD00a13F681Cd8e", desc = "填写兼容 OpenAI 接口的自定义服务令牌，仅在 AI 类型选择自定义服务时生效。", dependency = "useGeminiAI=${AIType.CUSTOM}") { CustomServiceToken = it }
+        string("CustomServiceBaseUrl", "自定义服务 | 设置BaseUrl", "https://maas-api.cn-huabei-1.xf-yun.com/v1", desc = "填写自定义服务的接口根地址，通常形如 https://host/v1，仅在 AI 类型选择自定义服务时生效。", dependency = "useGeminiAI=${AIType.CUSTOM}") { CustomServiceUrl = it }
+        string("CustomServiceModel", "自定义服务 | 设置模型", "xdeepseekr1", desc = "填写自定义服务实际使用的模型名称，仅在 AI 类型选择自定义服务时生效。", dependency = "useGeminiAI=${AIType.CUSTOM}") { CustomServiceModel = it }
     }
 
     override fun boot(classLoader: ClassLoader?) {
@@ -157,12 +121,10 @@ class AnswerAI : Model() {
 
         private var enable = false
         private var answerAIInterface: AnswerAIInterface? = null
-        private val aiType = ChoiceModelField("useGeminiAI", "AI类型", AIType.TONGYI, AIType.nickNames).withDesc(
-            "选择当前用于自动答题的 AI 服务；关闭模块总开关后会退回普通答题逻辑。"
-        )
+        private var aiType: ChoiceModelField? = null
 
         private fun getSafeAiType(): Int {
-            return (aiType.value ?: AIType.TONGYI).coerceIn(0, AIType.nickNames.lastIndex)
+            return (aiType?.value ?: AIType.TONGYI).coerceIn(0, AIType.nickNames.lastIndex)
         }
 
         private fun resolveLogChannel(flag: String): LogChannel {
@@ -234,4 +196,3 @@ class AnswerAI : Model() {
         }
     }
 }
-
