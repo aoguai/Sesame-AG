@@ -26,8 +26,8 @@ enum class ModelGroup(
     SPORTS("SPORTS", "运动", "svg/group/sports.svg"),
     /** 会员 */
     MEMBER("MEMBER", "会员", "svg/group/member.svg"),
-    /** 其他 */
-    OTHER("OTHER", "其他", "svg/group/other.svg");
+    OTHER("OTHER", "其他", "svg/group/other.svg"),
+    HIDE("HIDE", "隐藏", "");
 
     companion object {
         private val MAP: Map<String, ModelGroup> = values().associateBy { it.code }

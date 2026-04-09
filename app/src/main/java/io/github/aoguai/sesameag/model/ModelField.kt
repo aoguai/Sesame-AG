@@ -48,9 +48,19 @@ open class ModelField<T> : Serializable {
     @JsonIgnore
     var dependencyCode: String? = null
     
-    /** 当前值 */
+    /** 内部存储值 */
     @Volatile
-    var value: T? = null
+    private var _value: T? = null
+
+    /**
+     * 核心兼容性：对外暴露非空 T
+     * 维持原有逻辑：(_value ?: defaultValue) as T
+     * 这样业务代码中 if (field.value) 这种针对 Boolean 的逻辑不会报错
+     */
+    open var value: T
+        @Suppress("UNCHECKED_CAST")
+        get() = (_value ?: defaultValue) as T
+        set(v) { _value = v }
 
     /**
      * 默认构造函数，初始化字段值类型
@@ -73,11 +83,11 @@ open class ModelField<T> : Serializable {
      * @param name  字段名称
      * @param value 字段初始值
      */
-    constructor(code: String, name: String, value: T?) : this() {
-        this.code = code
-        this.name = name
+    constructor(code: String?, name: String?, value: T?) : this() {
+        this.code = code.orEmpty()
+        this.name = name.orEmpty()
         this.defaultValue = value
-        this.desc = ""
+        this.desc = null
         // 如果反射获取类型失败（返回Any、Void或void），从value推断类型
         if (valueType == Any::class.java || valueType == Void::class.java || valueType == Void.TYPE) {
             valueType = when (value) {
@@ -96,9 +106,9 @@ open class ModelField<T> : Serializable {
      * @param value 字段初始值
      * @param desc  字段描述
      */
-    constructor(code: String, name: String, value: T?, desc: String) : this() {
-        this.code = code
-        this.name = name
+    constructor(code: String?, name: String?, value: T?, desc: String?) : this() {
+        this.code = code.orEmpty()
+        this.name = name.orEmpty()
         this.defaultValue = value
         this.desc = desc
         // 如果反射获取类型失败（返回Any、Void或void），从value推断类型
@@ -116,6 +126,7 @@ open class ModelField<T> : Serializable {
      *
      * @param objectValue 要设置的值
      */
+    @Suppress("UNCHECKED_CAST")
     open fun setObjectValue(objectValue: Any?) {
         if (objectValue == null) {
             reset() // 如果传入值为 null，则重置为默认值
@@ -123,13 +134,13 @@ open class ModelField<T> : Serializable {
         }
         
         // 处理Boolean到Integer的转换
-        val processedValue = if (valueType == Integer::class.java && objectValue is Boolean) {
+        val processedValue = if (valueType == Int::class.javaObjectType && objectValue is Boolean) {
             if (objectValue) 1 else 0
         } else {
             objectValue
         }
         
-        value = JsonUtil.parseObject(processedValue, valueType) // 解析并设置当前值
+        _value = JsonUtil.parseObject(processedValue, valueType) as T? // 解析并设置当前值
     }
 
     /**
@@ -199,12 +210,13 @@ open class ModelField<T> : Serializable {
      *
      * @return 配置字符串
      */
-    @JsonIgnore
-    open fun getConfigValue(): String? {
-        val v = value ?: return null
-        val configValue = toConfigValue(v) ?: return null
-        return JsonUtil.formatJson(configValue) // 转换为 JSON 字符串
-    }
+    @get:JsonIgnore
+    open val configValue: String?
+        get() {
+            val v = value // 访问非空 getter 逻辑
+            val configValue = toConfigValue(v) ?: return null
+            return JsonUtil.formatJson(configValue) // 转换为 JSON 字符串
+        }
 
     /**
      * 设置配置值
@@ -212,6 +224,7 @@ open class ModelField<T> : Serializable {
      * @param configValue 配置值字符串
      */
     @JsonIgnore
+    @Suppress("UNCHECKED_CAST")
     open fun setConfigValue(configValue: String?) {
         if (configValue.isNullOrBlank()) {
             reset() // 如果配置值为 null 或空，则重置为默认值
@@ -226,7 +239,6 @@ open class ModelField<T> : Serializable {
         
         // DEBUG: 记录类型信息
         val valueTypeBefore = valueType
-        val isVoidType = (valueType == Void::class.java || valueType == Void.TYPE)
         
         // 如果反射类型推断失败，从objectValue推断真实类型
         if (valueType == Any::class.java || valueType == Void::class.java || valueType == Void.TYPE) {
@@ -235,16 +247,16 @@ open class ModelField<T> : Serializable {
         }
         
         // 如果对象值与配置值相等，则直接解析配置值
-        value = if (objectValue == configValue) {
-            JsonUtil.parseObject(configValue, valueType) ?: run {
+        _value = if (objectValue == configValue) {
+            JsonUtil.parseObject(configValue, valueType) as T? ?: run {
                 reset()
                 return
             }
         } else {
             // 将objectValue转换为JSON字符串再解析，避免传入null
             val jsonValue = JsonUtil.formatJson(objectValue)
-            if (!jsonValue.isNullOrBlank()) {
-                JsonUtil.parseObject(jsonValue, valueType) ?: run {
+            if (jsonValue.isNotBlank()) {
+                JsonUtil.parseObject(jsonValue, valueType) as T? ?: run {
                     reset()
                     return
                 }
@@ -263,7 +275,7 @@ open class ModelField<T> : Serializable {
      * 重置当前值为默认值
      */
     open fun reset() {
-        value = defaultValue // 设置当前值为默认值
+        _value = defaultValue // 设置当前值为默认值
     }
 
     /**
@@ -305,6 +317,6 @@ open class ModelField<T> : Serializable {
  * 链式设置字段描述，便于在字段声明处按需补充说明文案。
  */
 fun <F : ModelField<*>> F.withDesc(desc: String?): F = apply {
-    this.desc = desc?.trim().orEmpty()
+    this.desc = desc?.trim()
 }
 

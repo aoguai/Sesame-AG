@@ -107,7 +107,7 @@ abstract class ModelTask : Model() {
         // 只有蚂蚁森林启用且当前不是蚂蚁森林任务时，才拦截能量时间
         if (getName() != "蚂蚁森林") {
             val antForest = getModel(AntForest::class.java)
-            if (antForest != null && antForest.isEnable()) {
+            if (antForest != null && antForest.isEnable) {
                 if (TaskCommon.IS_ENERGY_TIME) {
                     Log.record(getName() ?: "Task", "⏸ 当前为只收能量时间【${BaseModel.energyTime.value}】，停止执行${getName()}任务！")
                     return false
@@ -245,7 +245,7 @@ abstract class ModelTask : Model() {
                     Log.record(TAG, "强制重启任务 ${getName()}")
                     stopTask()
                 }
-                if (!isEnable() || !check()) {
+                if (!isEnable || !check()) {
                     Log.record(TAG, "任务 ${getName()} 不满足执行条件")
                     return@withLock
                 }

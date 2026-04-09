@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
+import com.fasterxml.jackson.annotation.JsonIgnore
 import io.github.aoguai.sesameag.R
 import io.github.aoguai.sesameag.model.ModelField
 import io.github.aoguai.sesameag.ui.ChoiceDialog
@@ -15,31 +16,28 @@ import io.github.aoguai.sesameag.ui.ChoiceDialog
  * 选择型字段，用于在多个选项中选择一个
  */
 class ChoiceModelField : ModelField<Int> {
-    
-    private var choiceArray: Array<out String?>? = null
+    private var choiceArray: Array<String?>? = null
 
-    constructor(code: String, name: String, value: Int) : super(code, name, value) {
-        valueType = Int::class.java
+    constructor(code: String?, name: String?, value: Int?) : super(code, name, value ?: 0)
+
+    constructor(code: String?, name: String?, value: Int?, choiceArray: Array<out String?>?) : super(code, name, value ?: 0) {
+        @Suppress("UNCHECKED_CAST")
+        this.choiceArray = choiceArray as Array<String?>?
     }
 
-    constructor(code: String, name: String, value: Int, choiceArray: Array<out String?>) : super(code, name, value) {
-        this.choiceArray = choiceArray
-        valueType = Int::class.java
-    }
+    constructor(code: String?, name: String?, value: Int?, desc: String?) : super(code, name, value ?: 0, desc)
 
-    constructor(code: String, name: String, value: Int, desc: String) : super(code, name, value, desc) {
-        valueType = Int::class.java
-    }
-
-    constructor(code: String, name: String, value: Int, choiceArray: Array<out String?>, desc: String) 
-        : super(code, name, value, desc) {
-        this.choiceArray = choiceArray
-        valueType = Int::class.java
+    constructor(code: String?, name: String?, value: Int?, choiceArray: Array<out String?>?, desc: String?) : super(code, name, value ?: 0, desc) {
+        @Suppress("UNCHECKED_CAST")
+        this.choiceArray = choiceArray as Array<String?>?
     }
 
     override fun getType(): String = "CHOICE"
 
-    override fun getExpandKey(): Array<out String?>? = choiceArray
+    @JsonIgnore
+    override fun getExpandKey(): Array<String?>? {
+        return choiceArray
+    }
 
     private fun parseChoiceValue(objectValue: Any?): Int? {
         return when (objectValue) {
@@ -69,11 +67,6 @@ class ChoiceModelField : ModelField<Int> {
     override fun setConfigValue(configValue: String?) {
         value = normalizeChoiceValue(parseChoiceValue(configValue))
     }
-    
-    /**
-     * 获取配置值
-     */
-    override fun getConfigValue(): String? = value?.toString()
 
     override fun getView(context: Context): View {
         return Button(context).apply {

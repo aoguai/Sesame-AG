@@ -84,14 +84,14 @@ open class TimeRuleModelField(
             cachedSpec = null
             return
         }
-        val rawValue = value ?: "-1"
+        val rawValue = value
         cachedRawValue = rawValue
         cachedSpec = parseSpec(rawValue)
     }
 
     @JsonIgnore
     fun getTriggerSpec(): TimeTriggerSpec {
-        val rawValue = value ?: "-1"
+        val rawValue = value
         val cached = cachedSpec
         if (cached != null && cachedRawValue == rawValue) {
             return cached
@@ -182,7 +182,7 @@ class TimePointModelField(
     }
 
     @JsonIgnore
-    fun getPointToken(): String? = value?.takeUnless { it == "-1" }
+    fun getPointToken(): String? = value.takeUnless { it == "-1" }
 }
 
 class TimePointListModelField(
@@ -227,7 +227,7 @@ class TimePointListModelField(
     }
 }
 
-class TimeWindowListModelField(
+open class TimeWindowListModelField(
     code: String,
     name: String,
     value: String,
@@ -333,7 +333,7 @@ class HourOfDayModelField(
     }
 
     @JsonIgnore
-    fun getHourToken(): String? = value?.takeUnless { it == "-1" }
+    fun getHourToken(): String? = value.takeUnless { it == "-1" }
 
     @JsonIgnore
     fun hasReachedToday(now: Long = System.currentTimeMillis()): Boolean {

@@ -27,8 +27,9 @@ class BaseModel : Model() {
         return "BaseModel.png"
     }
 
-    override val enableFieldName: String
-        get() = "启用模块"
+    override fun getEnableFieldName(): String {
+        return "启用模块"
+    }
 
     override fun getFields(): ModelFields {
         val modelFields = ModelFields()

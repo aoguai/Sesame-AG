@@ -59,7 +59,7 @@ class OtherTask : ModelTask() {
             SelectAndCountModelField(
                 "CreditOptions",
                 "信用2101 | 事件类型",
-                LinkedHashMap<String?, Int?>(),
+                LinkedHashMap(),
                 listCreditOptions(),
                 "设置各事件每日运行次数，0为不执行，-1为不限。"
             ).also {

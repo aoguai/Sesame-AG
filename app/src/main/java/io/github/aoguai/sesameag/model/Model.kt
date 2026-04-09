@@ -13,25 +13,20 @@ import java.util.concurrent.ConcurrentHashMap
  * 所有功能模块的基类，定义了模型的基本结构和生命周期
  */
 abstract class Model {
-    
-    /** 启用字段，用于控制模型是否启用 */
+    @JvmField
     val enableField: BooleanModelField
-    
+    fun getEnableField(): BooleanModelField = enableField
+
     init {
-        // 基础模块默认启用，其他模块默认禁用
-        val defaultValue = "基础" == getName()
-        val modelName = getName().orEmpty()
-        this.enableField = BooleanModelField("enable", enableFieldName, defaultValue).withDesc(
-            "控制${modelName}模块的总开关；关闭后会跳过该模块的全部自动任务。"
-        )
+        val nameStr = getName()
+        val defaultValue = "基础" == nameStr
+        enableField = BooleanModelField("enable", getEnableFieldName(), defaultValue)
     }
-    
-    /** 获取启用字段名称 */
-    open val enableFieldName: String
-        get() = "开启${getName() ?: ""}"
-    
-    /** 判断模型是否启用 */
-    fun isEnable(): Boolean = enableField.value ?: false
+
+    open fun getEnableFieldName(): String = "开启" + (getName() ?: "")
+
+    val isEnable: Boolean
+        get() = enableField.value == true
     
     /** 获取模型类型 */
     open fun getType(): ModelType = ModelType.NORMAL

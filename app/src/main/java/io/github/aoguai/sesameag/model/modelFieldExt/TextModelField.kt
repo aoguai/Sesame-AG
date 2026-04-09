@@ -1,8 +1,6 @@
 package io.github.aoguai.sesameag.model.modelFieldExt
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -13,15 +11,15 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import io.github.aoguai.sesameag.R
 import io.github.aoguai.sesameag.model.ModelField
 import io.github.aoguai.sesameag.ui.StringDialog
+import io.github.aoguai.sesameag.ui.extension.openUrl
 
-/**
- * 文本字段类
- */
-open class TextModelField(code: String, name: String, value: String) : ModelField<String>(code, name, value) {
+open class TextModelField(code: String?, name: String?, value: String?) : ModelField<String?>(code, name, value) {
+    override fun getType(): String {
+        return "TEXT"
+    }
 
-    override fun getType(): String = "TEXT"
-
-    override fun getConfigValue(): String? = value
+    override val configValue: String
+        get() = value ?: ""
 
     override fun setConfigValue(configValue: String?) {
         value = configValue
@@ -48,12 +46,10 @@ open class TextModelField(code: String, name: String, value: String) : ModelFiel
         }
     }
 
-    /**
-     * URL文本字段，点击打开网页
-     */
-    class UrlTextModelField(code: String, name: String, value: String) : ReadOnlyTextModelField(code, name, value) {
-
-        override fun getType(): String = "URL_TEXT"
+    open class UrlTextModelField(code: String?, name: String?, value: String?) : ReadOnlyTextModelField(code, name, value) {
+        override fun getType(): String {
+            return "URL_TEXT"
+        }
 
         @JsonIgnore
         override fun getView(context: Context): View {
@@ -72,22 +68,27 @@ open class TextModelField(code: String, name: String, value: String) : ModelFiel
                 isAllCaps = false
                 setOnClickListener { v ->
                     val innerContext = v.context
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(getConfigValue()))
-                    innerContext.startActivity(intent)
+                    val url = configValue
+                    innerContext.openUrl(url)
                 }
             }
         }
     }
 
-    /**
-     * 只读文本字段
-     */
-    open class ReadOnlyTextModelField(code: String, name: String, value: String) : TextModelField(code, name, value) {
+    open class ReadOnlyTextModelField(code: String?, name: String?, value: String?) : TextModelField(code, name, value) {
+        override fun getType(): String {
+            return "READ_TEXT"
+        }
 
-        override fun getType(): String = "READ_TEXT"
+        @get:JsonIgnore
+        override var value: String?
+            get() = super.value
+            set(_) {
+                // Read-only field, no assignment
+            }
 
         override fun setConfigValue(configValue: String?) {
-            // 只读，不设置值
+            // Read-only field, no assignment
         }
     }
 }

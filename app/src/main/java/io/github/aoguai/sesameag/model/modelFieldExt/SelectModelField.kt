@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.core.type.TypeReference
 import org.json.JSONException
 import io.github.aoguai.sesameag.R
@@ -16,53 +17,46 @@ import io.github.aoguai.sesameag.model.SelectModelFieldFunc
 import io.github.aoguai.sesameag.ui.widget.ListDialog
 import io.github.aoguai.sesameag.util.JsonUtil
 
-/**
- * 数据结构说明
- * Set<String> 表示已选择的数据
- * List<? extends IdAndName> 需要选择的数据
- */
-class SelectModelField : ModelField<MutableSet<String?>>, SelectModelFieldFunc {
-    
-    private val selectListFunc: SelectListFunc?
-    private val expandValueList: List<MapperEntity>?
+class SelectModelField : ModelField<MutableSet<String>>, SelectModelFieldFunc {
+    private var selectListFunc: SelectListFunc? = null
+    private var expandValue: List<MapperEntity>? = null
 
-    constructor(code: String, name: String, value: MutableSet<String?>, expandValue: List<MapperEntity>) : super(code, name, value) {
-        this.expandValueList = expandValue
-        this.selectListFunc = null
-        valueType = value.javaClass
+    constructor(code: String?, name: String?, value: MutableSet<String>, expandValue: List<MapperEntity>?) : super(code, name, value) {
+        this.expandValue = expandValue
     }
 
-    constructor(code: String, name: String, value: MutableSet<String?>, selectListFunc: SelectListFunc) : super(code, name, value) {
+    constructor(code: String?, name: String?, value: Collection<String?>, expandValue: List<MapperEntity>?) :
+        this(code, name, value.filterNotNull().toCollection(LinkedHashSet()), expandValue)
+
+    constructor(code: String?, name: String?, value: MutableSet<String>, selectListFunc: SelectListFunc?) : super(code, name, value) {
         this.selectListFunc = selectListFunc
-        this.expandValueList = null
-        valueType = value.javaClass
     }
 
-    constructor(code: String, name: String, value: MutableSet<String?>, expandValue: List<MapperEntity>, desc: String) : super(code, name, value, desc) {
-        this.expandValueList = expandValue
-        this.selectListFunc = null
-        valueType = value.javaClass
+    constructor(code: String?, name: String?, value: Collection<String?>, selectListFunc: SelectListFunc?) :
+        this(code, name, value.filterNotNull().toCollection(LinkedHashSet()), selectListFunc)
+
+    constructor(code: String?, name: String?, value: MutableSet<String>, expandValue: List<MapperEntity>?, desc: String?) : super(code, name, value, desc) {
+        this.expandValue = expandValue
     }
 
-    constructor(code: String, name: String, value: MutableSet<String?>, selectListFunc: SelectListFunc, desc: String) : super(code, name, value, desc) {
+    constructor(code: String?, name: String?, value: MutableSet<String>, selectListFunc: SelectListFunc?, desc: String?) : super(code, name, value, desc) {
         this.selectListFunc = selectListFunc
-        this.expandValueList = null
-        valueType = value.javaClass
     }
 
     override fun getType(): String = "SELECT"
 
+    @JsonIgnore
     @Throws(JSONException::class)
     override fun getExpandValue(): List<MapperEntity>? {
-        return selectListFunc?.getList() ?: expandValueList
+        return if (selectListFunc == null) expandValue else selectListFunc!!.getList()
     }
 
     private fun normalizeId(rawId: Any?): String? {
         return rawId?.toString()?.trim()?.takeIf { it.isNotEmpty() }
     }
 
-    private fun sanitizeSelection(rawSelection: Any?): MutableSet<String?> {
-        val result = LinkedHashSet<String?>()
+    private fun sanitizeSelection(rawSelection: Any?): MutableSet<String> {
+        val result = LinkedHashSet<String>()
         when (rawSelection) {
             is Iterable<*> -> rawSelection.forEach { item ->
                 normalizeId(item)?.let { result.add(it) }
@@ -93,7 +87,7 @@ class SelectModelField : ModelField<MutableSet<String?>>, SelectModelFieldFunc {
             return
         }
         val parsedValue = try {
-            JsonUtil.parseObject(configValue, object : TypeReference<LinkedHashSet<String?>>() {})
+            JsonUtil.parseObject(configValue, object : TypeReference<LinkedHashSet<String>>() {})
         } catch (e: Exception) {
             defaultValue ?: LinkedHashSet()
         }
@@ -126,26 +120,33 @@ class SelectModelField : ModelField<MutableSet<String?>>, SelectModelFieldFunc {
     }
 
     override fun clear() {
-        value?.clear()
+        value.clear()
     }
 
-    override fun get(id: String?): Int? = 0
+    override fun get(id: String?): Int {
+        return 0
+    }
 
     override fun add(id: String?, count: Int?) {
-        normalizeId(id)?.let { value?.add(it) }
+        if (id != null) {
+            value.add(id)
+        }
     }
 
     override fun remove(id: String?) {
-        normalizeId(id)?.let { value?.remove(it) }
+        if (id != null) {
+            value.remove(id)
+        }
     }
 
     override fun contains(id: String?): Boolean {
-        return normalizeId(id)?.let { value?.contains(it) } == true
+        if (id == null) return false
+        return value.contains(id)
     }
 
     fun interface SelectListFunc {
         @Throws(JSONException::class)
-        fun getList(): List<MapperEntity>
+        fun getList(): List<MapperEntity>?
     }
 }
 

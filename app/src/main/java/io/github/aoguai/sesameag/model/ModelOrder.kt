@@ -31,7 +31,7 @@ object ModelOrder {
         EcoProtection::class.java,     // 古树
         GreenFinance::class.java,  // 绿色经营
         Reserve::class.java,       // 保护地
-        ManualTaskModel::class.java, // 手动调度任务
+//        ManualTaskModel::class.java, // 手动调度任务
         OtherTask::class.java,      // 其他
         AnswerAI::class.java         // AI答题
 

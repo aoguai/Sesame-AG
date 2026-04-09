@@ -50,7 +50,7 @@ data class ModelFieldShowDto(
                 type = modelField.getType(),
                 expandKey = modelField.getExpandKey(),
                 editorMeta = modelField.getEditorMeta(),
-                configValue = modelField.getConfigValue() ?: "",
+                configValue = modelField.configValue ?: "",
                 desc = modelField.desc ?: "",
                 todayInactive = todayState.inactive,
                 todayInactiveReason = todayState.reason

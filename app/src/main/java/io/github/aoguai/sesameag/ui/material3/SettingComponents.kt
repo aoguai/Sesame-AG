@@ -474,7 +474,7 @@ fun SingleSelectAndCountSettingItem(field: FieldState, isChild: Boolean = false,
 fun ReadOnlyTextSettingItem(field: FieldState, isChild: Boolean = false, depth: Int = 0, isHighlighted: Boolean = false) {
     val context = LocalContext.current
     val isUrl = field.type == "URL_TEXT"
-    val configValue = field.originalField.getConfigValue() ?: ""
+    val configValue = field.originalField.configValue ?: ""
     SettingItemContainer(
         name = field.name,
         modifier = if (isUrl) Modifier.clickable { context.openUrl(configValue) } else Modifier,

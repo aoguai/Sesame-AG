@@ -74,7 +74,7 @@ object StringDialog {
         }
 
         // 调用getConfigValue()方法而不是直接访问configValue属性
-        edt.setText(modelField?.getConfigValue())
+        edt.setText(modelField?.configValue)
         return editDialog
     }
 
@@ -97,7 +97,7 @@ object StringDialog {
         val edt = EditText(context).apply {
             inputType = InputType.TYPE_NULL
             setTextColor(Color.GRAY)
-            setText(modelField?.getConfigValue())
+            setText(modelField?.configValue)
         }
         
         return MaterialAlertDialogBuilder(context)

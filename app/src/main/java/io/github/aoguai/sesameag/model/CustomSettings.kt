@@ -43,7 +43,7 @@ object CustomSettings {
     val onlyOnceDailyList = SelectModelField(
         "onlyOnceDailyList",
         "每日只运行一次 | 模块选择",
-        LinkedHashSet<String?>().apply {
+        LinkedHashSet<String>().apply {
             add("antOrchard")
             add("antCooperate")
             add("antSports")
@@ -296,7 +296,7 @@ object CustomSettings {
         showName: String,
         onRefresh: () -> Unit
     ) {
-        val rows = parseTimeWindowRows(autoHandleOnceDailyTimes.getConfigValue())
+        val rows = parseTimeWindowRows(autoHandleOnceDailyTimes.configValue)
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 24, 24, 24)

@@ -9,7 +9,7 @@ import io.github.aoguai.sesameag.hook.ApplicationHookConstants
 import io.github.aoguai.sesameag.model.BaseModel
 import io.github.aoguai.sesameag.model.ModelFields
 import io.github.aoguai.sesameag.model.ModelGroup
-import io.github.aoguai.sesameag.model.withDesc
+import io.github.aoguai.sesameag.model.buildModelFields
 import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.ChoiceModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.HourOfDayModelField
@@ -127,163 +127,33 @@ class AntSports : ModelTask() {
     /**
      * @brief 定义本任务所需的所有配置字段
      */
-    override fun getFields(): ModelFields {
-        val modelFields = ModelFields()
-
-        // 行走路线
-        modelFields.addField(BooleanModelField("walk", "行走路线 | 开启", false).withDesc(
-            "开启新版运动路线自动行走，按配置主题或自定义路线推进路线并领取奖励。"
-        ).also { walk = it })
-        modelFields.addField(
-            ChoiceModelField(
-                "walkPathTheme",
-                "行走路线 | 主题",
-                WalkPathTheme.DA_MEI_ZHONG_GUO,
-                WalkPathTheme.nickNames
-            ).withDesc("选择新版行走路线主题，仅在开启行走路线且未启用自定义路线时生效。").also { walkPathTheme = it }
-        )
-        modelFields.addField(
-            BooleanModelField("walkCustomPath", "行走路线 | 开启自定义路线", false).withDesc(
-                "改为使用下方自定义路线代码，不再按主题自动选线。"
-            ).also { walkCustomPath = it }
-        )
-        modelFields.addField(
-            StringModelField(
-                "walkCustomPathId",
-                "行走路线 | 自定义路线代码(debug)",
-                "p0002023122214520001"
-            ).withDesc("自定义路线调试代码，仅在开启行走路线且启用自定义路线时生效。").also { walkCustomPathId = it }
-        )
-
-        // 旧版路线相关
-        modelFields.addField(
-            BooleanModelField("openTreasureBox", "开启宝箱", false).withDesc(
-                "兼容旧版路线入口：在未开启新版行走路线时，自动处理旧版路线的加入、前进和宝箱领取。"
-            ).also { openTreasureBox = it }
-        )
-
-        // 运动任务 & 能量球
-        modelFields.addField(
-            BooleanModelField("sportsTasks", "开启运动任务", false).withDesc(
-                "执行运动任务面板中的签到、任务完成与奖励领取。"
-            ).also { sportsTasksField = it }
-        )
-        modelFields.addField(
-            BooleanModelField(
-                "sportsEnergyBubble",
-                "运动球任务(开启后有概率出现滑块验证)",
-                false
-            ).withDesc("处理首页推荐的运动球任务，可能触发滑块验证，不包含任务面板任务。").also { sportsEnergyBubble = it }
-        )
-
-        // 首页金币 & 捐步
-        modelFields.addField(
-            BooleanModelField("receiveCoinAsset", "收能量🎈", false).withDesc(
-                "收取首页可领取的能量气球或运动币资源；关闭后不会在运动任务完成后顺带收取。"
-            ).also { receiveCoinAssetField = it }
-        )
-        modelFields.addField(
-            BooleanModelField("donateCharityCoin", "捐能量🎈 | 开启", false).withDesc(
-                "自动把能量气球捐给公益项目。"
-            ).also { donateCharityCoin = it }
-        )
-        modelFields.addField(
-            ChoiceModelField(
-                "donateCharityCoinType",
-                "捐能量🎈 | 方式",
-                DonateCharityCoinType.ONE,
-                DonateCharityCoinType.nickNames
-            ).withDesc("控制只捐一个项目还是继续处理更多项目，仅在开启捐能量时生效。").also { donateCharityCoinType = it }
-        )
-        modelFields.addField(
-            IntegerModelField("donateCharityCoinAmount", "捐能量🎈 | 数量(每次)", 100).withDesc(
-                "每次捐赠的能量气球数量，仅在开启捐能量时生效。"
-            )
-                .also { donateCharityCoinAmount = it }
-        )
-
-        // 健康岛任务
-        modelFields.addField(
-            BooleanModelField("neverlandTask", "健康岛 | 任务", false).withDesc(
-                "执行健康岛签到、任务大厅、浏览任务和泡泡领取。"
-            ).also { neverlandTask = it }
-        )
-        modelFields.addField(
-            BooleanModelField("neverlandGrid", "健康岛 | 自动走路建造", false).withDesc(
-                "自动在健康岛走路建造，消耗可用步数并受今日走路最大次数限制。"
-            ).also { neverlandGrid = it }
-        )
-        modelFields.addField(
-            IntegerModelField("neverlandGridStepCount", "健康岛 | 今日走路最大次数", 20).withDesc(
-                "健康岛当天最多执行的走路建造次数，仅在开启自动走路建造时生效。"
-            )
-                .also { neverlandGridStepCount = it }
-        )
-
-        // 抢好友相关
-        modelFields.addField(
-            BooleanModelField("battleForFriends", "抢好友 | 开启", false).withDesc(
-                "执行抢好友大战主页收益收取与抢购好友逻辑。"
-            ).also { battleForFriends = it }
-        )
-        modelFields.addField(
-            ChoiceModelField(
-                "battleForFriendType",
-                "抢好友 | 动作",
-                BattleForFriendType.ROB,
-                BattleForFriendType.nickNames
-            ).withDesc("决定好友列表是“选中抢”还是“选中不抢”，仅在开启抢好友时生效。").also { battleForFriendType = it }
-        )
-        modelFields.addField(
-            SelectModelField(
-                "originBossIdList",
-                "抢好友 | 好友列表",
-                LinkedHashSet(),
-                AlipayUser::getFriendList
-            ).withDesc("配置抢好友规则作用的好友名单，名单解释方式由“抢好友 | 动作”决定。").also { originBossIdList = it }
-        )
-
-        // 训练好友相关
-        modelFields.addField(
-            BooleanModelField("trainFriend", "训练好友 | 开启", false).withDesc(
-                "在抢好友大战中自动训练空闲好友，需同时开启“抢好友”。"
-            ).also { trainFriend = it }
-        )
-        modelFields.addField(
-            IntegerModelField("zeroCoinLimit", "训练好友 | 0金币上限次数当天关闭", 5).withDesc(
-                "仅在开启训练好友时生效；连续收取 0 金币达到次数后，当天停止继续训练好友，设为 0 表示不限制。"
-            )
-                .also { zeroCoinLimit = it }
-        )
-
-        // 文体中心 & 捐步 & 步数同步
-        modelFields.addField(BooleanModelField("tiyubiz", "文体中心", false).withDesc(
-            "执行文体中心签到、任务、线路推进和走路挑战赛。"
-        ).also { tiyubiz = it })
-        modelFields.addField(
-            IntegerModelField("minExchangeCount", "最小捐步步数", 0).withDesc(
-                "旧版捐步兑换的触发阈值；设为 0 关闭该流程，最晚时间前不足阈值会继续累积。"
-            ).also { minExchangeCount = it }
-        )
-        modelFields.addField(
-            HourOfDayModelField("earliestSyncStepTime", "同步步数 | 最早同步时间", "0600").withDesc(
-                "允许开始同步自定义步数的最早时间，仅在自定义同步步数大于 0 时生效。"
-            )
-                .also { earliestSyncStepTime = it }
-        )
-        modelFields.addField(
-            HourOfDayModelField("latestExchangeTime", "最晚捐步时间", "2200", allowDayEnd = true).withDesc(
-                "旧版捐步兑换的最晚等待时间；支持 24:00 作为日终截止，超过该时间后即使未达到最小捐步步数也会按当前步数尝试处理。"
-            )
-                .also { latestExchangeTime = it }
-        )
-        modelFields.addField(
-            IntegerModelField("syncStepCount", "自定义同步步数", 22000).withDesc(
-                "在当前真实步数基础上额外增加的步数基数，运行时会随机上浮 0~1999，设为 0 关闭自定义同步。"
-            ).also { syncStepCount = it }
-        )
-
-        return modelFields
+    override fun getFields(): ModelFields = buildModelFields {
+        boolean("walk", "行走路线 | 开启", false, "开启新版运动路线自动行走，按配置主题或自定义路线推进路线并领取奖励。") { walk = it }
+        choice("walkPathTheme", "行走路线 | 主题", WalkPathTheme.DA_MEI_ZHONG_GUO, WalkPathTheme.nickNames, "选择新版行走路线主题，仅在开启行走路线且未启用自定义路线时生效。", dependency = "walk") { walkPathTheme = it }
+        boolean("walkCustomPath", "行走路线 | 开启自定义路线", false, "改为使用下方自定义路线代码，不再按主题自动选线。", dependency = "walk") { walkCustomPath = it }
+        string("walkCustomPathId", "行走路线 | 自定义路线代码(debug)", "p0002023122214520001", "自定义路线调试代码，仅在开启行走路线且启用自定义路线时生效。", dependency = "walkCustomPath") { walkCustomPathId = it }
+        boolean("openTreasureBox", "开启宝箱", false, "兼容旧版路线入口：在未开启新版行走路线时，自动处理旧版路线的加入、前进和宝箱领取。") { openTreasureBox = it }
+        boolean("sportsTasks", "开启运动任务", false, "执行运动任务面板中的签到、任务完成与奖励领取。") { sportsTasksField = it }
+        boolean("sportsEnergyBubble", "运动球任务(开启后有概率出现滑块验证)", false, "处理首页推荐的运动球任务，可能触发滑块验证，不包含任务面板任务。") { sportsEnergyBubble = it }
+        boolean("receiveCoinAsset", "收能量🎈", false, "收取首页可领取的能量气球或运动币资源；关闭后不会在运动任务完成后顺带收取。") { receiveCoinAssetField = it }
+        boolean("donateCharityCoin", "捐能量🎈 | 开启", false, "自动把能量气球捐给公益项目。") { donateCharityCoin = it }
+        choice("donateCharityCoinType", "捐能量🎈 | 方式", DonateCharityCoinType.ONE, DonateCharityCoinType.nickNames, "控制只捐一个项目还是继续处理更多项目，仅在开启捐能量时生效。", dependency = "donateCharityCoin") { donateCharityCoinType = it }
+        integer("donateCharityCoinAmount", "捐能量🎈 | 数量(每次)", 100, desc = "每次捐赠的能量气球数量，仅在开启捐能量时生效。", dependency = "donateCharityCoin") { donateCharityCoinAmount = it }
+        boolean("neverlandTask", "健康岛 | 任务", false, "执行健康岛签到、任务大厅、浏览任务和泡泡领取。") { neverlandTask = it }
+        boolean("neverlandGrid", "健康岛 | 自动走路建造", false, "自动在健康岛走路建造，消耗可用步数并受今日走路最大次数限制。") { neverlandGrid = it }
+        integer("neverlandGridStepCount", "健康岛 | 今日走路最大次数", 20, desc = "健康岛当天最多执行的走路建造次数，仅在开启自动走路建造时生效。", dependency = "neverlandGrid") { neverlandGridStepCount = it }
+        boolean("battleForFriends", "抢好友 | 开启", false, "执行抢好友大战主页收益收取与抢购好友逻辑。") { battleForFriends = it }
+        choice("battleForFriendType", "抢好友 | 动作", BattleForFriendType.ROB, BattleForFriendType.nickNames, "决定好友列表是“选中抢”还是“选中不抢”，仅在开启抢好友时生效。", dependency = "battleForFriends") { battleForFriendType = it }
+        select("originBossIdList", "抢好友 | 好友列表", LinkedHashSet(), "配置抢好友规则作用的好友名单，名单解释方式由“抢好友 | 动作”决定。", dependency = "battleForFriends", setter = { originBossIdList = it }) { AlipayUser.getList() }
+        boolean("trainFriend", "训练好友 | 开启", false, "在抢好友大战中自动训练空闲好友，需同时开启“抢好友”。", dependency = "battleForFriends") { trainFriend = it }
+        integer("zeroCoinLimit", "训练好友 | 0金币上限次数当天关闭", 5, desc = "仅在开启训练好友时生效；连续收取 0 金币达到次数后，当天停止继续训练好友，设为 0 表示不限制。", dependency = "trainFriend") { zeroCoinLimit = it }
+        boolean("tiyubiz", "文体中心", false, "执行文体中心签到、任务、线路推进和走路挑战赛。") { tiyubiz = it }
+        integer("minExchangeCount", "最小捐步步数", 0, desc = "旧版捐步兑换的触发阈值；设为 0 关闭该流程，最晚时间前不足阈值会继续累积。") { minExchangeCount = it }
+        hourOfDay("earliestSyncStepTime", "同步步数 | 最早同步时间", "0600", desc = "允许开始同步自定义步数的最早时间，仅在自定义同步步数大于 0 时生效。") { earliestSyncStepTime = it }
+        hourOfDay("latestExchangeTime", "最晚捐步时间", "2200", allowDayEnd = true, desc = "旧版捐步兑换的最晚等待时间；支持 24:00 作为日终截止，超过该时间后即使未达到最小捐步步数也会按当前步数尝试处理。") { latestExchangeTime = it }
+        integer("syncStepCount", "自定义同步步数", 22000, desc = "在当前真实步数基础上额外增加的步数基数，运行时会随机上浮 0~1999，设为 0 关闭自定义同步。") { syncStepCount = it }
+        // 本地字段：能量兑换双击卡
+        boolean("coinExchangeDoubleCard", "能量🎈兑换限时能量双击卡", false)
     }
 
     /**

@@ -58,7 +58,7 @@ class SettingsViewModel : ViewModel() {
             // 2. 提取权威配置实例
             val modules = ModelOrder.allConfig.mapNotNull { clazz ->
                 val config = modelConfigMap[clazz.simpleName] ?: return@mapNotNull null
-                // 🚀 修复：ModelConfig 中 group 是公共属性，直接访问即可，没有 getGroup() 方法
+                if (config.group == ModelGroup.HIDE) return@mapNotNull null
                 mapModelConfigToState(config)
             }
 
@@ -110,7 +110,7 @@ class SettingsViewModel : ViewModel() {
 
         val isCollection = field is SelectModelField || field is SelectAndCountModelField
         // 🚀 修复：ModelField 中没有 configValue 属性，应调用 getConfigValue() 方法
-        val uiValue = if (isCollection) field.value else field.getConfigValue()
+        val uiValue = if (isCollection) field.value else field.configValue
 
         return FieldState(
             code = field.code,

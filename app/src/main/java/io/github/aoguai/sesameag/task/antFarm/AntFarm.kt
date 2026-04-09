@@ -385,7 +385,7 @@ class AntFarm : ModelTask() {
             SelectAndCountModelField(
                 "autoExchangeList",
                 "IP抽抽乐|自定义兑换列表(无特殊需求则不设置)",
-                LinkedHashMap()
+                LinkedHashMap<String, Int>()
             ) { AntFarmIPChouChouLeBenefit.getList() }.also {
                 autoExchangeList = it
             })
@@ -452,7 +452,7 @@ class AntFarm : ModelTask() {
             SelectAndCountModelField(
                 "feedFriendAnimalList",
                 "帮喂小鸡 | 好友列表",
-                LinkedHashMap<String?, Int?>(),
+                LinkedHashMap(),
                 { AlipayUser.getFriendList() },
                 "记得设置帮喂次数.."
             ).withDesc("配置帮喂好友及每日次数；列表中的数量表示可帮喂次数。").also {
@@ -493,7 +493,7 @@ class AntFarm : ModelTask() {
             SelectAndCountModelField(
                 "visitFriendList",
                 "送麦子好友列表",
-                LinkedHashMap<String?, Int?>(),
+                LinkedHashMap(),
                 { AlipayUser.getFriendList() },
                 "设置赠送次数？？"
             ).withDesc("配置送麦子好友及每日赠送次数。需开启“到访小鸡送礼”。").also {
@@ -2467,7 +2467,7 @@ class AntFarm : ModelTask() {
                     val remainingFood = jo.optInt("foodStock", 0).coerceAtLeast(0)
                     Log.farm("${UserMap.getCurrentMaskName()}投喂小鸡🥣[180g]#剩余饲料${remainingFood}g")
 
-                    val interval = BaseModel.checkInterval.getConfigValue()?.toIntOrNull() ?: 0
+                    val interval = BaseModel.checkInterval.configValue?.toIntOrNull() ?: 0
                     val timeSendBackValue = timeSendBack?.value ?: 0
                     var timeSendBackAnimal = 0
                     if (timeSendBackValue in 10..interval){
@@ -2845,7 +2845,7 @@ class AntFarm : ModelTask() {
     internal suspend fun feedFriend() {
         val pendingInvalidUserIds = linkedSetOf<String>()
         try {
-            val feedFriendAnimalMap: Map<String?, Int?> = feedFriendAnimalList?.value ?: emptyMap()
+            val feedFriendAnimalMap = feedFriendAnimalList?.value.orEmpty()
             val useFamilyFeedForMembers =
                 family?.value == true && familyOptions?.value?.contains("feedFamilyAnimal") == true
             val feedFriendEntries = if (useFamilyFeedForMembers) {
@@ -3487,7 +3487,7 @@ class AntFarm : ModelTask() {
     internal suspend fun visit() {
         val pendingInvalidUserIds = linkedSetOf<String>()
         try {
-            val map: Map<String?, Int?> = visitFriendList?.value ?: emptyMap()
+            val map = visitFriendList?.value.orEmpty()
             if (map.isEmpty()) return
             val currentUid = UserMap.currentUid
             for (entry in map.entries.toList()) {

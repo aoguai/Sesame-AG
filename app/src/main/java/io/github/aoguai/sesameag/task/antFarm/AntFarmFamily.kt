@@ -910,7 +910,7 @@ data object AntFarmFamily {
                 return
             }
 
-            val familyValue: MutableSet<String?> = notInviteList.value ?: mutableSetOf()
+            val familyValue: MutableSet<String> = notInviteList.value
             val allUser: List<AlipayUser> = AlipayUser.getFriendList()
 
             if (allUser.isEmpty()) {

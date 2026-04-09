@@ -24,29 +24,12 @@ open class IntegerModelField : ModelField<Int> {
     /** 最大值限制 */
     val maxLimit: Int?
 
-    /**
-     * 构造函数：创建一个没有最小值和最大值限制的 Integer 类型字段
-     *
-     * @param code 字段代码
-     * @param name 字段名称
-     * @param value 字段初始值
-     */
-    constructor(code: String, name: String, value: Int) : super(code, name, value) {
+    constructor(code: String?, name: String?, value: Int) : super(code, name, value) {
         this.minLimit = null
         this.maxLimit = null
-        valueType = Int::class.java
     }
 
-    /**
-     * 构造函数：创建一个具有最小值和最大值限制的 Integer 类型字段
-     *
-     * @param code 字段代码
-     * @param name 字段名称
-     * @param value 字段初始值
-     * @param minLimit 最小值限制
-     * @param maxLimit 最大值限制
-     */
-    constructor(code: String, name: String, value: Int, minLimit: Int?, maxLimit: Int?) : super(code, name, value) {
+    constructor(code: String?, name: String?, value: Int, minLimit: Int?, maxLimit: Int?) : super(code, name, value) {
         this.minLimit = minLimit
         this.maxLimit = maxLimit
         valueType = Int::class.java
@@ -69,19 +52,12 @@ open class IntegerModelField : ModelField<Int> {
         return newValue
     }
 
-    /**
-     * 获取字段类型
-     *
-     * @return 返回字段类型的字符串表示 "INTEGER"
-     */
-    override fun getType(): String = "INTEGER"
+    override fun getType(): String {
+        return "INTEGER"
+    }
 
-    /**
-     * 获取字段的配置值（将当前的值转换为字符串）
-     *
-     * @return 返回字段的字符串形式的配置值
-     */
-    override fun getConfigValue(): String? = value?.toString()
+    override val configValue: String
+        get() = value.toString()
 
     override fun setObjectValue(objectValue: Any?) {
         value = clampValue(parseIntValue(objectValue) ?: defaultValue ?: 0)
@@ -126,19 +102,19 @@ open class IntegerModelField : ModelField<Int> {
         }
     }
 
-    /**
-     * MultiplyIntegerModelField 类，继承自 IntegerModelField，处理带乘数的整数类型字段
-     * 该类在设置值时会乘以指定的倍数。
-     */
-    class MultiplyIntegerModelField(
-        code: String,
-        name: String,
+    open class MultiplyIntegerModelField(
+        code: String?,
+        name: String?,
         value: Int,
         minLimit: Int?,
         maxLimit: Int?,
         /** 乘数，用于计算最终值 */
         val multiple: Int
     ) : IntegerModelField(code, name, value * multiple, minLimit, maxLimit) {
+
+        override fun getType(): String {
+            return "MULTIPLY_INTEGER"
+        }
 
         private fun clampExpandedValue(rawValue: Int): Int {
             var newValue = rawValue
@@ -147,49 +123,23 @@ open class IntegerModelField : ModelField<Int> {
             return newValue
         }
 
-        /**
-         * 获取字段类型
-         *
-         * @return 返回字段类型的字符串表示 "MULTIPLY_INTEGER"
-         */
-        override fun getType(): String = "MULTIPLY_INTEGER"
-
-        /**
-         * 设置字段的配置值（乘数影响最终值）
-         *
-         * @param configValue 字段的配置值
-         */
         override fun setConfigValue(configValue: String?) {
             if (configValue.isNullOrBlank()) {
                 reset()
                 return
             }
-
-            setObjectValue(configValue)
-        }
-
-        override fun setObjectValue(objectValue: Any?) {
-            val parsedValue = parseIntValue(objectValue) ?: run {
-                value = clampExpandedValue(defaultValue ?: 0)
+            super.setConfigValue(configValue)
+            try {
+                value *= multiple
                 return
+            } catch (e: Exception) {
+                Log.printStackTrace(e)
             }
-
-            val expandedValue = when {
-                // 兼容 UI / 旧配置中的“未乘倍率”值，例如 50(分钟)。
-                parsedValue >= 0 && maxLimit != null && parsedValue <= maxLimit -> parsedValue * multiple
-                // 已经是内部存储值（例如 3000000ms）时直接使用。
-                else -> parsedValue
-            }
-
-            value = clampExpandedValue(expandedValue)
+            reset()
         }
 
-        /**
-         * 获取字段的配置值（返回值除以乘数）
-         *
-         * @return 配置值（字段值除以乘数）
-         */
-        override fun getConfigValue(): String? = value?.let { (it / multiple).toString() }
+        override val configValue: String
+            get() = (value / multiple).toString()
     }
 }
 

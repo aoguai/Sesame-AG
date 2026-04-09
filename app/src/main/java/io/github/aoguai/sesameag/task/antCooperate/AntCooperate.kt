@@ -53,14 +53,14 @@ class AntCooperate : ModelTask() {
     private val cooperateWaterList = SelectAndCountModelField(
         "cooperateWaterList",
         "合种浇水列表",
-        LinkedHashMap<String?, Int?>(),
+        LinkedHashMap(),
         { getList() },
         "设置每个合种单次最多浇多少克；首次开启并执行一次后，返回设置页可刷新出合种列表。"
     )
     private val cooperateWaterTotalLimitList = SelectAndCountModelField(
         "cooperateWaterTotalLimitList",
         "浇水总量限制列表",
-        LinkedHashMap<String?, Int?>(),
+        LinkedHashMap(),
         { getList() },
         "限制每个合种的累计总浇水量；达到后即使当天还有额度也不再浇。"
     )

@@ -15,10 +15,10 @@ import io.github.aoguai.sesameag.ui.StringDialog
  * String类型字段类
  * 该类用于表示字符串值字段，点击按钮弹出编辑对话框
  */
-open class StringModelField(code: String, name: String, value: String) : ModelField<String>(code, name, null) {
+open class StringModelField(code: String, name: String, value: String) :
+    ModelField<String>(code, name, value) {
 
     init {
-        // Avoid calling subclass normalization before subclass constructor properties are initialized.
         val initialValue = value.trim()
         defaultValue = initialValue
         this.value = initialValue
@@ -26,7 +26,7 @@ open class StringModelField(code: String, name: String, value: String) : ModelFi
 
     override fun getType(): String = "STRING"
 
-    override fun getConfigValue(): String? = value
+    override fun getEditorMeta(): Any? = null
 
     protected open fun normalizeValue(rawValue: String): String {
         return rawValue.trim()
@@ -40,7 +40,14 @@ open class StringModelField(code: String, name: String, value: String) : ModelFi
         value = normalizeValue(objectValue.toString())
     }
 
+    override val configValue: String?
+        get() = value
+
     override fun setConfigValue(configValue: String?) {
+        if (configValue == null) {
+            reset()
+            return
+        }
         setObjectValue(configValue)
     }
 

@@ -13,36 +13,30 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import io.github.aoguai.sesameag.R
 import io.github.aoguai.sesameag.model.ModelField
 
-/**
- * 空模型字段，用于显示按钮但不存储值
- *
- * @property clickRunner 点击按钮时执行的操作，如果为null则显示"无配置项"提示
- */
-class EmptyModelField : ModelField<Any?> {
-    
+class EmptyModelField : ModelField<Any> {
     private val clickRunner: Runnable?
 
-    constructor(code: String, name: String) : super(code, name, null) {
+    // 核心修复：传入 Any() 作为占位符，避免基类 value 为 null 的校验报错
+    constructor(code: String?, name: String?) : super(code, name, Any()) {
         this.clickRunner = null
     }
 
-    constructor(code: String, name: String, clickRunner: Runnable) : super(code, name, null) {
+    constructor(code: String?, name: String?, clickRunner: Runnable?) : super(code, name, Any()) {
         this.clickRunner = clickRunner
     }
 
-    override fun getType(): String = "EMPTY"
+    @JsonIgnore
+    override fun getType(): String {
+        return "EMPTY"
+    }
+
+    @get:JsonIgnore
+    override var value: Any
+        get() = super.value
+        set(v) { super.value = v }
 
     override fun setObjectValue(objectValue: Any?) {
-        // 空实现，不存储值
-    }
-    
-    override fun setConfigValue(configValue: String?) {
-        // 空实现，EmptyModelField不需要存储配置值
-    }
-    
-    override fun getConfigValue(): String? {
-        // 返回null，EmptyModelField没有配置值
-        return null
+        // EmptyModelField does not store value
     }
 
     @JsonIgnore

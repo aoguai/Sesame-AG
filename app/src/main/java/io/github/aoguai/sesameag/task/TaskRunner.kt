@@ -122,10 +122,10 @@ class CoroutineTaskRunner(allModels: List<Model>) {
 
         // 1. 筛选任务
         val tasksToRun = taskList.filter { task ->
-            task.isEnable() && !CustomSettings.isOnceDailyBlackListed(task.getName(), status)
+            task.isEnable && !CustomSettings.isOnceDailyBlackListed(task.getName(), status)
         }
 
-        val excludedCount = taskList.count { it.isEnable() } - tasksToRun.size
+        val excludedCount = taskList.count { it.isEnable } - tasksToRun.size
         if (excludedCount > 0) skippedCount.addAndGet(excludedCount)
 
         val taskBatches = buildExecutionBatches(tasksToRun)

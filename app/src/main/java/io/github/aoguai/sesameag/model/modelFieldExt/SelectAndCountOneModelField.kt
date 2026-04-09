@@ -7,32 +7,34 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
+import com.fasterxml.jackson.annotation.JsonIgnore
 import io.github.aoguai.sesameag.R
 import io.github.aoguai.sesameag.entity.KVMap
 import io.github.aoguai.sesameag.entity.MapperEntity
 import io.github.aoguai.sesameag.model.ModelField
 import io.github.aoguai.sesameag.model.SelectModelFieldFunc
 import io.github.aoguai.sesameag.ui.widget.ListDialog
+import java.util.Objects
 
-class SelectAndCountOneModelField : ModelField<KVMap<String, Int>>, SelectModelFieldFunc {
-    
-    private val selectListFunc: SelectListFunc?
-    private val expandValueList: List<MapperEntity>?
+class SelectAndCountOneModelField : ModelField<KVMap<String?, Int?>>, SelectModelFieldFunc {
+    private var selectListFunc: SelectListFunc? = null
+    private var expandValue: List<MapperEntity>? = null
 
-    constructor(code: String, name: String, value: KVMap<String, Int>, expandValue: List<MapperEntity>) : super(code, name, value) {
-        this.expandValueList = expandValue
-        this.selectListFunc = null
+    constructor(code: String?, name: String?, value: KVMap<String?, Int?>, expandValue: List<MapperEntity>?) : super(code, name, value) {
+        this.expandValue = expandValue
     }
 
-    constructor(code: String, name: String, value: KVMap<String, Int>, selectListFunc: SelectListFunc) : super(code, name, value) {
+    constructor(code: String?, name: String?, value: KVMap<String?, Int?>, selectListFunc: SelectListFunc?) : super(code, name, value) {
         this.selectListFunc = selectListFunc
-        this.expandValueList = null
     }
 
-    override fun getType(): String = "SELECT_AND_COUNT_ONE"
+    override fun getType(): String {
+        return "SELECT_AND_COUNT_ONE"
+    }
 
+    @JsonIgnore
     override fun getExpandValue(): List<MapperEntity>? {
-        return selectListFunc?.getList() ?: expandValueList
+        return if (selectListFunc == null) expandValue else selectListFunc!!.getList()
     }
 
     override fun getView(context: Context): View {
@@ -56,38 +58,32 @@ class SelectAndCountOneModelField : ModelField<KVMap<String, Int>>, SelectModelF
     }
 
     override fun clear() {
-        value = defaultValue
+        value = defaultValue!!
     }
 
     override fun get(id: String?): Int? {
         val kvMap = value
-        return if (kvMap != null && kvMap.key == id) {
+        return if (Objects.equals(kvMap.key, id)) {
             kvMap.value
-        } else {
-            0
-        }
+        } else 0
     }
 
     override fun add(id: String?, count: Int?) {
-        if (id != null && count != null) {
-            value = KVMap(id, count)
-        }
+        value = KVMap(id, count ?: 0)
     }
 
     override fun remove(id: String?) {
-        val kvMap = value
-        if (kvMap != null && kvMap.key == id) {
-            value = defaultValue
+        if (Objects.equals(value.key, id)) {
+            value = defaultValue!!
         }
     }
 
     override fun contains(id: String?): Boolean {
-        val kvMap = value
-        return kvMap != null && kvMap.key == id
+        return Objects.equals(value.key, id)
     }
 
-    fun interface SelectListFunc {
-        fun getList(): List<MapperEntity>
+    interface SelectListFunc {
+        fun getList(): List<MapperEntity>?
     }
 }
 
