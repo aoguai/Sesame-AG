@@ -14,7 +14,7 @@ var isCIBuild: Boolean = System.getenv("CI").toBoolean()
 
 android {
     namespace = "io.github.aoguai.sesameag"
-    compileSdk = 36
+    compileSdk = 37
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -207,4 +207,12 @@ dependencies {
     implementation(libs.jackson.core)
     implementation(libs.jackson.databind)
     implementation(libs.jackson.annotations)
+
+    // Miuix UI 库
+    implementation(libs.miuix.ui)
+    implementation(libs.miuix.preference)
+    implementation(libs.miuix.icons)
+    implementation(libs.miuix.shapes)
+    implementation(libs.miuix.blur)
+    implementation(libs.miuix.navigation3.ui)
 }

@@ -41,6 +41,8 @@ espressoCore = "3.7.0"
 fragment = "1.8.9"
 uiTextGoogleFonts = "1.10.0"
 material3 = "1.4.0"
+miuix = "0.9.0"
+
 [libraries]
 
 android = { module = "com.google.android:android", version.ref = "android" }
@@ -95,6 +97,13 @@ androidx-ui-text-google-fonts = { group = "androidx.compose.ui", name = "ui-text
 material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 
 
+
+miuix-ui = { module = "top.yukonga.miuix.kmp:miuix-ui", version.ref = "miuix" }
+miuix-preference = { module = "top.yukonga.miuix.kmp:miuix-preference", version.ref = "miuix" }
+miuix-icons = { module = "top.yukonga.miuix.kmp:miuix-icons", version.ref = "miuix" }
+miuix-shapes = { module = "top.yukonga.miuix.kmp:miuix-shapes", version.ref = "miuix" }
+miuix-blur = { module = "top.yukonga.miuix.kmp:miuix-blur", version.ref = "miuix" }
+miuix-navigation3-ui = { module = "top.yukonga.miuix.kmp:miuix-navigation3-ui", version.ref = "miuix" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "android-plugin" }
