@@ -51,7 +51,7 @@ data class ModelFieldShowDto(
                 expandKey = modelField.getExpandKey(),
                 editorMeta = modelField.getEditorMeta(),
                 configValue = modelField.getConfigValue() ?: "",
-                desc = modelField.desc,
+                desc = modelField.desc ?: "",
                 todayInactive = todayState.inactive,
                 todayInactiveReason = todayState.reason
             )

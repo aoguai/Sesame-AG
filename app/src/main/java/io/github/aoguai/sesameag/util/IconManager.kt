@@ -3,6 +3,9 @@ package io.github.aoguai.sesameag.util
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.aoguai.sesameag.data.General
 
 object IconManager {
@@ -13,6 +16,20 @@ object IconManager {
     /**
      * 根据用户是否想隐藏来同步桌面图标状态。
      */
+    fun getIconVector(iconName: String?): ImageVector {
+        return when (iconName) {
+            "BaseModel.png" -> Icons.Default.Settings
+            "AntForest.png" -> Icons.Default.Park
+            "AntFarm.png" -> Icons.Default.Pets
+            "AntOcean.png" -> Icons.Default.Waves
+            "AntStall.png" -> Icons.Default.Store
+            "AntOrchard.png" -> Icons.Default.Agriculture
+            "AntMember.png" -> Icons.Default.CardMembership
+            "AntSports.png" -> Icons.Default.DirectionsRun
+            else -> Icons.Default.Settings
+        }
+    }
+
     fun syncIconState(context: Context, userWantsHide: Boolean) {
         val pm = context.packageManager
         if (userWantsHide) {

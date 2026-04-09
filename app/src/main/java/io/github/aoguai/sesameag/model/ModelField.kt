@@ -42,7 +42,11 @@ open class ModelField<T> : Serializable {
     
     /** 字段描述 */
     @JsonIgnore
-    var desc: String = ""
+    var desc: String? = null
+
+    /** 依赖字段代码 */
+    @JsonIgnore
+    var dependencyCode: String? = null
     
     /** 当前值 */
     @Volatile

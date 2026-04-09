@@ -48,7 +48,7 @@ data class ModelFieldInfoDto(
                 expandValue = modelField.getExpandValue(),
                 editorMeta = modelField.getEditorMeta(),
                 configValue = modelField.getConfigValue() ?: "",
-                desc = modelField.desc
+                desc = modelField.desc ?: ""
             )
         }
     }

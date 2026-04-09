@@ -49,9 +49,11 @@
         <activity
             android:name=".ui.ExtendActivity"
             android:exported="false" />
+        <!-- 新的 Compose 设置页面 -->
         <activity
-            android:name=".ui.WebSettingsActivity"
-            android:exported="false" />
+            android:name=".ui.material3.ComposeSettingsActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
         <!-- RPC 调试 Activity -->
         <activity
             android:name=".ui.RpcDebugActivity"
@@ -102,6 +104,12 @@
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
-
     </application>
+
+    <queries>
+        <package android:name="top.yukonga.miuix.kmp.blur" tools:node="merge" />
+    </queries>
+
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
+
 </manifest>
