@@ -122,7 +122,7 @@ internal suspend fun AntForest.runForestHomeFollowUpWorkflow(selfHomeObj: JSONOb
                 useEnergyRainChanceCard()
                 tc.countDebug("使用能量雨卡")
             }
-            EnergyRainCoroutine.execEnergyRainCompat()
+            EnergyRainCoroutine.execEnergyRain()
             tc.countDebug("能量雨")
         } else {
             Log.forest(FOREST_TAG, "能量雨未到执行时间，跳过")

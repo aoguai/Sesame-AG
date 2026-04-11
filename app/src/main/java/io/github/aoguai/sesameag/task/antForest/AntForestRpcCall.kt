@@ -1181,5 +1181,18 @@ object AntForestRpcCall {
             JSONArray().put(jo).toString()
         )
     }
+
+    /** 模拟点击进入游戏 */
+    @JvmStatic
+    fun clickGame(appId: String): String {
+        return RequestManager.requestString("com.alipay.charitygamecenter.clickGame",
+            "[{" +
+                    "  \"appId\": \"$appId\"," +
+                    "  \"bizType\": \"ANTFOREST\"," +
+                    "  \"requestType\": \"RPC\"," +
+                    "  \"sceneCode\": \"ANTFOREST\"," +
+                    "  \"source\": \"ANTFOREST\"" +
+                    "}]")
+    }
 }
 
