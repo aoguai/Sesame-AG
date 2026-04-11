@@ -81,9 +81,10 @@ enum class GameTask(
 
     /**
      * 外部调用：执行上报任务 (改为协程版本)
-     * @return Boolean 任务是否至少成功执行了一次上报或整体完成
+     * @return Boolean 是否达到完成任务所需的最小成功次数
      */
     suspend fun report(eggCount: Int): Boolean {
+        val requiredSuccesses = eggCount * requestsPerEgg
         val totalNeeded = (eggCount * requestsPerEgg) + 1 //正常不需要加1，多1次确保网络请求不会错误
 
         cachedToken = login()
@@ -105,7 +106,7 @@ enum class GameTask(
             if (i < totalNeeded) delay((1000..3000).random().toLong())
         }
         //Log.record(title, "🏁 任务流程运行结束")
-        return successCount > 0
+        return successCount >= requiredSuccesses
     }
 
     private fun executeSingleReport(current: Int, total: Int): Boolean {
