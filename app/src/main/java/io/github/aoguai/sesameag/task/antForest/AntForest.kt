@@ -5387,57 +5387,22 @@ class AntForest : ModelTask(), EnergyCollectCallback {
 
     internal suspend fun useEnergyRainChanceCard() {
         try {
-            suspend fun hasPlayableEnergyRainChance(): Boolean {
-                return try {
-                    val jo = JSONObject(AntForestRpcCall.queryEnergyRainHome())
-                    ResChecker.checkRes(TAG, jo) && jo.optBoolean("canPlayToday", false)
-                } catch (t: Throwable) {
-                    Log.printStackTrace(TAG, "queryEnergyRainHome err", t)
-                    false
-                }
-            }
-
-            fun getLimitTimeEnergyRainFlag(propJsonObj: JSONObject): String? {
-                val propId = propJsonObj.optJSONArray("propIdList")?.optString(0).orEmpty()
-                if (propId.isEmpty()) {
-                    return null
-                }
-                return "AntForest::useEnergyRainChanceCard::LIMIT_TIME_ENERGY_RAIN_CHANCE::$propId"
-            }
-
-            if (hasPlayableEnergyRainChance()) {
-                Log.forest(TAG, "当前已有可执行的能量雨机会，跳过重复激活")
+            if (Status.hasFlagToday(StatusFlags.FLAG_FOREST_RAIN_CHANCE_CARD)) {
                 return
             }
-
-            var usedAny = false
             val propTypes = arrayOf("LIMIT_TIME_ENERGY_RAIN_CHANCE", "ENERGY_RAIN_CHANCE")
             for (propType in propTypes) {
-                while (!Thread.currentThread().isInterrupted) {
+                while (true) {
                     val jo = findPropBag(queryPropList(true), propType) ?: break
-                    if (propType == "LIMIT_TIME_ENERGY_RAIN_CHANCE") {
-                        val todayFlag = getLimitTimeEnergyRainFlag(jo)
-                        if (todayFlag != null && Status.hasFlagToday(todayFlag)) {
-                            Log.forest(TAG, "限时能量雨机会今日已激活，跳过重复使用")
-                            break
-                        }
-                    }
                     if (usePropBag(jo)) {
                         Log.forest(TAG, "成功使用一个能量雨道具: $propType")
-                        usedAny = true
-                        if (propType == "LIMIT_TIME_ENERGY_RAIN_CHANCE") {
-                            getLimitTimeEnergyRainFlag(jo)?.let { Status.setFlagToday(it) }
-                        }
-                        ActionDelayUtil.humanActionDelay(2000L)
-                        if (propType == "LIMIT_TIME_ENERGY_RAIN_CHANCE") {
-                            break
-                        }
+                        delay(2000)
                     } else {
                         break
                     }
                 }
 
-                if (propType == "LIMIT_TIME_ENERGY_RAIN_CHANCE" && !hasPlayableEnergyRainChance()) {
+                if (propType == "LIMIT_TIME_ENERGY_RAIN_CHANCE") {
                     val skuInfo = Vitality.findSkuInfoBySkuName("能量雨次卡")
                     if (skuInfo != null) {
                         val skuId = skuInfo.getString("skuId")
@@ -5448,21 +5413,17 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                                     "限时能量雨机会"
                                 )
                             ) {
-                                ActionDelayUtil.humanActionDelay(1000L)
+                                delay(1000)
                                 val joExchanged = findPropBag(queryPropList(true), propType)
                                 if (joExchanged != null && usePropBag(joExchanged)) {
-                                    getLimitTimeEnergyRainFlag(joExchanged)?.let { Status.setFlagToday(it) }
-                                    usedAny = true
-                                    ActionDelayUtil.humanActionDelay(1000L)
+                                    delay(1000)
                                 }
                             }
                         }
                     }
                 }
             }
-            if (!usedAny) {
-                Log.forest(TAG, "当前无可激活的能量雨道具")
-            }
+            Status.setFlagToday(StatusFlags.FLAG_FOREST_RAIN_CHANCE_CARD)
             Log.forest(TAG, "所有能量雨卡已处理完毕")
         } catch (e: CancellationException) {
             throw e
@@ -6278,7 +6239,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     useEnergyRainChanceCard()
                 }
 
-                EnergyRainCoroutine.execEnergyRainCompat()
+                EnergyRainCoroutine.execEnergyRain(isManual = true)
                 Log.forest(TAG, "✅ 手动能量雨任务处理完毕")
             } else {
                 Log.forest(TAG, "无法获取自己主页信息")

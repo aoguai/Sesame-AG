@@ -154,5 +154,15 @@ object StatusFlags {
 
     /** 庄园家庭：今日好友分享已处理 */
     const val FLAG_FARM_FAMILY_SHARE_TO_FRIENDS = "antFarm::familyShareToFriends"
+
+    /** 森林：能量雨机会卡今日已使用 */
+    const val FLAG_FOREST_RAIN_CHANCE_CARD = "AntForest::useEnergyRainChanceCard"
+
+    /** 森林：能量雨赠送已达到今日上限标记 */
+    const val FLAG_FOREST_RAIN_GRANT_EXCEED = "AntForest::grantEnergyRainExceed"
+
+    /** 森林：能量雨附加游戏任务标记 */
+    const val FLAG_FOREST_RAIN_GAME_TASK = "AntForest::EnergyRainGameTask"
+
 }
 
