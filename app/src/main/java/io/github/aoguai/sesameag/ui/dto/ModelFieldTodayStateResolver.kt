@@ -139,10 +139,9 @@ object ModelFieldTodayStateResolver {
                 familyOptionsState(modelField)
 
             "AntFarm.useAccelerateTool",
-            "AntFarm.useAccelerateToolContinue",
             "AntFarm.remainingTime",
-            "AntFarm.useAccelerateToolWhenMaxEmotion" ->
-                flag(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT, "今日加速卡已达上限")
+            "AntFarm.accelerateToolDailyLimit" ->
+                flag(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT, "今日加速卡已达设定/系统上限")
 
             "AntFarm.useSpecialFood",
             "AntFarm.useSpecialFoodCount" ->
