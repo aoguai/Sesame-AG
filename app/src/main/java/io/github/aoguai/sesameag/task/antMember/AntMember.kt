@@ -919,7 +919,7 @@ class AntMember : ModelTask() {
      * 会员积分0元兑，权益道具兑换
      */
     internal fun memberPointExchangeBenefit() {
-        if (hasFlagToday("memberBenefit::refresh")) {
+        if (hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_BENEFIT_REFRESH_DONE)) {
             return
         }
         val whiteList: Set<String> = memberPointExchangeBenefitList?.value
@@ -930,7 +930,7 @@ class AntMember : ModelTask() {
             ?: emptySet()
         if (whiteList.isNotEmpty() && whiteList.all { !canMemberPointExchangeBenefitToday(it) }) {
             Log.member(TAG, "会员积分🎐兑换列表今日已全部处理，跳过执行")
-            setFlagToday("memberBenefit::refresh")
+            setFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_BENEFIT_REFRESH_DONE)
             return
         }
         try {
@@ -1012,7 +1012,7 @@ class AntMember : ModelTask() {
                     if (remainingWhiteList != null && remainingWhiteList.isEmpty()) {
                         IdMapManager.getInstance(MemberBenefitsMap::class.java).save(userId)
                         Log.member(TAG, "会员积分🎐兑换列表已全部扫描到，提前结束")
-                        setFlagToday("memberBenefit::refresh")
+                        setFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_BENEFIT_REFRESH_DONE)
                         return
                     }
                 }
@@ -1022,7 +1022,7 @@ class AntMember : ModelTask() {
             // 7. 保存映射表
             IdMapManager.getInstance(MemberBenefitsMap::class.java).save(userId)
             Log.member(TAG, "会员积分🎐全部分类任务处理完毕")
-            setFlagToday("memberBenefit::refresh")
+            setFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_BENEFIT_REFRESH_DONE)
 
         } catch (t: Throwable) {
             Log.member(TAG, "memberPointExchangeBenefit 运行异常: ${t.message}")
@@ -5111,7 +5111,7 @@ class AntMember : ModelTask() {
      */
     internal suspend fun doSesameGrainExchange(): Unit = CoroutineUtils.run {
         // 每日只运行一次，避免重复请求
-        if (hasFlagToday("sesameGrainExchange::done")) {
+        if (hasFlagToday(StatusFlags.FLAG_ZMXY_GRAIN_EXCHANGE_DONE)) {
             return@run
         }
 
@@ -5177,7 +5177,7 @@ class AntMember : ModelTask() {
             IdMapManager.getInstance(SesameGiftMap::class.java).save(userId)
             Log.sesame(TAG, "芝麻粒兑换任务处理完毕，商品列表已更新")
             // 标记今日已完成
-            setFlagToday("sesameGrainExchange::done")
+            setFlagToday(StatusFlags.FLAG_ZMXY_GRAIN_EXCHANGE_DONE)
 
         } catch (t: Throwable) {//这里
             Log.printStackTrace(TAG, "doSesameGrainExchange 运行异常:", t)

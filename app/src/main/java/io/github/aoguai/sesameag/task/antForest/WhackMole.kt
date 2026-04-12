@@ -2,6 +2,7 @@ package io.github.aoguai.sesameag.task.antForest
 
 import android.annotation.SuppressLint
 import io.github.aoguai.sesameag.data.Status
+import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.hook.Toast
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.ResChecker
@@ -23,7 +24,6 @@ import kotlin.math.max
 object WhackMole {
     private const val TAG = "WhackMole"
     private const val SOURCE = "senlinguangchangdadishu"
-    private const val EXEC_FLAG = "forest::whackMole::executed"
 
     @Volatile
     private var totalGames = 5
@@ -71,7 +71,7 @@ object WhackMole {
                 Mode.COMPATIBLE -> runCompatibleMode()
                 Mode.AGGRESSIVE -> runAggressiveMode()
             }
-            Status.setFlagToday(EXEC_FLAG)
+            Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_WHACK_MOLE_EXECUTED)
         } catch (e: Exception) {
             Log.printStackTrace(TAG, "打地鼠异常: ", e)
         } finally {
@@ -190,7 +190,7 @@ object WhackMole {
             if (!ResChecker.checkRes(TAG, startResp)) return null
 
             if (!startResp.optBoolean("canPlayToday", true)) {
-                Status.setFlagToday(EXEC_FLAG)
+                Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_WHACK_MOLE_EXECUTED)
                 throw CancellationException("Today limit reached")
             }
 

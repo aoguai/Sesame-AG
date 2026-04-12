@@ -1236,7 +1236,7 @@ class AntStall : ModelTask() {
 
                 hasNewVillage = true
                 val villageName = road.getString("villageName")
-                val flagKey = "stall::roadmap::$villageName"
+                val flagKey = StatusFlags.FLAG_ANTSTALL_ROADMAP_VISITED_PREFIX + villageName
 
                 if (Status.hasFlagToday(flagKey)) {
                     Log.stall(TAG, "今日已进入[$villageName],跳过重复打卡。")

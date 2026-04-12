@@ -1,6 +1,7 @@
 package io.github.aoguai.sesameag.task.antForest
 
 import io.github.aoguai.sesameag.data.Status
+import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.util.Log
 import org.json.JSONArray
 import org.json.JSONException
@@ -10,9 +11,6 @@ import java.util.Calendar
 object Privilege {
     private const val TAG = "Privilege"
 
-    // 标记 & 前缀
-    private const val FLAG_RECEIVED = "youth_privilege_forest_received"
-    private const val FLAG_STUDENT_TASK = "youth_privilege_student_task"
     private const val PREFIX_PRIVILEGE = "青春特权🌸"
     private const val PREFIX_SIGN = "青春特权🧧"
 
@@ -33,7 +31,7 @@ object Privilege {
     )
 
     fun youthPrivilege(): Boolean {
-        if (Status.hasFlagToday(FLAG_RECEIVED)) return false
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTFOREST_PRIVILEGE_RECEIVED)) return false
 
         val results = mutableListOf<String>()
         for (task in YOUTH_TASKS) {
@@ -41,7 +39,7 @@ object Privilege {
         }
 
         val allSuccess = results.all { it == "处理成功" }
-        if (allSuccess) Status.setFlagToday(FLAG_RECEIVED)
+        if (allSuccess) Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_PRIVILEGE_RECEIVED)
         return allSuccess
     }
 
@@ -116,7 +114,7 @@ object Privilege {
             return
         }
 
-        if (Status.hasFlagToday(FLAG_STUDENT_TASK)) {
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTFOREST_PRIVILEGE_STUDENT_TASK)) {
             Log.forest("$PREFIX_SIGN 今日已完成签到")
             return
         }
@@ -149,7 +147,7 @@ object Privilege {
 
         val checkInInfo = result.optJSONObject("studentCheckInInfo")
         if (checkInInfo == null || checkInInfo.optString("action") == "DO_TASK") {
-            Status.setFlagToday(FLAG_STUDENT_TASK)
+            Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_PRIVILEGE_STUDENT_TASK)
             return
         }
 
@@ -172,7 +170,7 @@ object Privilege {
         val desc = result.optString("resultDesc")
 
         if (code == RPC_SUCCESS) {
-            Status.setFlagToday(FLAG_STUDENT_TASK)
+            Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_PRIVILEGE_STUDENT_TASK)
             Log.forest("$PREFIX_SIGN$tag$desc")
         } else {
             var errorMsg = desc

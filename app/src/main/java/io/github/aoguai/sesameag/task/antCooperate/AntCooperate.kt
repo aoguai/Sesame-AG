@@ -221,7 +221,7 @@ class AntCooperate : ModelTask() {
     private fun loveCooperateWater() {
         try {
             // 1. 本地状态检查 (快速失败)
-            if (Status.hasFlagToday("love::teamWater")) {
+            if (Status.hasFlagToday(StatusFlags.FLAG_ANTCOOPERATE_LOVE_TEAM_WATER)) {
                 Log.forest(TAG, "真爱合种今日已浇过水")
                 return
             }
@@ -261,7 +261,7 @@ class AntCooperate : ModelTask() {
             if (myWateredAmount > 0) {
                 Log.forest("真爱合种今日已浇水(${myWateredAmount}g)")
                 // 既然服务端说浇过了，更新本地状态并退出
-                Status.setFlagToday("love::teamWater")
+                Status.setFlagToday(StatusFlags.FLAG_ANTCOOPERATE_LOVE_TEAM_WATER)
                 return
             }
 
@@ -283,7 +283,7 @@ class AntCooperate : ModelTask() {
 
             if (ResChecker.checkRes(TAG, waterJo)) {
                 Log.forest("真爱合种💖[浇水成功]#${waterAmount}g")
-                Status.setFlagToday("love::teamWater")
+                Status.setFlagToday(StatusFlags.FLAG_ANTCOOPERATE_LOVE_TEAM_WATER)
             } else {
                 Log.error(TAG, "真爱合种浇水失败: " + waterJo.optString("resultDesc"))
             }

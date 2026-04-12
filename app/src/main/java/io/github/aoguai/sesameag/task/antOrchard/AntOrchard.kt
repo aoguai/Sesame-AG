@@ -27,11 +27,6 @@ import java.util.Calendar
 class AntOrchard : ModelTask() {
     companion object {
         private val TAG = AntOrchard::class.java.simpleName
-        private const val STATUS_YEB_WATER_COUNT = "ANTORCHARD_SPREAD_MANURE_COUNT_YEB"
-        private const val STATUS_MONEY_TREE_COLLECTED = "ANTORCHARD_MONEY_TREE_COLLECTED"
-        private const val STATUS_YEB_EXP_GOLD_TASK_PREFIX = "ANTORCHARD_YEB_EXP_GOLD_TASK"
-        private const val STATUS_YEB_EXP_GOLD_SIGN_DONE = "ANTORCHARD_YEB_EXP_GOLD_SIGN_DONE"
-        private const val STATUS_YEB_EXP_GOLD_EXCHANGE_DONE = "ANTORCHARD_YEB_EXP_GOLD_EXCHANGE_DONE"
         private const val ORCHARD_SOURCE = "ch_appcenter__chsub_9patch"
         private const val YEB_SOURCE = "yaoqianshu_qiehuan"
         private const val XLIGHT_PAGE_FROM = "ch_url-https://render.alipay.com/p/yuyan/180020010001263018/game.html"
@@ -186,7 +181,7 @@ class AntOrchard : ModelTask() {
         val waterToLimit = targetLimit == -1
         val sceneName = if (isMain) "种果树" else "种摇钱树"
         // 独立计数：果树使用原Flag，摇钱树使用新Key
-        val statusKey = if (isMain) StatusFlags.FLAG_ANTORCHARD_SPREAD_MANURE_COUNT else STATUS_YEB_WATER_COUNT
+        val statusKey = if (isMain) StatusFlags.FLAG_ANTORCHARD_SPREAD_MANURE_COUNT else StatusFlags.FLAG_ANTORCHARD_SPREAD_MANURE_COUNT_YEB
 
         var totalWatered = Status.getIntFlagToday(statusKey) ?: 0
 
@@ -372,7 +367,7 @@ class AntOrchard : ModelTask() {
             val cal = Calendar.getInstance()
             val hour = cal.get(Calendar.HOUR_OF_DAY)
             // 每天7点后尝试领取
-            if (hour >= 7 && !Status.hasFlagToday(STATUS_MONEY_TREE_COLLECTED)) {
+            if (hour >= 7 && !Status.hasFlagToday(StatusFlags.FLAG_ANTORCHARD_MONEY_TREE_COLLECTED)) {
                 Log.orchard(TAG, "检测到7点已过，尝试领取摇钱树余额奖励...")
                 val res = AntOrchardRpcCall.moneyTreeTrigger()
                 val json = JSONObject(res)
@@ -386,7 +381,7 @@ class AntOrchard : ModelTask() {
                     } else {
                         Log.orchard(TAG, "摇钱树暂无奖励可领")
                     }
-                    Status.setFlagToday(STATUS_MONEY_TREE_COLLECTED)
+                    Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_MONEY_TREE_COLLECTED)
                 } else {
                     Log.orchard(TAG, "摇钱树奖励领取失败: ${json.toString()}")
                 }
@@ -451,7 +446,7 @@ class AntOrchard : ModelTask() {
                     Log.orchard(TAG, "跳过黑名单任务[$title]")
                     continue
                 }
-                val successFlag = "$STATUS_YEB_EXP_GOLD_TASK_PREFIX::$taskId"
+                val successFlag = StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_TASK_PREFIX + taskId
                 if (Status.hasFlagToday(successFlag)) {
                     continue
                 }
@@ -510,7 +505,7 @@ class AntOrchard : ModelTask() {
         manualTaskTitles: MutableSet<String>
     ) {
         for ((taskId, task) in taskMap) {
-            if (Status.hasFlagToday("$STATUS_YEB_EXP_GOLD_TASK_PREFIX::$taskId")) {
+            if (Status.hasFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_TASK_PREFIX + taskId)) {
                 continue
             }
             val title = getYebExpGoldTaskTitle(task, taskId)
@@ -529,7 +524,7 @@ class AntOrchard : ModelTask() {
         queryResponse: JSONObject,
         manualTaskTitles: MutableSet<String>
     ): Boolean {
-        if (Status.hasFlagToday(STATUS_YEB_EXP_GOLD_SIGN_DONE)) {
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_SIGN_DONE)) {
             return false
         }
 
@@ -539,7 +534,7 @@ class AntOrchard : ModelTask() {
             .orEmpty()
             .uppercase()
         if (signStatus != "TO_SIGNED" && signStatus != "UNSIGNED") {
-            Status.setFlagToday(STATUS_YEB_EXP_GOLD_SIGN_DONE)
+            Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_SIGN_DONE)
             return false
         }
 
@@ -550,7 +545,7 @@ class AntOrchard : ModelTask() {
         val title = if (amount.isBlank()) "余额宝体验金签到" else "余额宝体验金签到(${amount}元)"
         if (TaskBlacklist.isTaskInBlacklist(title)) {
             Log.orchard(TAG, "跳过黑名单任务[$title]")
-            Status.setFlagToday(STATUS_YEB_EXP_GOLD_SIGN_DONE)
+            Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_SIGN_DONE)
             return false
         }
 
@@ -562,7 +557,7 @@ class AntOrchard : ModelTask() {
         }
 
         logYebExpGoldSignInRewards(amount, signResponse)
-        Status.setFlagToday(STATUS_YEB_EXP_GOLD_SIGN_DONE)
+        Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_SIGN_DONE)
         return true
     }
 
@@ -663,7 +658,7 @@ class AntOrchard : ModelTask() {
             queryYebExpGoldTaskById(taskId)?.let { verifiedTask ->
                 taskMap[taskId] = verifiedTask
                 if (isYebExpGoldTaskReceived(verifiedTask)) {
-                    Status.setFlagToday("$STATUS_YEB_EXP_GOLD_TASK_PREFIX::$taskId")
+                    Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_TASK_PREFIX + taskId)
                     return true
                 }
             }
@@ -680,7 +675,7 @@ class AntOrchard : ModelTask() {
         }
 
         logYebExpGoldRewards(title, completeResponse)
-        Status.setFlagToday("$STATUS_YEB_EXP_GOLD_TASK_PREFIX::$taskId")
+        Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_TASK_PREFIX + taskId)
         queryYebExpGoldTaskById(taskId)?.let { verifiedTask ->
             taskMap[taskId] = verifiedTask
         }
@@ -699,7 +694,7 @@ class AntOrchard : ModelTask() {
             if (taskId.isBlank()) {
                 continue
             }
-            val successFlag = "$STATUS_YEB_EXP_GOLD_TASK_PREFIX::$taskId"
+            val successFlag = StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_TASK_PREFIX + taskId
             if (Status.hasFlagToday(successFlag)) {
                 continue
             }
@@ -763,7 +758,7 @@ class AntOrchard : ModelTask() {
     }
 
     private fun handleYebExpGoldExchange(queryResponse: JSONObject): Boolean {
-        if (Status.hasFlagToday(STATUS_YEB_EXP_GOLD_EXCHANGE_DONE)) {
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_EXCHANGE_DONE)) {
             return false
         }
 
@@ -778,7 +773,7 @@ class AntOrchard : ModelTask() {
         val thresholdText = resultData.opt("subThreshold")?.toString().orEmpty()
 
         if (balance <= 0.0) {
-            Status.setFlagToday(STATUS_YEB_EXP_GOLD_EXCHANGE_DONE)
+            Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_EXCHANGE_DONE)
             return false
         }
 
@@ -787,7 +782,7 @@ class AntOrchard : ModelTask() {
                 TAG,
                 "余额宝体验金未达兑换门槛: 当前$balanceText，最低需${thresholdText.ifBlank { threshold.toString() }}"
             )
-            Status.setFlagToday(STATUS_YEB_EXP_GOLD_EXCHANGE_DONE)
+            Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_EXCHANGE_DONE)
             return false
         }
 
@@ -876,7 +871,7 @@ class AntOrchard : ModelTask() {
             }
         }
         Log.orchard("余额宝体验金💰[兑换激活]#${amountText}元$extraInfo")
-        Status.setFlagToday(STATUS_YEB_EXP_GOLD_EXCHANGE_DONE)
+        Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_EXCHANGE_DONE)
         return true
     }
 
@@ -1972,7 +1967,7 @@ class AntOrchard : ModelTask() {
                 if (FriendGuard.shouldSkipFriend(uid, TAG, "农场助力")) {
                     continue
                 }
-                if (Status.hasFlagToday("orchard::assistRelationInvalid::$uid")) {
+                if (Status.hasFlagToday(StatusFlags.FLAG_ANTORCHARD_ASSIST_RELATION_INVALID_PREFIX + uid)) {
                     Log.orchard(TAG, "农场助力⏭️[${UserMap.getMaskName(uid)}]今日关系已判定无效，跳过")
                     continue
                 }
@@ -1998,7 +1993,7 @@ class AntOrchard : ModelTask() {
                         return
                     }
                     if (code == "600000010") {
-                        Status.setFlagToday("orchard::assistRelationInvalid::$uid")
+                        Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_ASSIST_RELATION_INVALID_PREFIX + uid)
                         Log.orchard(TAG, "农场助力⏭️[$name]人传人邀请关系不存在，已记录为今日跳过")
                         continue
                     }

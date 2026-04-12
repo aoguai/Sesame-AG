@@ -2,6 +2,7 @@ package io.github.aoguai.sesameag.task.antForest
 
 import com.fasterxml.jackson.core.type.TypeReference
 import io.github.aoguai.sesameag.data.Status
+import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.hook.Toast
 import io.github.aoguai.sesameag.util.DataStore
 import io.github.aoguai.sesameag.util.DataStore.put
@@ -144,7 +145,7 @@ object EcoLife {
      */
     fun photoGuangPan(dayPoint: String?) {
         try {
-            if (Status.hasFlagToday("EcoLife::photoGuangPan")) return
+            if (Status.hasFlagToday(StatusFlags.FLAG_ANTFOREST_ECOLIFE_PHOTO_GUANGPAN)) return
             val safeDayPoint = dayPoint ?: return
 
             val source = "renwuGD" // 任务来源标识
@@ -198,18 +199,18 @@ object EcoLife {
                 return
             }
             if (allPhotos.isEmpty()) {
-                if (!Status.hasFlagToday("EcoLife::plateNotify0")) {
+                if (!Status.hasFlagToday(StatusFlags.FLAG_ANTFOREST_ECOLIFE_PLATE_NOTIFY_EMPTY_CACHE)) {
                     Log.forest("光盘行动🍛缓存中没有照片数据")
-                    Status.setFlagToday("EcoLife::plateNotify0")
+                    Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_ECOLIFE_PLATE_NOTIFY_EMPTY_CACHE)
                 }
                 photo = null
             } else {
                 photo = allPhotos[RandomUtil.nextInt(0, allPhotos.size)]
             }
             if (photo == null) {
-                if (!Status.hasFlagToday("EcoLife::plateNotify1")) {
+                if (!Status.hasFlagToday(StatusFlags.FLAG_ANTFOREST_ECOLIFE_PLATE_NOTIFY_NO_PHOTO)) {
                     Log.forest("光盘行动🍛请先完成一次光盘打卡")
-                    Status.setFlagToday("EcoLife::plateNotify1")
+                    Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_ECOLIFE_PLATE_NOTIFY_NO_PHOTO)
                 }
                 return
             }
@@ -248,7 +249,7 @@ object EcoLife {
             }
             // 任务完成，输出完成日志
             val toastMsg = "光盘行动🍛任务完成#" + jo.getJSONObject("data").getString("toastMsg")
-            Status.setFlagToday("EcoLife::photoGuangPan")
+            Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_ECOLIFE_PHOTO_GUANGPAN)
             Log.forest(toastMsg)
             Toast.show(toastMsg)
         } catch (t: Throwable) {

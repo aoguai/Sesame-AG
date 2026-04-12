@@ -280,7 +280,7 @@ class ChouChouLe {
     }
 
     private fun limitedTaskFlag(taskId: String): String {
-        return "antFarm::chouchouleLimitedEnded::$taskId"
+        return StatusFlags.FLAG_FARM_CHOUCHOULE_LIMITED_ENDED_PREFIX + taskId
     }
 
     private fun shouldSkipLimitedTaskToday(task: TaskInfo): Boolean {

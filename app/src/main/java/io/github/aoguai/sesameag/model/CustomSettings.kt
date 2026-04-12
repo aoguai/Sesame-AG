@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import io.github.aoguai.sesameag.R
 import io.github.aoguai.sesameag.data.Status
+import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.entity.MapperEntity
 import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectModelField
@@ -199,7 +200,7 @@ object CustomSettings {
     fun getOnceDailyStatus(enableLog: Boolean = false): OnceDailyStatus {
         val configEnabled = onlyOnceDaily.value == true
         val isFinished = try {
-            Status.hasFlagToday("OnceDaily::Finished")
+            Status.hasFlagToday(StatusFlags.FLAG_ONCE_DAILY_FINISHED)
         } catch (e: Throwable) {
             false
         }
@@ -387,7 +388,7 @@ object CustomSettings {
 
     private fun showAccountOps(context: Context, uid: String, showName: String, onRefresh: () -> Unit) {
         val isFinished = try {
-            Status.hasFlagToday("OnceDaily::Finished")
+            Status.hasFlagToday(StatusFlags.FLAG_ONCE_DAILY_FINISHED)
         } catch (e: Throwable) {
             false
         }

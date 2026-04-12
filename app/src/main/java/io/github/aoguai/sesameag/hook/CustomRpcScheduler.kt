@@ -1,6 +1,7 @@
 package io.github.aoguai.sesameag.hook
 
 import io.github.aoguai.sesameag.data.Status
+import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.entity.CustomRpcRequestEntity
 import io.github.aoguai.sesameag.model.BaseModel
 import io.github.aoguai.sesameag.util.Log
@@ -21,7 +22,6 @@ import io.github.aoguai.sesameag.util.Log
 object CustomRpcScheduler {
 
     private const val TAG = "CustomRpcScheduler"
-    private const val COUNT_KEY_PREFIX = "customRpcSchedule::"
 
     @JvmStatic
     fun runIfEnabled() {
@@ -39,7 +39,7 @@ object CustomRpcScheduler {
                 val limit = req.dailyCount
                 if (id.isBlank() || limit <= 0) continue
 
-                val countKey = COUNT_KEY_PREFIX + id
+                val countKey = StatusFlags.FLAG_CUSTOM_RPC_SCHEDULE_COUNT_PREFIX + id
                 val already = Status.getIntFlagToday(countKey) ?: 0
                 if (already >= limit) continue
 

@@ -2,6 +2,7 @@ package io.github.aoguai.sesameag.task.antOcean
 
 import com.fasterxml.jackson.core.type.TypeReference
 import io.github.aoguai.sesameag.data.Status
+import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.entity.AlipayBeach
 import io.github.aoguai.sesameag.entity.AlipayUser
 import io.github.aoguai.sesameag.hook.Toast
@@ -89,8 +90,7 @@ class AntOcean : ModelTask() {
 
     companion object {
         private const val TAG = "AntOcean"
-        private const val HELP_CLEAN_LIMIT_FLAG = "Ocean::HELP_CLEAN_ALL_FRIEND_LIMIT"
-        
+
         /**
          * 保护类型字段（静态）
          */
@@ -453,10 +453,10 @@ class AntOcean : ModelTask() {
     }
 
     private fun markHelpCleanLimit(jo: JSONObject) {
-        if (Status.hasFlagToday(HELP_CLEAN_LIMIT_FLAG)) {
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT)) {
             return
         }
-        Status.setFlagToday(HELP_CLEAN_LIMIT_FLAG)
+        Status.setFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT)
         Log.ocean(TAG, "神奇海洋🌊帮助清理次数已达上限：${extractOceanResultDesc(jo)}，已记录为当日限制，本轮剩余好友清理全部跳过")
     }
 
@@ -1117,7 +1117,7 @@ class AntOcean : ModelTask() {
         if (!fillFlag.optBoolean("canClean")) {
             return
         }
-        if (Status.hasFlagToday(HELP_CLEAN_LIMIT_FLAG)) {
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT)) {
             return
         }
         try {
@@ -1135,7 +1135,7 @@ class AntOcean : ModelTask() {
             var s = AntOceanRpcCall.queryFriendPage(userId)
             var jo = JsonUtil.parseJSONObjectOrNull(s) ?: return
             if (ResChecker.checkRes(TAG, jo)) {
-                if (Status.hasFlagToday(HELP_CLEAN_LIMIT_FLAG)) {
+                if (Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT)) {
                     return
                 }
                 s = AntOceanRpcCall.cleanFriendOcean(userId)
@@ -1167,7 +1167,7 @@ class AntOcean : ModelTask() {
 
     private suspend fun fillUserFlagAndClean(userIds: List<String>) {
         if (userIds.isEmpty()) return
-        if (Status.hasFlagToday(HELP_CLEAN_LIMIT_FLAG)) return
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT)) return
 
         val ja = JSONArray()
         for (id in userIds) {
@@ -1190,7 +1190,7 @@ class AntOcean : ModelTask() {
 
         val fillFlagVOList = jo.optJSONArray("fillFlagVOList") ?: return
         for (i in 0 until fillFlagVOList.length()) {
-            if (Status.hasFlagToday(HELP_CLEAN_LIMIT_FLAG)) return
+            if (Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT)) return
             cleanFriendOcean(fillFlagVOList.getJSONObject(i))
         }
     }
@@ -1200,7 +1200,7 @@ class AntOcean : ModelTask() {
             if (cleanOcean?.value != true) {
                 return
             }
-            if (Status.hasFlagToday(HELP_CLEAN_LIMIT_FLAG)) {
+            if (Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT)) {
                 return
             }
             val s = AntOceanRpcCall.queryUserRanking()
@@ -1219,7 +1219,7 @@ class AntOcean : ModelTask() {
             if (firstFillFlags != null) {
                 for (i in 0 until firstFillFlags.length()) {
                     cleanFriendOcean(firstFillFlags.getJSONObject(i))
-                    if (Status.hasFlagToday(HELP_CLEAN_LIMIT_FLAG)) return
+                    if (Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT)) return
                 }
             }
 
@@ -1231,7 +1231,7 @@ class AntOcean : ModelTask() {
             val idList = ArrayList<String>(pageSize)
             val currentUid = UserMap.currentUid
 
-            while (pos < allRankingList.length() && !Status.hasFlagToday(HELP_CLEAN_LIMIT_FLAG)) {
+            while (pos < allRankingList.length() && !Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT)) {
                 val friend = allRankingList.optJSONObject(pos)
                 val userId = friend?.optString("userId").orEmpty()
                 if (userId.isNotBlank() && userId != currentUid) {
@@ -1245,7 +1245,7 @@ class AntOcean : ModelTask() {
                 }
             }
 
-            if (idList.isNotEmpty() && !Status.hasFlagToday(HELP_CLEAN_LIMIT_FLAG)) {
+            if (idList.isNotEmpty() && !Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT)) {
                 fillUserFlagAndClean(idList)
             }
         } catch (t: Throwable) {
@@ -1296,7 +1296,7 @@ class AntOcean : ModelTask() {
                     val bizKey = buildOceanTaskBizKey(sceneCode, taskType, taskTitle)
 
                     // 在处理任何任务前，先检查当日限制，再检查黑名单
-                    if (Status.hasFlagToday(HELP_CLEAN_LIMIT_FLAG) &&
+                    if (Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT) &&
                         (taskTitle.contains("帮好友清理") || taskType.contains("HELP_CLEAN"))
                     ) {
                         if (rememberOceanTaskAttempt(bizKey) == 1) {

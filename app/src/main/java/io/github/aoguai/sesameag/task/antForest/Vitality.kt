@@ -2,14 +2,15 @@ package io.github.aoguai.sesameag.task.antForest
 
 import org.json.JSONArray
 import org.json.JSONObject
+import io.github.aoguai.sesameag.data.Status
+import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.entity.VitalityStore.ExchangeStatus
-import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.JsonUtil
+import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.maps.IdMapManager
 import io.github.aoguai.sesameag.util.maps.UserMap
 import io.github.aoguai.sesameag.util.maps.VitalityRewardsMap
 import io.github.aoguai.sesameag.util.ResChecker
-import io.github.aoguai.sesameag.data.Status
 
 /**
  * @author Byseven
@@ -127,7 +128,7 @@ object Vitality {
 
     @JvmStatic
     fun handleVitalityExchange(skuId: String): Boolean {
-        if (Status.hasFlagToday("forest::VitalityExchangeLimit::$skuId")) {
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTFOREST_VITALITY_EXCHANGE_LIMIT_PREFIX + skuId)) {
             Log.forest(TAG, "活力兑换🍃[$skuId]今日已达上限，跳过兑换")
             return false
         }
@@ -151,7 +152,7 @@ object Vitality {
                 if (status.name == itemStatus) {
                     Log.forest(TAG, "活力兑换🍃[$skuName]停止:${status.nickName}")
                     if (ExchangeStatus.REACH_LIMIT.name == itemStatus) {
-                        Status.setFlagToday("forest::VitalityExchangeLimit::$skuId")
+                        Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_VITALITY_EXCHANGE_LIMIT_PREFIX + skuId)
                         Log.forest("活力兑换🍃[$skuName]已达上限,停止兑换！")
                     }
                     return false
@@ -162,7 +163,7 @@ object Vitality {
             if (spuId.isEmpty()) return false
             if (VitalityExchange(spuId, skuId, skuName)) {
                 if (skuName.contains("限时")) {
-                    Status.setFlagToday("forest::VitalityExchangeLimit::$skuId")
+                    Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_VITALITY_EXCHANGE_LIMIT_PREFIX + skuId)
                 }
                 return true
             }
@@ -197,7 +198,7 @@ object Vitality {
                 val resultCode = jo.optString("resultCode", "")
                 if ("QUOTA_USER_NOT_ENOUGH" == resultCode) {
                     Log.forest("活力兑换🍃[兑换次数已达上限]#${jo.optString("resultDesc", "")}")
-                    Status.setFlagToday("forest::VitalityExchangeLimit::$skuId")
+                    Status.setFlagToday(StatusFlags.FLAG_ANTFOREST_VITALITY_EXCHANGE_LIMIT_PREFIX + skuId)
                     return false
                 }
             }

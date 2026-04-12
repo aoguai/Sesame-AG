@@ -1681,7 +1681,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             // 检查执行时间
             if (whackMoleTime?.isReachedToday() == true) {
 
-                val whackMoleFlag = "forest::whackMole::executed"
+                val whackMoleFlag = StatusFlags.FLAG_ANTFOREST_WHACK_MOLE_EXECUTED
                 if (Status.hasFlagToday(whackMoleFlag)) return
 
                 // 根据索引匹配模式
@@ -4126,10 +4126,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             return
         }
 
-        val consumedIndex = getTriggerIndex(BUBBLE_BOOST_TRIGGER_INDEX_KEY)
+        val consumedIndex = getTriggerIndex(StatusFlags.FLAG_ANTFOREST_BUBBLE_BOOST_TRIGGER_INDEX)
         val decision = TimeTriggerEvaluator.evaluateNow(spec, consumedIndex = consumedIndex)
         if (decision.allowNow) {
-            consumeTriggerSlot(BUBBLE_BOOST_TRIGGER_INDEX_KEY, decision.matchedSlotIndex)
+            consumeTriggerSlot(StatusFlags.FLAG_ANTFOREST_BUBBLE_BOOST_TRIGGER_INDEX, decision.matchedSlotIndex)
             useBubbleBoostCard(bagObject)
             return
         }
@@ -4155,14 +4155,14 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             }
 
             val spec = bubbleBoostTime?.getTriggerSpec() ?: return
-            val consumedIndex = getTriggerIndex(BUBBLE_BOOST_TRIGGER_INDEX_KEY)
+            val consumedIndex = getTriggerIndex(StatusFlags.FLAG_ANTFOREST_BUBBLE_BOOST_TRIGGER_INDEX)
             val decision = TimeTriggerEvaluator.evaluateNow(spec, consumedIndex = consumedIndex)
             if (!decision.allowNow) {
                 logTriggerWaiting("加速器", decision)
                 return
             }
 
-            consumeTriggerSlot(BUBBLE_BOOST_TRIGGER_INDEX_KEY, decision.matchedSlotIndex)
+            consumeTriggerSlot(StatusFlags.FLAG_ANTFOREST_BUBBLE_BOOST_TRIGGER_INDEX, decision.matchedSlotIndex)
             useBubbleBoostCard(bagObject)
         }
     }
@@ -4466,7 +4466,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      */
     internal fun queryUserPatrol() {
         val waitTime = 300L //增大查询等待时间，减少异常
-        val patrolChanceLimitFlag = "AntForest::exchangePatrolChanceLimit"
+        val patrolChanceLimitFlag = StatusFlags.FLAG_ANTFOREST_PATROL_CHANCE_EXCHANGE_LIMIT
         try {
             do {
                 // 查询当前巡护任务
@@ -5249,7 +5249,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             Log.forest(TAG, "扫描到" + doubleClickProps.size + "种双击卡，将按过期顺序尝试使用...")
 
             // 步骤3: 遍历筛选并排序后的列表，逐个尝试使用
-            val normalDoubleDecision = evaluateTriggerDecision(doubleCardTime, DOUBLE_CARD_TRIGGER_INDEX_KEY)
+            val normalDoubleDecision = evaluateTriggerDecision(doubleCardTime, StatusFlags.FLAG_ANTFOREST_DOUBLE_CARD_TRIGGER_INDEX)
             var loggedNormalDoubleSkip = false
             var normalDoubleTriggerConsumed = false
             var success = false
@@ -5268,7 +5268,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                         continue
                     }
                     if (!normalDoubleTriggerConsumed) {
-                        consumeTriggerSlot(DOUBLE_CARD_TRIGGER_INDEX_KEY, normalDoubleDecision.matchedSlotIndex)
+                        consumeTriggerSlot(StatusFlags.FLAG_ANTFOREST_DOUBLE_CARD_TRIGGER_INDEX, normalDoubleDecision.matchedSlotIndex)
                         normalDoubleTriggerConsumed = true
                     }
                 }
@@ -5517,12 +5517,12 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             val jo = selectPreferredRobMultiplierProp(bag)
             val propType = getPropType(jo)
             if (jo != null && !propType.contains("LIMIT_TIME") && !propType.contains("DAY")) {
-                val decision = evaluateTriggerDecision(robMultiplierCardTime, ROB_MULTIPLIER_CARD_TRIGGER_INDEX_KEY)
+                val decision = evaluateTriggerDecision(robMultiplierCardTime, StatusFlags.FLAG_ANTFOREST_ROB_MULTIPLIER_CARD_TRIGGER_INDEX)
                 if (decision?.allowNow != true) {
                     logTriggerWaiting("收好友N倍卡", decision)
                     return
                 }
-                consumeTriggerSlot(ROB_MULTIPLIER_CARD_TRIGGER_INDEX_KEY, decision.matchedSlotIndex)
+                consumeTriggerSlot(StatusFlags.FLAG_ANTFOREST_ROB_MULTIPLIER_CARD_TRIGGER_INDEX, decision.matchedSlotIndex)
             }
             if (jo != null && usePropBag(jo)) {
                 robMultiplierCardEndTime = System.currentTimeMillis() + 1000 * 60 * 5
@@ -5551,7 +5551,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 if (propId.isEmpty()) {
                     return null
                 }
-                return "AntForest::useEnergyRainChanceCard::LIMIT_TIME_ENERGY_RAIN_CHANCE::$propId"
+                return StatusFlags.FLAG_FOREST_RAIN_LIMIT_TIME_CHANCE_PREFIX + propId
             }
 
             if (hasPlayableEnergyRainChance()) {
@@ -6044,12 +6044,12 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 if ("双击卡" == config.propName) {
                     val propType = propObj.optString("propType")
                     if ("ENERGY_DOUBLE_CLICK" == propType) {
-                        val decision = evaluateTriggerDecision(doubleCardTime, DOUBLE_CARD_TRIGGER_INDEX_KEY)
+                        val decision = evaluateTriggerDecision(doubleCardTime, StatusFlags.FLAG_ANTFOREST_DOUBLE_CARD_TRIGGER_INDEX)
                         if (decision?.allowNow != true) {
                             logTriggerWaiting("双击卡", decision)
                             return
                         }
-                        consumeTriggerSlot(DOUBLE_CARD_TRIGGER_INDEX_KEY, decision.matchedSlotIndex)
+                        consumeTriggerSlot(StatusFlags.FLAG_ANTFOREST_DOUBLE_CARD_TRIGGER_INDEX, decision.matchedSlotIndex)
                     }
                 }
                 Log.forest(TAG, "找到" + config.propName + "，准备使用: " + propObj)
@@ -6111,9 +6111,6 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         // 保持向后兼容
         /** 保护罩续写阈值（HHmm），例如 2359 表示 23小时59分  */
         private const val SHIELD_RENEW_THRESHOLD_HHMM = 2359
-        private const val DOUBLE_CARD_TRIGGER_INDEX_KEY = "antForest::doubleCard::triggerIndex"
-        private const val BUBBLE_BOOST_TRIGGER_INDEX_KEY = "antForest::bubbleBoost::triggerIndex"
-        private const val ROB_MULTIPLIER_CARD_TRIGGER_INDEX_KEY = "antForest::robMultiplierCard::triggerIndex"
         var giveEnergyRainList: SelectModelField? = null //能量雨赠送列表
         var medicalHealthOption: SelectModelField? = null //医疗健康选项
         var ecoLifeOption: SelectModelField? = null

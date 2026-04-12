@@ -58,9 +58,6 @@ class AntSports : ModelTask() {
         /** @brief 训练好友 0 金币达上限日期缓存键 */
         private const val TRAIN_FRIEND_ZERO_COIN_DATE = "TRAIN_FRIEND_ZERO_COIN_DATE"
 
-        /** @brief 首页气泡任务当日冷却标记前缀 */
-        private const val SPORTS_HOME_BUBBLE_COOLDOWN_PREFIX = "AntSports::homeBubbleCooldown::"
-
         /** @brief 首页浏览任务默认等待时长（无显式秒数字段时兜底） */
         private const val DEFAULT_SPORTS_HOME_BROWSE_WAIT_MS = 16_000L
 
@@ -900,7 +897,7 @@ class AntSports : ModelTask() {
      * - 浏览类任务按等待逻辑处理，待领取气泡统一走 pickBubbleTaskEnergy 收取
      */
     private fun buildSportsHomeBubbleCooldownFlag(taskId: String): String {
-        return SPORTS_HOME_BUBBLE_COOLDOWN_PREFIX + taskId
+        return StatusFlags.FLAG_ANTSPORTS_HOME_BUBBLE_COOLDOWN_PREFIX + taskId
     }
 
     private fun isSportsRpcSuccess(result: JSONObject): Boolean {
@@ -2509,7 +2506,7 @@ class AntSports : ModelTask() {
          */
         private fun neverlandDoSign() {
             try {
-                if (Status.hasFlagToday("AntSports::neverlandDoSign::已签到")) return
+                if (Status.hasFlagToday(StatusFlags.FLAG_NEVERLAND_SIGN_DONE)) return
 
                 Log.sports(TAG, "健康岛 · 检查签到状态")
                 val jo = JSONObject(AntSportsRpcCall.NeverlandRpcCall.querySign(3, "jkdsportcard"))
@@ -2522,7 +2519,7 @@ class AntSports : ModelTask() {
                     if ("ALREADY_SIGN_IN" == errorCode ||
                         "已签到" == jo.optString("errorMsg", "")
                     ) {
-                        Status.setFlagToday("AntSports::neverlandDoSign::已签到")
+                        Status.setFlagToday(StatusFlags.FLAG_NEVERLAND_SIGN_DONE)
                     }
                     return
                 }
@@ -2545,7 +2542,7 @@ class AntSports : ModelTask() {
                     signRes.optJSONObject("data") == null
                 ) {
                     Log.error(TAG, "takeSign raw=$signRes")
-                    Status.setFlagToday("AntSports::neverlandDoSign::已签到")
+                    Status.setFlagToday(StatusFlags.FLAG_NEVERLAND_SIGN_DONE)
                     return
                 }
 
@@ -2560,7 +2557,7 @@ class AntSports : ModelTask() {
                     "健康岛签到成功 🎉 +" + rewardAmount + rewardType +
                         " 连续：" + newContinuity + " 天"
                 )
-                Status.setFlagToday("AntSports::neverlandDoSign::已签到")
+                Status.setFlagToday(StatusFlags.FLAG_NEVERLAND_SIGN_DONE)
             } catch (t: Throwable) {
                 Log.printStackTrace(TAG, "neverlandDoSign err:$t", t)
             }

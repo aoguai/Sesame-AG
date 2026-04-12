@@ -85,6 +85,12 @@ object Credit2101 {
         return configMap.values.any { (it ?: 0) != 0 }
     }
 
+    private fun buildEventCountFlag(eventType: String): String {
+        return StatusFlags.FLAG_CREDIT2101_EVENT_COUNT_PREFIX +
+            eventType +
+            StatusFlags.FLAG_CREDIT2101_EVENT_COUNT_SUFFIX
+    }
+
 
     /** 故事ID数组 */
     private val STORY_IDS = listOf(
@@ -944,7 +950,7 @@ object Credit2101 {
             val maxCount = configMap[eventType] ?: 0
             if (maxCount == 0) continue
 
-            val flagKey = "${TAG}_Event_${eventType}_COUNT_TODAY"
+            val flagKey = buildEventCountFlag(eventType)
             val doneCount = Status.getIntFlagToday(flagKey) ?: 0
 
             if (maxCount != -1 && doneCount >= maxCount) {
@@ -1074,7 +1080,7 @@ object Credit2101 {
             if (maxCount == 0) continue
 
             /// 2. 检查今日已完成次数
-            val flagKey = "${TAG}_Event_${eventType}_COUNT_TODAY"
+            val flagKey = buildEventCountFlag(eventType)
             val doneCount = Status.getIntFlagToday(flagKey)?: 0
 
             // 如果设置了固定次数且已达标，则跳过 (-1 代表不限)

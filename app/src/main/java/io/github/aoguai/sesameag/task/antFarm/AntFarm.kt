@@ -955,7 +955,7 @@ class AntFarm : ModelTask() {
                             .nickName()
                     )
                     if (PropStatus.REACH_LIMIT.name == itemStatus) {
-                        Status.setFlagToday("farm::paradiseCoinExchangeLimit::$spuId")
+                        Status.setFlagToday(StatusFlags.FLAG_FARM_PARADISE_COIN_EXCHANGE_LIMIT_PREFIX + spuId)
                     }
                     return true
                 }
@@ -1739,13 +1739,13 @@ class AntFarm : ModelTask() {
             val farmAnswerCache = DataStore.getOrCreate<MutableMap<String, String>>(FARM_ANSWER_CACHE_KEY) as MutableMap<String, String>
             cleanOldAnswers(farmAnswerCache, today)
             // 检查是否今天已经答过题
-            if (Status.hasFlagToday(ANSWERED_FLAG)) {
-                if (!Status.hasFlagToday(CACHED_FLAG)) {
+            if (Status.hasFlagToday(StatusFlags.FLAG_FARM_QUESTION_ANSWERED)) {
+                if (!Status.hasFlagToday(StatusFlags.FLAG_FARM_QUESTION_CACHE)) {
                     val jo = JSONObject(DadaDailyRpcCall.home(activityId))
                     if (ResChecker.checkRes(TAG + "查询答题活动失败:", jo)) {
                         val operationConfigList = jo.getJSONArray("operationConfigList")
                         updateTomorrowAnswerCache(operationConfigList, tomorrow)
-                        Status.setFlagToday(CACHED_FLAG)
+                        Status.setFlagToday(StatusFlags.FLAG_FARM_QUESTION_CACHE)
                     }
                 }
                 return
@@ -1804,14 +1804,14 @@ class AntFarm : ModelTask() {
 
             // 提交答案
             val joDailySubmit = JSONObject(DadaDailyRpcCall.submit(activityId, answer, questionId))
-            Status.setFlagToday(ANSWERED_FLAG)
+            Status.setFlagToday(StatusFlags.FLAG_FARM_QUESTION_ANSWERED)
             if (ResChecker.checkRes(TAG + "提交答题答案失败:", joDailySubmit)) {
                 val extInfo = joDailySubmit.getJSONObject("extInfo")
                 val correct = joDailySubmit.getBoolean("correct")
                 Log.farm("饲料任务答题：" + (if (correct) "正确" else "错误") + "领取饲料［" + extInfo.getString("award") + "g］")
                 val operationConfigList = joDailySubmit.getJSONArray("operationConfigList")
                 updateTomorrowAnswerCache(operationConfigList, tomorrow)
-                Status.setFlagToday(CACHED_FLAG)
+                Status.setFlagToday(StatusFlags.FLAG_FARM_QUESTION_CACHE)
             }
         } catch (e: Exception) {
             Log.printStackTrace(TAG, "答题出错", e)
@@ -1934,7 +1934,7 @@ class AntFarm : ModelTask() {
                 val bizKey = task.getString("bizKey")
 
                 // 1. 预检查：每日上限与黑名单
-                if (Status.hasFlagToday("farm::task::limit::$bizKey")) continue
+                if (Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_LIMIT_PREFIX + bizKey)) continue
 
                 // 检查任务标题和业务键是否在黑名单中
                 val titleInBlacklist = TaskBlacklist.isTaskInBlacklist(title)
@@ -1955,7 +1955,7 @@ class AntFarm : ModelTask() {
                             }
                             "ANSWER" -> {
                                 // --- 答题任务专项逻辑 ---
-                                if (!Status.hasFlagToday(CACHED_FLAG)) {
+                                if (!Status.hasFlagToday(StatusFlags.FLAG_FARM_QUESTION_CACHE)) {
                                     answerQuestion("100")
                                 }
                             }
@@ -1971,8 +1971,8 @@ class AntFarm : ModelTask() {
                     }
                     TaskStatus.FINISHED.name, TaskStatus.RECEIVED.name -> {
                         if (bizKey == "ANSWER") {
-                            if (!Status.hasFlagToday(ANSWERED_FLAG)) Status.setFlagToday(ANSWERED_FLAG)
-                            if (!Status.hasFlagToday(CACHED_FLAG)) {
+                            if (!Status.hasFlagToday(StatusFlags.FLAG_FARM_QUESTION_ANSWERED)) Status.setFlagToday(StatusFlags.FLAG_FARM_QUESTION_ANSWERED)
+                            if (!Status.hasFlagToday(StatusFlags.FLAG_FARM_QUESTION_CACHE)) {
                                 Log.farm(TAG, "答题已完成，尝试预取明日答案...")
                                 answerQuestion("100")
                             }
@@ -2045,7 +2045,7 @@ class AntFarm : ModelTask() {
     }
 
     private fun getFarmTaskTriggerIndex(): Int {
-        return Status.getIntFlagToday(FARM_TASK_TRIGGER_INDEX_KEY) ?: 0
+        return Status.getIntFlagToday(StatusFlags.FLAG_FARM_TASK_TRIGGER_INDEX) ?: 0
     }
 
     private fun advanceFarmTaskTriggerIndex(matchedSlotIndex: Int) {
@@ -2055,7 +2055,7 @@ class AntFarm : ModelTask() {
         val nextIndex = matchedSlotIndex + 1
         val currentIndex = getFarmTaskTriggerIndex()
         if (nextIndex > currentIndex) {
-            Status.setIntFlagToday(FARM_TASK_TRIGGER_INDEX_KEY, nextIndex)
+            Status.setIntFlagToday(StatusFlags.FLAG_FARM_TASK_TRIGGER_INDEX, nextIndex)
         }
     }
 
@@ -2180,7 +2180,7 @@ class AntFarm : ModelTask() {
                     Log.farm(TAG, "抽抽乐任务[$title]已关闭，跳过饲料任务收敛检查")
                     continue
                 }
-                if (Status.hasFlagToday("farm::task::limit::$bizKey")) {
+                if (Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_LIMIT_PREFIX + bizKey)) {
                     continue
                 }
                 if (TaskBlacklist.isTaskInBlacklist(title) || TaskBlacklist.isTaskInBlacklist(bizKey)) {
@@ -2235,7 +2235,7 @@ class AntFarm : ModelTask() {
         } else {
             val resultCode = jo.optString("resultCode", "")
             if (resultCode == "309") {
-                Status.setFlagToday("farm::task::limit::$bizKey")
+                Status.setFlagToday(StatusFlags.FLAG_FARM_TASK_LIMIT_PREFIX + bizKey)
                 Log.farm(TAG, "庄园任务[$title]已达上限")
             } else {
                 Log.error("庄园任务失败：$title code:$resultCode")
@@ -4863,7 +4863,7 @@ class AntFarm : ModelTask() {
      */
     private suspend fun inviteFriendVisitFamily(friendUserIds: MutableList<String?>) {
         try {
-            if (Status.hasFlagToday("antFarm::inviteFriendVisitFamily")) {
+            if (Status.hasFlagToday(StatusFlags.FLAG_FARM_INVITE_FRIEND_VISIT_FAMILY)) {
                 return
             }
             val familyValue: Set<String?> = notInviteList?.value ?: emptySet()
@@ -4885,7 +4885,7 @@ class AntFarm : ModelTask() {
             val jo = JSONObject(AntFarmRpcCall.inviteFriendVisitFamily(userIdArray))
             if ("SUCCESS" == jo.getString("memo")) {
                 Log.farm("亲密家庭🏠提交任务[分享好友]")
-                Status.setFlagToday("antFarm::inviteFriendVisitFamily")
+                Status.setFlagToday(StatusFlags.FLAG_FARM_INVITE_FRIEND_VISIT_FAMILY)
                 ActionDelayUtil.humanActionDelay(500L)
                 syncFamilyStatusIntimacy(familyGroupId)
             }
@@ -4908,7 +4908,7 @@ class AntFarm : ModelTask() {
         familyDrawInfo: JSONObject
     ) {
         try {
-            if (Status.hasFlagToday("antFarm::familyBatchInviteP2P")) {
+            if (Status.hasFlagToday(StatusFlags.FLAG_FARM_FAMILY_BATCH_INVITE_P2P)) {
                 return
             }
             if (Objects.isNull(friendUserIds) || friendUserIds.isEmpty()) {
@@ -4940,7 +4940,7 @@ class AntFarm : ModelTask() {
                 jo = JSONObject(AntFarmRpcCall.familyBatchInviteP2P(inviteP2PVOList, sceneCode))
                 if (ResChecker.checkRes(TAG, jo)) {
                     Log.farm("亲密家庭🏠提交任务[好友串门送扭蛋]")
-                    Status.setFlagToday("antFarm::familyBatchInviteP2P")
+                    Status.setFlagToday(StatusFlags.FLAG_FARM_FAMILY_BATCH_INVITE_P2P)
                     ActionDelayUtil.humanActionDelay(500L)
                 }
             }
@@ -5301,9 +5301,6 @@ class AntFarm : ModelTask() {
         }
 
         private const val FARM_ANSWER_CACHE_KEY = "farmAnswerQuestionCache"
-        private const val ANSWERED_FLAG = "farmQuestion::answered" // 今日是否已答题
-        private const val CACHED_FLAG = "farmQuestion::cache" // 是否已缓存明日答案
-        private const val FARM_TASK_TRIGGER_INDEX_KEY = "antFarm::farmTask::triggerIndex"
     }
 
     /**

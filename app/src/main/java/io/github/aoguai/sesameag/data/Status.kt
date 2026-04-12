@@ -123,7 +123,7 @@ class Status {
 
         @JvmStatic
         fun canVitalityExchangeToday(skuId: String, count: Int): Boolean {
-            return !hasFlagToday("forest::VitalityExchangeLimit::$skuId") && getVitalityCount(skuId) < count
+            return !hasFlagToday(StatusFlags.FLAG_ANTFOREST_VITALITY_EXCHANGE_LIMIT_PREFIX + skuId) && getVitalityCount(skuId) < count
         }
 
         @JvmStatic
@@ -760,7 +760,7 @@ class Status {
          */
         @JvmStatic
         fun canParadiseCoinExchangeBenefitToday(spuId: String): Boolean {
-            return !hasFlagToday("farm::paradiseCoinExchangeLimit::$spuId")
+            return !hasFlagToday(StatusFlags.FLAG_FARM_PARADISE_COIN_EXCHANGE_LIMIT_PREFIX + spuId)
         }
     }
 }

@@ -2,6 +2,7 @@ package io.github.aoguai.sesameag.task
 
 import android.annotation.SuppressLint
 import io.github.aoguai.sesameag.data.Status
+import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.hook.ApplicationHook
 import io.github.aoguai.sesameag.hook.CustomRpcScheduler
 import io.github.aoguai.sesameag.model.BaseModel
@@ -97,9 +98,9 @@ class CoroutineTaskRunner(allModels: List<Model>) {
                 // 确保时间状态是最新的
                 TaskCommon.update()
                 if (TaskCommon.IS_MODULE_SLEEP_TIME) {
-                    Log.record(TAG, "💤 当前处于模块休眠时间，不设置 OnceDaily::Finished 标记")
+                    Log.record(TAG, "💤 当前处于模块休眠时间，不设置 ${StatusFlags.FLAG_ONCE_DAILY_FINISHED} 标记")
                 } else {
-                    Status.setFlagToday("OnceDaily::Finished")
+                    Status.setFlagToday(StatusFlags.FLAG_ONCE_DAILY_FINISHED)
                 }
             }
 

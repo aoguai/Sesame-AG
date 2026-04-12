@@ -11,11 +11,13 @@ data class ModelFieldTodayState(
 )
 
 object ModelFieldTodayStateResolver {
-    private const val ANTORCHARD_SPREAD_MANURE_COUNT_YEB = "ANTORCHARD_SPREAD_MANURE_COUNT_YEB"
-
     private data class OptionFlagState(
         val flag: String,
         val reason: String
+    )
+
+    private val antForestEcoLifeOptionStates = mapOf(
+        "plate" to OptionFlagState(StatusFlags.FLAG_ANTFOREST_ECOLIFE_PHOTO_GUANGPAN, "今日光盘行动已处理")
     )
 
     private val antFarmFamilyOptionStates = mapOf(
@@ -24,7 +26,8 @@ object ModelFieldTodayStateResolver {
         "sleepTogether" to OptionFlagState(StatusFlags.FLAG_FARM_FAMILY_SLEEP_TOGETHER, "今日一起睡觉已处理"),
         "deliverMsgSend" to OptionFlagState(StatusFlags.FLAG_FARM_FAMILY_DELIVER_MSG_SEND, "今日道早安已处理"),
         "shareToFriends" to OptionFlagState(StatusFlags.FLAG_FARM_FAMILY_SHARE_TO_FRIENDS, "今日家庭分享已处理"),
-        "inviteFriendVisitFamily" to OptionFlagState(StatusFlags.FLAG_FARM_FAMILY_SHARE_TO_FRIENDS, "今日家庭分享已处理")
+        "inviteFriendVisitFamily" to OptionFlagState(StatusFlags.FLAG_FARM_INVITE_FRIEND_VISIT_FAMILY, "今日好友串门邀请已处理"),
+        "batchInviteP2P" to OptionFlagState(StatusFlags.FLAG_FARM_FAMILY_BATCH_INVITE_P2P, "今日串门送扭蛋已处理")
     )
 
     @JvmStatic
@@ -36,6 +39,26 @@ object ModelFieldTodayStateResolver {
         return when ("$modelCode.${modelField.code}") {
             "AntForest.pkEnergy" ->
                 flag(StatusFlags.FLAG_ANTFOREST_PK_SKIP_TODAY, "今日 PK 榜无需处理")
+
+            "AntForest.whackMoleMode",
+            "AntForest.whackMoleGames",
+            "AntForest.whackMoleMoleCount",
+            "AntForest.whackMoleTime" ->
+                whackMoleState(modelFields)
+
+            "AntForest.youthPrivilege" ->
+                flag(StatusFlags.FLAG_ANTFOREST_PRIVILEGE_RECEIVED, "今日青春特权森林道具已处理")
+
+            "AntForest.studentCheckIn" ->
+                flag(StatusFlags.FLAG_ANTFOREST_PRIVILEGE_STUDENT_TASK, "今日青春特权签到红包已处理")
+
+            "AntForest.ecoLife",
+            "AntForest.ecoLifeOption" ->
+                ecoLifeOptionsState(modelFields["ecoLifeOption"] ?: modelField)
+
+            "AntForest.vitalityExchange",
+            "AntForest.vitalityExchangeList" ->
+                vitalityExchangeState(modelFields)
 
             "AntMember.memberSign" ->
                 flag(StatusFlags.FLAG_ANTMEMBER_MEMBER_SIGN_DONE, "今日会员签到已处理")
@@ -51,12 +74,32 @@ object ModelFieldTodayStateResolver {
                     else -> ModelFieldTodayState()
                 }
 
+            "AntMember.memberPointExchangeBenefit" ->
+                flag(StatusFlags.FLAG_ANTMEMBER_MEMBER_BENEFIT_REFRESH_DONE, "今日会员积分兑换权益已处理")
+
+            "AntMember.memberPointExchangeBenefitList" ->
+                selectedSetFlagState(
+                    modelField,
+                    StatusFlags.FLAG_ANTMEMBER_MEMBER_BENEFIT_REFRESH_DONE,
+                    "今日会员积分兑换权益已处理"
+                )
+
             "AntMember.sesameTask" ->
                 flag(StatusFlags.FLAG_ANTMEMBER_DO_ALL_SESAME_TASK, "今日芝麻信用任务已处理")
 
             "AntMember.collectSesame",
             "AntMember.collectSesameWithOneClick" ->
                 flag(StatusFlags.FLAG_ANTMEMBER_COLLECT_SESAME_DONE, "今日芝麻奖励已领取")
+
+            "AntMember.sesameGrainExchange" ->
+                flag(StatusFlags.FLAG_ZMXY_GRAIN_EXCHANGE_DONE, "今日芝麻粒兑换已处理")
+
+            "AntMember.sesameGrainExchangeList" ->
+                selectedSetFlagState(
+                    modelField,
+                    StatusFlags.FLAG_ZMXY_GRAIN_EXCHANGE_DONE,
+                    "今日芝麻粒兑换已处理"
+                )
 
             "AntMember.merchantSign" ->
                 flag(StatusFlags.FLAG_ANTMEMBER_MERCHANT_SIGN_DONE, "今日商家签到已处理")
@@ -107,6 +150,17 @@ object ModelFieldTodayStateResolver {
                     reason = "今日组队合种浇水已达目标"
                 )
 
+            "AntCooperate.loveCooperateWater" ->
+                flag(StatusFlags.FLAG_ANTCOOPERATE_LOVE_TEAM_WATER, "今日真爱合种浇水已处理")
+
+            "AntCooperate.loveCooperateWaterNum" ->
+                flag(StatusFlags.FLAG_ANTCOOPERATE_LOVE_TEAM_WATER, "今日真爱合种浇水已处理")
+
+            "AntOcean.cleanOcean",
+            "AntOcean.cleanOceanType",
+            "AntOcean.cleanOceanList" ->
+                flag(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT, "今日帮助好友清理次数已达上限")
+
             "AntOrchard.orchardSpreadManureCount" ->
                 limitReached(
                     current = Status.getIntFlagToday(StatusFlags.FLAG_ANTORCHARD_SPREAD_MANURE_COUNT),
@@ -116,7 +170,7 @@ object ModelFieldTodayStateResolver {
 
             "AntOrchard.orchardSpreadManureCountYeb" ->
                 limitReached(
-                    current = Status.getIntFlagToday(ANTORCHARD_SPREAD_MANURE_COUNT_YEB),
+                    current = Status.getIntFlagToday(StatusFlags.FLAG_ANTORCHARD_SPREAD_MANURE_COUNT_YEB),
                     limit = intValue(modelField),
                     reason = "今日摇钱树施肥已达上限"
                 )
@@ -128,6 +182,18 @@ object ModelFieldTodayStateResolver {
             "AntFarm.farmTaskTrigger" ->
                 flag(StatusFlags.FLAG_FARM_TASK_FINISHED, "今日饲料任务已处理")
 
+            "AntFarm.paradiseCoinExchangeBenefit",
+            "AntFarm.paradiseCoinExchangeBenefitList" ->
+                paradiseCoinExchangeState(modelFields)
+
+            "AntFarm.enableChouchoule",
+            "AntFarm.chouChouLeTrigger" ->
+                flag(StatusFlags.FLAG_FARM_CHOUCHOULE_FINISHED, "今日小鸡抽抽乐已处理")
+
+            "AntFarm.recordFarmGame",
+            "AntFarm.farmGameTrigger" ->
+                flag(StatusFlags.FLAG_FARM_GAME_FINISHED, "今日小游戏改分已处理")
+
             "AntFarm.feedFriendAnimalList" ->
                 if (mapValue(modelField)?.isNotEmpty() == true) {
                     flag(StatusFlags.FLAG_FARM_FEED_FRIEND_LIMIT, "今日帮喂次数已达上限")
@@ -135,8 +201,9 @@ object ModelFieldTodayStateResolver {
                     ModelFieldTodayState()
                 }
 
+            "AntFarm.family",
             "AntFarm.familyOptions" ->
-                familyOptionsState(modelField)
+                familyOptionsState(modelFields["familyOptions"] ?: modelField)
 
             "AntFarm.useAccelerateTool",
             "AntFarm.remainingTime",
@@ -149,6 +216,10 @@ object ModelFieldTodayStateResolver {
 
             "AntFarm.signRegardless" ->
                 flag(StatusFlags.FLAG_FARM_SIGNED, "今日庄园签到已处理")
+
+            "OtherTask.credit2101",
+            "OtherTask.CreditOptions" ->
+                credit2101OptionsState(modelFields["CreditOptions"] ?: modelField)
 
             else -> ModelFieldTodayState()
         }
@@ -177,26 +248,132 @@ object ModelFieldTodayStateResolver {
         )
     }
 
+    private fun paradiseCoinExchangeState(modelFields: ModelFields): ModelFieldTodayState {
+        val selectedBenefits = stringSetValue(modelFields["paradiseCoinExchangeBenefitList"])
+        if (selectedBenefits.isEmpty()) {
+            return ModelFieldTodayState()
+        }
+
+        return if (selectedBenefits.all { benefitId ->
+                Status.hasFlagToday(StatusFlags.FLAG_FARM_PARADISE_COIN_EXCHANGE_LIMIT_PREFIX + benefitId)
+            }
+        ) {
+            inactive("今日乐园币兑换权益已全部达上限")
+        } else {
+            ModelFieldTodayState()
+        }
+    }
+
+    private fun vitalityExchangeState(modelFields: ModelFields): ModelFieldTodayState {
+        val configuredCounts = countMapValue(modelFields["vitalityExchangeList"])
+            .filterValues { it != 0 }
+        if (configuredCounts.isEmpty()) {
+            return ModelFieldTodayState()
+        }
+        if (configuredCounts.values.any { it < 0 }) {
+            return ModelFieldTodayState()
+        }
+
+        return if (configuredCounts.all { (skuId, limit) ->
+                !Status.canVitalityExchangeToday(skuId, limit)
+            }
+        ) {
+            inactive("今日活力值兑换已达设定次数/上限")
+        } else {
+            ModelFieldTodayState()
+        }
+    }
+
+    private fun credit2101OptionsState(modelField: ModelField<*>): ModelFieldTodayState {
+        val configuredCounts = countMapValue(modelField)
+            .filterValues { it != 0 }
+        if (configuredCounts.isEmpty()) {
+            return ModelFieldTodayState()
+        }
+        if (configuredCounts.values.any { it < 0 }) {
+            return ModelFieldTodayState()
+        }
+
+        return if (configuredCounts.all { (eventType, limit) ->
+                (Status.getIntFlagToday(buildCredit2101EventCountFlag(eventType)) ?: 0) >= limit
+            }
+        ) {
+            inactive("今日信用2101事件已达设定次数")
+        } else {
+            ModelFieldTodayState()
+        }
+    }
+
+    private fun buildCredit2101EventCountFlag(eventType: String): String {
+        return StatusFlags.FLAG_CREDIT2101_EVENT_COUNT_PREFIX +
+            eventType +
+            StatusFlags.FLAG_CREDIT2101_EVENT_COUNT_SUFFIX
+    }
+
+    private fun whackMoleState(modelFields: ModelFields): ModelFieldTodayState {
+        val mode = intValue(modelFields["whackMoleMode"]) ?: 0
+        if (mode <= 0) {
+            return ModelFieldTodayState()
+        }
+        return flag(StatusFlags.FLAG_ANTFOREST_WHACK_MOLE_EXECUTED, "今日6秒拼手速已处理")
+    }
+
+    private fun ecoLifeOptionsState(modelField: ModelField<*>): ModelFieldTodayState {
+        return optionFlagsState(
+            modelField,
+            antForestEcoLifeOptionStates,
+            "今日已完成所有带状态标记的绿色行动选项"
+        )
+    }
+
     private fun familyOptionsState(modelField: ModelField<*>): ModelFieldTodayState {
+        return optionFlagsState(
+            modelField,
+            antFarmFamilyOptionStates,
+            "今日已完成所有带状态标记的家庭任务"
+        )
+    }
+
+    private fun optionFlagsState(
+        modelField: ModelField<*>,
+        optionStates: Map<String, OptionFlagState>,
+        allDoneReason: String
+    ): ModelFieldTodayState {
         val selectedOptions = stringSetValue(modelField)
         if (selectedOptions.isEmpty()) {
             return ModelFieldTodayState()
         }
 
-        val matchedStates = selectedOptions.map {
-            antFarmFamilyOptionStates[it] ?: return ModelFieldTodayState()
+        if (selectedOptions.any { !optionStates.containsKey(it) }) {
+            return ModelFieldTodayState()
+        }
+
+        val matchedStates = selectedOptions.mapNotNull { optionStates[it] }
+        if (matchedStates.isEmpty()) {
+            return ModelFieldTodayState()
         }
 
         return if (matchedStates.all { Status.hasFlagToday(it.flag) }) {
             val reason = if (matchedStates.size == 1) {
                 matchedStates.first().reason
             } else {
-                "今日已完成所有带状态标记的家庭任务"
+                allDoneReason
             }
             inactive(reason)
         } else {
             ModelFieldTodayState()
         }
+    }
+
+    private fun selectedSetFlagState(
+        modelField: ModelField<*>?,
+        flagKey: String,
+        reason: String
+    ): ModelFieldTodayState {
+        if (stringSetValue(modelField).isEmpty()) {
+            return ModelFieldTodayState()
+        }
+        return flag(flagKey, reason)
     }
 
     private fun limitReached(current: Int?, limit: Int?, reason: String): ModelFieldTodayState {
@@ -211,6 +388,17 @@ object ModelFieldTodayStateResolver {
 
     private fun mapValue(modelField: ModelField<*>?): Map<*, *>? {
         return modelField?.value as? Map<*, *>
+    }
+
+    private fun countMapValue(modelField: ModelField<*>?): Map<String, Int> {
+        return mapValue(modelField)
+            ?.mapNotNull { (key, value) ->
+                val eventType = key as? String ?: return@mapNotNull null
+                val count = (value as? Number)?.toInt() ?: return@mapNotNull null
+                eventType to count
+            }
+            ?.toMap()
+            ?: emptyMap()
     }
 
     private fun stringSetValue(modelField: ModelField<*>?): Set<String> {
