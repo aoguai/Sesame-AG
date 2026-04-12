@@ -165,6 +165,15 @@ class AntOcean : ModelTask() {
     private var PDL_task: BooleanModelField? = null
 
     private val oceanTaskTryCount = ConcurrentHashMap<String, AtomicInteger>()
+
+    private fun buildOceanTaskBizKey(sceneCode: String, taskType: String, taskTitle: String): String {
+        return "$sceneCode|$taskType|$taskTitle"
+    }
+
+    private fun rememberOceanTaskAttempt(bizKey: String): Int {
+        return oceanTaskTryCount.computeIfAbsent(bizKey) { AtomicInteger(0) }
+            .incrementAndGet()
+    }
     private var currentOceanUserId: String? = null
     private var lastKnownRubbishNumber: Int = -1
     private var selfOceanCleanRetried = false
@@ -1284,11 +1293,15 @@ class AntOcean : ModelTask() {
                     val sceneCode = task.getString("sceneCode")
                     val taskType = task.getString("taskType")
                     val taskStatus = task.getString("taskStatus")
+                    val bizKey = buildOceanTaskBizKey(sceneCode, taskType, taskTitle)
+
                     // 在处理任何任务前，先检查当日限制，再检查黑名单
                     if (Status.hasFlagToday(HELP_CLEAN_LIMIT_FLAG) &&
                         (taskTitle.contains("帮好友清理") || taskType.contains("HELP_CLEAN"))
                     ) {
-                        Log.ocean(TAG, "海洋任务🌊[$taskTitle]帮助清理次数已达上限，跳过处理")
+                        if (rememberOceanTaskAttempt(bizKey) == 1) {
+                            Log.ocean(TAG, "海洋任务🌊[$taskTitle]帮助清理次数已达上限，跳过处理")
+                        }
                         continue
                     }
                     if (badTaskSet.contains(taskTitle) ||
@@ -1296,7 +1309,9 @@ class AntOcean : ModelTask() {
                         TaskBlacklist.isTaskInBlacklist(taskTitle) ||
                         TaskBlacklist.isTaskInBlacklist(taskType)
                     ) {
-                        Log.ocean(TAG, "海洋任务🌊[$taskTitle]已在黑名单中，跳过处理")
+                        if (rememberOceanTaskAttempt(bizKey) == 1) {
+                            Log.ocean(TAG, "海洋任务🌊[$taskTitle]已在黑名单中，跳过处理")
+                        }
                         continue
                     }
 
@@ -1329,21 +1344,22 @@ class AntOcean : ModelTask() {
                             val waitSeconds = resolveOceanTaskWaitSeconds(taskTitle, bizInfo)
                             if (waitSeconds > 0) {
                                 val finishSource = resolveOceanTaskFinishSource(taskType, taskTitle, bizInfo)
-                                if (!isOceanTimedBrowseTaskSafeByRpc(taskType, taskTitle, bizInfo)) {
+                                val safeByRpc = isOceanTimedBrowseTaskSafeByRpc(taskType, taskTitle, bizInfo)
+                                val count = rememberOceanTaskAttempt(bizKey)
+                                if (count > 1) {
+                                    if (count == 2) {
+                                        val duplicateReason = if (safeByRpc) "浏览任务本轮已尝试过" else "未支持任务本轮已记录过"
+                                        Log.ocean(
+                                            TAG,
+                                            "海洋任务🌊[$taskTitle]$duplicateReason，后续静默跳过[taskType=$taskType]"
+                                        )
+                                    }
+                                    continue
+                                }
+                                if (!safeByRpc) {
                                     Log.ocean(
                                         TAG,
                                         "海洋任务🌊[$taskTitle]广告/高风险浏览任务待支持[wait=${waitSeconds}s][taskType=$taskType][source=$finishSource]，跳过处理"
-                                    )
-                                    continue
-                                }
-
-                                val bizKey = "${sceneCode}_$taskType"
-                                val count = oceanTaskTryCount.computeIfAbsent(bizKey) { AtomicInteger(0) }
-                                    .incrementAndGet()
-                                if (count > 1) {
-                                    Log.ocean(
-                                        TAG,
-                                        "海洋任务🌊[$taskTitle]浏览任务本轮已尝试过，跳过重复等待[taskType=$taskType]"
                                     )
                                     continue
                                 }
@@ -1407,9 +1423,7 @@ class AntOcean : ModelTask() {
                                 continue
                             }
 
-                            val bizKey = "${sceneCode}_$taskType"
-                            val count = oceanTaskTryCount.computeIfAbsent(bizKey) { AtomicInteger(0) }
-                                .incrementAndGet()
+                            val count = rememberOceanTaskAttempt(bizKey)
 
                             val finishSource = resolveOceanTaskFinishSource(taskType, taskTitle, bizInfo)
                             val fallbackSource = if (finishSource == "ADBASICLIB") "ANTFOCEAN" else "ADBASICLIB"

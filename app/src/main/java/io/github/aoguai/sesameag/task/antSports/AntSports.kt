@@ -702,12 +702,15 @@ class AntSports : ModelTask() {
                         "WAIT_RECEIVE" -> {
                             if (receiveTaskReward(taskDetail, taskName)) {
                                 completedTasks++
+                            } else {
+                                availableTasks++
                             }
                         }
                         "WAIT_COMPLETE" -> {
-                            availableTasks++
                             if (completeTask(taskDetail, taskName)) {
                                 completedTasks++
+                            } else {
+                                availableTasks++
                             }
                         }
                         else -> {
@@ -716,7 +719,7 @@ class AntSports : ModelTask() {
                     }
                 }
 
-                Log.sports(TAG, "运动任务完成情况：$completedTasks/$totalTasks，可执行任务：$availableTasks")
+                Log.sports(TAG, "运动任务完成情况：$completedTasks/$totalTasks，剩余待处理：$availableTasks")
 
                 // 所有任务完成后标记
                 if (totalTasks > 0 && completedTasks >= totalTasks && availableTasks == 0) {
@@ -746,16 +749,24 @@ class AntSports : ModelTask() {
             val result = AntSportsRpcCall.pickBubbleTaskEnergy(assetId)
             val resultData = JSONObject(result)
 
-            if (ResChecker.checkRes(TAG, result)) {
+            if (isSportsRpcSuccess(resultData)) {
                 Log.sports("做任务得能量🎈[$taskName] +$prizeAmount 能量")
                 true
             } else {
-                val errorMsg = resultData.optString("errorMsg", "未知错误")
-                val errorCode = resultData.optString("errorCode", "")
-                Log.error(TAG, "做任务得能量🎈[领取失败：$taskName，错误：$errorCode - $errorMsg]")
-                if (!resultData.optBoolean("retryable", true) || errorCode == "CAMP_TRIGGER_ERROR") {
+                val errorMsg = extractSportsRpcErrorMessage(resultData)
+                val errorCode = extractSportsRpcErrorCode(resultData)
+                val isBenignFailure =
+                    !resultData.optBoolean("retryable", true) ||
+                        errorCode == "CAMP_TRIGGER_ERROR" ||
+                        errorCode == "RECEIVE_REWARD_REPEATED"
+                if (isBenignFailure) {
+                    Log.sports(
+                        TAG,
+                        "做任务得能量🎈[领取跳过：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]"
+                    )
                     true
                 } else {
+                    Log.error(TAG, "做任务得能量🎈[领取失败：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]")
                     false
                 }
             }
@@ -791,7 +802,7 @@ class AntSports : ModelTask() {
 
             for (i in 0 until remainingNum) {
                 val result = JSONObject(AntSportsRpcCall.completeExerciseTasks(taskId))
-                if (ResChecker.checkRes(TAG, result)) {
+                if (isSportsRpcSuccess(result)) {
                     Log.sports(
                         TAG,
                         "做任务得能量🎈[完成任务：$taskName，得$prizeAmount💰]#(${i + 1}/$remainingNum)"
@@ -802,16 +813,23 @@ class AntSports : ModelTask() {
                         receiveCoinAsset()
                     }
                 } else {
-                    val errorMsg = result.optString("errorMsg", "未知错误")
-                    Log.error(
-                        TAG,
-                        "做任务得能量🎈[任务失败：$taskName，错误：$errorMsg]#(${i + 1}/$remainingNum)"
-                    )
-                    val errorCode = result.optString("errorCode", "")
+                    val errorCode = extractSportsRpcErrorCode(result)
+                    val errorMsg = extractSportsRpcErrorMessage(result)
                     if (errorCode.isNotEmpty()) {
                         TaskBlacklist.autoAddToBlacklist(taskId, taskName, errorCode)
                     }
-                    break
+                    if (!result.optBoolean("retryable", true) || errorCode == "CAMP_TRIGGER_ERROR") {
+                        Log.sports(
+                            TAG,
+                            "做任务得能量🎈[任务跳过：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]#(${i + 1}/$remainingNum)"
+                        )
+                        return true
+                    }
+                    Log.error(
+                        TAG,
+                        "做任务得能量🎈[任务失败：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]#(${i + 1}/$remainingNum)"
+                    )
+                    return false
                 }
 
                 if (remainingNum > 1 && i < remainingNum - 1) {
@@ -861,7 +879,21 @@ class AntSports : ModelTask() {
         return SPORTS_HOME_BUBBLE_COOLDOWN_PREFIX + taskId
     }
 
-    private fun extractSportsHomeBubbleErrorCode(result: JSONObject): String {
+    private fun isSportsRpcSuccess(result: JSONObject): Boolean {
+        if (result.optBoolean("success") || result.optBoolean("isSuccess")) {
+            return true
+        }
+
+        val resultCode = result.opt("resultCode")
+        when (resultCode) {
+            is Number -> if (resultCode.toInt() == 200) return true
+            is String -> if (resultCode.equals("SUCCESS", ignoreCase = true) || resultCode == "100") return true
+        }
+
+        return result.optString("memo", "").equals("SUCCESS", ignoreCase = true)
+    }
+
+    private fun extractSportsRpcErrorCode(result: JSONObject): String {
         val directErrorCode = result.optString("errorCode", "").trim()
         if (directErrorCode.isNotEmpty()) {
             return directErrorCode
@@ -890,13 +922,21 @@ class AntSports : ModelTask() {
         return ""
     }
 
-    private fun extractSportsHomeBubbleErrorMessage(result: JSONObject): String {
+    private fun extractSportsRpcErrorMessage(result: JSONObject): String {
         return sequenceOf(
             result.optString("errorMsg", "").trim(),
             result.optString("resultDesc", "").trim(),
             result.optString("errorMessage", "").trim(),
             result.optString("errorTip", "").trim()
         ).firstOrNull { it.isNotEmpty() } ?: "未知错误"
+    }
+
+    private fun extractSportsHomeBubbleErrorCode(result: JSONObject): String {
+        return extractSportsRpcErrorCode(result)
+    }
+
+    private fun extractSportsHomeBubbleErrorMessage(result: JSONObject): String {
+        return extractSportsRpcErrorMessage(result)
     }
 
     private fun shouldCooldownSportsHomeBubbleTask(result: JSONObject): Boolean {
@@ -1372,7 +1412,19 @@ class AntSports : ModelTask() {
     private fun receiveEvent(eventBillNo: String) {
         try {
             val jo = JSONObject(AntSportsRpcCall.receiveEvent(eventBillNo))
-            if (!ResChecker.checkRes(TAG, jo)) return
+            if (!isSportsRpcSuccess(jo)) {
+                val errorCode = extractSportsRpcErrorCode(jo)
+                val errorMsg = extractSportsRpcErrorMessage(jo)
+                if (errorCode == "RECEIVE_REWARD_REPEATED") {
+                    Log.sports(TAG, "行走路线🎁宝箱已领取，跳过重复领取[eventBillNo=$eventBillNo]")
+                    return
+                }
+                Log.error(
+                    TAG,
+                    "行走路线🎁开启宝箱失败[eventBillNo=$eventBillNo][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]"
+                )
+                return
+            }
 
             val ja = jo.getJSONObject("data").getJSONArray("rewards")
             for (i in 0 until ja.length()) {
@@ -1869,13 +1921,29 @@ class AntSports : ModelTask() {
                                 roundId
                             )
                         )
-                        if (ResChecker.checkRes(TAG, res)) {
+                        if (isSportsRpcSuccess(res)) {
                             val data = res.getJSONObject("data")
                             val roundDescription = data.getString("roundDescription")
                             val targetStepCount = data.getInt("targetStepCount")
                             Log.sports("走路挑战🚶🏻‍♂️[$roundDescription]#$targetStepCount")
                         } else {
-                            Log.sports(TAG, "走路挑战赛 $res")
+                            val errorCode = extractSportsRpcErrorCode(res)
+                            val errorMsg = extractSportsRpcErrorMessage(res)
+                            if (
+                                errorCode == "3000" ||
+                                errorMsg.contains("系统出错") ||
+                                errorMsg.contains("系統出錯")
+                            ) {
+                                Log.sports(
+                                    TAG,
+                                    "走路挑战赛暂不可用[code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]"
+                                )
+                            } else {
+                                Log.error(
+                                    TAG,
+                                    "走路挑战赛失败[code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$res"
+                                )
+                            }
                         }
                     }
                 } else {
@@ -2640,6 +2708,7 @@ class AntSports : ModelTask() {
             try {
                 Log.sports(TAG, "开始检查健康岛浏览任务")
                 var hasTask = true
+                val completedEncryptValues = mutableSetOf<String>()
                 while (hasTask) {
                     val taskInfoResp = JSONObject(
                         AntSportsRpcCall.NeverlandRpcCall.queryTaskInfo(
@@ -2662,13 +2731,16 @@ class AntSports : ModelTask() {
                         continue
                     }
 
+                    val pendingTaskInfos = mutableListOf<JSONObject>()
+                    val roundEncryptValues = mutableSetOf<String>()
+                    var repeatedTaskCount = 0
+
                     for (i in 0 until taskInfos.length()) {
                         val taskInfo = taskInfos.getJSONObject(i)
                         val taskTitle = taskInfo.optString("title", taskInfo.optString("taskName", "未知任务"))
                         val encryptValue = taskInfo.optString("encryptValue")
-                        val energyNum = taskInfo.optInt("energyNum", 0)
                         val viewSec = taskInfo.optInt("viewSec", 15)
-                        val waitMillis = resolveHealthIslandViewWaitMillis(viewSec)
+                        val energyNum = taskInfo.optInt("energyNum", 0)
 
                         if (encryptValue.isEmpty()) {
                             Log.error(
@@ -2677,6 +2749,30 @@ class AntSports : ModelTask() {
                             )
                             continue
                         }
+                        if (encryptValue in completedEncryptValues || !roundEncryptValues.add(encryptValue)) {
+                            repeatedTaskCount++
+                            continue
+                        }
+                        pendingTaskInfos.add(taskInfo)
+                    }
+
+                    if (pendingTaskInfos.isEmpty()) {
+                        if (repeatedTaskCount > 0) {
+                            Log.sports(
+                                TAG,
+                                "健康岛浏览任务本轮仅返回已处理任务，停止循环以避免重复完成[count=$repeatedTaskCount]"
+                            )
+                        }
+                        hasTask = false
+                        continue
+                    }
+
+                    for (taskInfo in pendingTaskInfos) {
+                        val taskTitle = taskInfo.optString("title", taskInfo.optString("taskName", "未知任务"))
+                        val encryptValue = taskInfo.optString("encryptValue")
+                        val energyNum = taskInfo.optInt("energyNum", 0)
+                        val viewSec = taskInfo.optInt("viewSec", 15)
+                        val waitMillis = resolveHealthIslandViewWaitMillis(viewSec)
 
                         Log.sports(
                             TAG,
@@ -2695,6 +2791,7 @@ class AntSports : ModelTask() {
                         if (ResChecker.checkRes(TAG + "领取健康岛任务奖励:", receiveResp) &&
                             ResChecker.checkRes(TAG, receiveResp)
                         ) {
+                            completedEncryptValues.add(encryptValue)
                             Log.sports("✅ 健康岛浏览任务[$taskTitle]完成，获得能量+$energyNum")
                         } else {
                             Log.error(

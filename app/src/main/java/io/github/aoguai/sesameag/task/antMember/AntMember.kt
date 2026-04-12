@@ -3721,6 +3721,7 @@ class AntMember : ModelTask() {
             }
 
             val taskBaseInfo = task.optJSONObject("taskBaseInfo") ?: return
+            val taskIdCandidates = describeZhimaTreeTaskIdCandidates(task, taskBaseInfo)
 
             val taskId = resolveZhimaTreeTaskId(task, taskBaseInfo)
 
@@ -3736,11 +3737,18 @@ class AntMember : ModelTask() {
 
             // 解析奖励信息.
             val prizeName = getPrizeName(task)
-
             if ("NOT_DONE" == status || "SIGNUP_COMPLETE" == status) {
+                val unsupportedReason = getZhimaTreeUnsupportedReason(title, prizeName)
+                if (unsupportedReason != null) {
+                    Log.sesame(
+                        TAG,
+                        "芝麻树🌳[暂不自动处理] $title${if (prizeName.isEmpty()) "" else " ($prizeName)"} | $unsupportedReason | candidates=$taskIdCandidates"
+                    )
+                    return
+                }
                 // SIGNUP_COMPLETE 通常表示已报名但未做，或者对于复访任务表示可以去完成
                 if (taskId == null) {
-                    Log.sesame(TAG, "芝麻树🌳[跳过无有效任务ID] $title")
+                    Log.sesame(TAG, "芝麻树🌳[跳过无有效任务ID] $title | candidates=$taskIdCandidates")
                     return
                 }
                 Log.sesame("芝麻树🌳[开始任务] " + title + (if (prizeName.isEmpty()) "" else " ($prizeName)"))
@@ -3749,7 +3757,7 @@ class AntMember : ModelTask() {
             } else if ("TO_RECEIVE" == status) {
                 // 待领取状态
                 if (taskId == null) {
-                    Log.sesame(TAG, "芝麻树🌳[跳过无有效任务ID] $title")
+                    Log.sesame(TAG, "芝麻树🌳[跳过无有效任务ID] $title | candidates=$taskIdCandidates")
                     return
                 }
                 if (doTaskAction(taskId, "receive")) {
@@ -3778,13 +3786,44 @@ class AntMember : ModelTask() {
         return normalized
     }
 
-    private fun resolveZhimaTreeTaskId(task: JSONObject, taskBaseInfo: JSONObject): String? {
+    private fun collectZhimaTreeTaskIdCandidates(task: JSONObject, taskBaseInfo: JSONObject): List<String> {
         return sequenceOf(
-            taskBaseInfo.optString("appletId"),
-            taskBaseInfo.optString("taskId"),
-            task.optString("taskId")
-        ).mapNotNull { normalizeZhimaTreeTaskId(it) }
+            taskBaseInfo.opt("appletId"),
+            taskBaseInfo.opt("taskId"),
+            taskBaseInfo.opt("appId"),
+            task.opt("taskId"),
+            task.opt("appletId"),
+            task.opt("appId")
+        ).filterNotNull()
+            .map { candidate ->
+                when (candidate) {
+                    JSONObject.NULL -> ""
+                    is String -> candidate
+                    else -> candidate.toString()
+                }
+            }
+            .toList()
+    }
+
+    private fun describeZhimaTreeTaskIdCandidates(task: JSONObject, taskBaseInfo: JSONObject): String {
+        val candidates = collectZhimaTreeTaskIdCandidates(task, taskBaseInfo)
+        if (candidates.isEmpty()) {
+            return "<empty>"
+        }
+        return candidates.joinToString(" | ") { it.ifBlank { "<blank>" } }
+    }
+
+    private fun resolveZhimaTreeTaskId(task: JSONObject, taskBaseInfo: JSONObject): String? {
+        return collectZhimaTreeTaskIdCandidates(task, taskBaseInfo)
+            .mapNotNull { normalizeZhimaTreeTaskId(it) }
             .firstOrNull()
+    }
+
+    private fun getZhimaTreeUnsupportedReason(title: String, prizeName: String): String? {
+        if (title.contains("首页每日_浏览任务") && prizeName.contains("能量")) {
+            return "首页能量浏览任务当前缺少稳定领取链路，暂时跳过避免触发 taskId={} 错误"
+        }
+        return null
     }
 
     /**
@@ -3792,14 +3831,19 @@ class AntMember : ModelTask() {
      */
     private suspend fun performTask(taskId: String?, title: String, prizeName: String): Boolean {
         return try {
+            val safeTaskId = normalizeZhimaTreeTaskId(taskId)
+            if (safeTaskId == null) {
+                Log.sesame(TAG, "芝麻树🌳[跳过执行，无有效任务ID] $title")
+                return false
+            }
             // 发送"去完成"指令
-            if (doTaskAction(taskId, "send")) {
+            if (doTaskAction(safeTaskId, "send")) {
                 val waitTime = 16000L // 默认等待16秒，覆盖大多数浏览任务
 
                 delay(waitTime)
 
                 // 发送"领取"指令
-                if (doTaskAction(taskId, "receive")) {
+                if (doTaskAction(safeTaskId, "receive")) {
                     val logMsg = "芝麻树🌳[完成任务] " + title + " #" + (prizeName.ifEmpty { "奖励已领取" })
                     Log.sesame(logMsg)
                     return true

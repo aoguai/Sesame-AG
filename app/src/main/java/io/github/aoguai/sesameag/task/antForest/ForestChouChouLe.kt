@@ -97,6 +97,7 @@ class ForestChouChouLe {
     }
 
     private val taskTryCount = ConcurrentHashMap<String, AtomicInteger>()
+    private val rewardHandledTaskKeys = ConcurrentHashMap.newKeySet<String>()
 
     fun chouChouLe() {
         runCatching {
@@ -120,6 +121,7 @@ class ForestChouChouLe {
             return@runCatching
         }
 
+        rewardHandledTaskKeys.clear()
         Log.forest("👉 开始处理: ${s.name}")
 
         // 1. 检查活动有效期
@@ -238,7 +240,10 @@ class ForestChouChouLe {
             if (isBlockedTask(taskType, taskName)) continue
 
             total++
-            if (taskStatus == TaskStatus.RECEIVED.name) {
+            if (
+                taskStatus == TaskStatus.RECEIVED.name ||
+                rewardHandledTaskKeys.contains(buildRewardHandledTaskKey(baseInfo.optString("sceneCode"), taskType))
+            ) {
                 completed++
             } else {
                 allDone = false
@@ -329,15 +334,21 @@ class ForestChouChouLe {
         sleepCompat(100L)
         val res = AntForestRpcCall.receiveTaskAwardopengreen(SOURCE, code, type).toJson()
         return if (res != null && res.isTaskAwardAlreadyFinished()) {
+            rewardHandledTaskKeys.add(buildRewardHandledTaskKey(code, type))
             Log.forest("${s.name} 奖励已领取: $name")
             false
         } else if (res != null && res.check()) {
+            rewardHandledTaskKeys.add(buildRewardHandledTaskKey(code, type))
             Log.forest("${s.name} 🧾 $name 奖励领取成功")
             true
         } else {
             Log.error(TAG, "${s.name} 奖励领取失败: $name")
             false
         }
+    }
+
+    private fun buildRewardHandledTaskKey(sceneCode: String, taskType: String): String {
+        return "$sceneCode#$taskType"
     }
 }
 
