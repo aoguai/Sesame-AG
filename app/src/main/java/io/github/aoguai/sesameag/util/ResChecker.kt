@@ -27,7 +27,8 @@ object ResChecker {
         "CAN_CLEAN_STATUS_CHANGE",
         "HELP_CLEAN_ALL_FRIEND_LIMIT",
         "PROMISE_TODAY_FINISH_TIMES_LIMIT",
-        "ROB_EXPAND_CARD_IN_USE"
+        "ROB_EXPAND_CARD_IN_USE",
+        "FRIEND_COLLECTED_LIMIT"
     )
     private val silentFailureKeywords = listOf(
         "权益获取次数超过上限",
@@ -37,7 +38,15 @@ object ResChecker {
         "垃圾刚被别人收走了",
         "清理次数已达20次上限",
         "保护地“休养生息”中",
-        "你现在已经在用收好友能量翻倍卡了"
+        "你现在已经在用收好友能量翻倍卡了",
+        "有人抢在你"
+    )
+    private data class FailureInfo(
+        val resultDesc: String,
+        val memo: String,
+        val resultCode: String,
+        val code: String,
+        val desc: String
     )
     private data class CheckFailedWindowStat(
         var windowStartMs: Long,
@@ -50,6 +59,50 @@ object ResChecker {
     /**
      * 核心检查逻辑
      */
+    private fun extractFailureInfo(jo: JSONObject): FailureInfo {
+        val resultDesc = jo.optString("resultDesc", "")
+        val memo = jo.optString("memo", "")
+        val resultCode = jo.optString("resultCode", "")
+        val code = jo.optString("code").ifBlank {
+            jo.optString("errorCode").ifBlank { resultCode }
+        }
+        val desc = jo.optString("desc").ifBlank {
+            jo.optString("errorMsg").ifBlank { resultDesc }
+        }
+        return FailureInfo(
+            resultDesc = resultDesc,
+            memo = memo,
+            resultCode = resultCode,
+            code = code,
+            desc = desc
+        )
+    }
+
+    private fun isSilentFailure(info: FailureInfo): Boolean {
+        if (silentFailureCodes.contains(info.code) || silentFailureKeywords.any { keyword ->
+                info.desc.contains(keyword) || info.memo.contains(keyword)
+            }) {
+            return true
+        }
+
+        return info.resultDesc.contains("当前参与人数过多") || info.resultDesc.contains("请稍后再试") ||
+            info.resultDesc.contains("手速太快") || info.resultDesc.contains("频繁") ||
+            info.resultDesc.contains("操作过于频繁") ||
+            info.memo.contains("我的小鸡在睡觉中") ||
+            info.memo.contains("小鸡在睡觉") ||
+            info.memo.contains("无法操作") ||
+            info.memo.contains("手速太快") ||
+            info.memo.contains("有人抢在你") ||
+            info.memo.contains("饲料槽已满") ||
+            info.memo.contains("当日达到上限") ||
+            info.memo.contains("适可而止") ||
+            info.memo.contains("不支持rpc完成的任务") ||
+            info.memo.contains("庄园的小鸡太多了") ||
+            info.memo.contains("任务已完成") ||
+            "I07" == info.resultCode ||
+            "FAMILY48" == info.resultCode
+    }
+
     @Suppress(
         "LongMethod",
         "CyclomaticComplexMethod",
@@ -77,46 +130,15 @@ object ResChecker {
             }
             
             // 特殊情况：如果是"人数过多"或"小鸡睡觉"等系统状态，我们认为这不是一个需要记录的"失败"
-            val resultDesc = jo.optString("resultDesc", "")
-            val memo = jo.optString("memo", "")
-            val resultCode = jo.optString("resultCode", "")
-            val code = jo.optString("code").ifBlank {
-                jo.optString("errorCode").ifBlank { resultCode }
-            }
-            val desc = jo.optString("desc").ifBlank {
-                jo.optString("errorMsg").ifBlank { resultDesc }
-            }
-
-            if (silentFailureCodes.contains(code) || silentFailureKeywords.any { keyword ->
-                    desc.contains(keyword)
-                }) {
-                return false
-            }
-            
-            if (resultDesc.contains("当前参与人数过多") || resultDesc.contains("请稍后再试") ||
-                resultDesc.contains("手速太快") || resultDesc.contains("频繁") ||
-                resultDesc.contains("操作过于频繁") ||
-                memo.contains("我的小鸡在睡觉中") ||
-                memo.contains("小鸡在睡觉") ||
-                memo.contains("无法操作") ||
-                memo.contains("手速太快") ||
-                memo.contains("有人抢在你") ||
-                memo.contains("饲料槽已满") ||
-                memo.contains("当日达到上限") ||
-                memo.contains("适可而止") ||
-                memo.contains("不支持rpc完成的任务") ||
-                memo.contains("庄园的小鸡太多了") ||
-                memo.contains("任务已完成") ||
-                "I07" == resultCode ||
-                "FAMILY48" == resultCode
-            ) {
+            val failureInfo = extractFailureInfo(jo)
+            if (isSilentFailure(failureInfo)) {
                 return false // 返回false，但不打印错误日志
             }
             
             // 获取调用栈信息以确定错误来源
             val stackTrace = Thread.currentThread().stackTrace
             val callerInfo = getString(stackTrace)
-            val key = "$tag|$code"
+            val key = "$tag|${failureInfo.code}"
             val now = System.currentTimeMillis()
             val stat = checkFailedWindowStats.computeIfAbsent(key) {
                 CheckFailedWindowStat(windowStartMs = now, count = 0)
@@ -128,7 +150,7 @@ object ResChecker {
                 if (now - stat.windowStartMs >= CHECK_FAILED_SUMMARY_WINDOW_MS) {
                     summaryLog = buildString {
                         append("Check failed summary: code=")
-                        append(code)
+                        append(failureInfo.code)
                         append(" count=")
                         append(stat.count)
                         append(" windowMs=")
@@ -204,6 +226,15 @@ object ResChecker {
     @JvmStatic
     fun checkRes(tag: String, jo: JSONObject): Boolean {
         return core(tag, jo)
+    }
+
+    @JvmStatic
+    fun isSilentFailure(jo: JSONObject): Boolean {
+        return try {
+            isSilentFailure(extractFailureInfo(jo))
+        } catch (_: Throwable) {
+            false
+        }
     }
     
     /**

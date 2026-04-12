@@ -830,12 +830,18 @@ class AntDodo : ModelTask() {
                         val userName = UserMap.getMaskName(useId)
                         Log.forest("神奇物种🦕帮好友[$userName]抽卡[$ecosystem]#$name")
                         count--
-                    } else {
-                        Log.runtime(TAG, jo.getString("resultDesc"))
+                    } else if (!ResChecker.isSilentFailure(jo)) {
+                        val message = jo.optString("resultDesc").ifBlank {
+                            jo.optString("desc", "帮好友抽卡失败")
+                        }
+                        Log.runtime(TAG, message)
                     }
                 }
-            } else {
-                Log.runtime(TAG, jo.getString("resultDesc"))
+            } else if (!ResChecker.isSilentFailure(jo)) {
+                val message = jo.optString("resultDesc").ifBlank {
+                    jo.optString("desc", "查询神奇物种好友列表失败")
+                }
+                Log.runtime(TAG, message)
             }
         } catch (t: Throwable) {
             Log.runtime(TAG, "AntDodo CollectHelpFriend err:")
