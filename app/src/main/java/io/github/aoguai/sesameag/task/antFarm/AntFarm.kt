@@ -99,6 +99,10 @@ class AntFarm : ModelTask() {
     private var foodInTroughLimitCurrent: Int = 180
     private val invalidToolTypesThisRound: MutableSet<ToolType> = linkedSetOf()
     private var manurePotCollectionBlockedThisRound: Boolean = false
+    internal var lastDonationActivityIds: Set<String> = emptySet()
+        private set
+    internal var lastDonationNoMoreActivities: Boolean = false
+        private set
 
     /**
      * 标记农场是否已满（用于雇佣小鸡逻辑）
@@ -1652,8 +1656,15 @@ class AntFarm : ModelTask() {
     }
 
     /* 捐赠爱心鸡蛋 */
-    internal fun handleDonation(donationType: Int) {
+    internal fun handleDonation(
+        donationType: Int,
+        markStatusDone: Boolean = true,
+        skipActivityIds: Set<String> = emptySet()
+    ): Boolean {
         try {
+            val donatedActivityIds = linkedSetOf<String>()
+            lastDonationActivityIds = emptySet()
+            lastDonationNoMoreActivities = false
             val s = AntFarmRpcCall.listActivityInfo()
             var jo = JSONObject(s)
             val memo = jo.getString("memo")
@@ -1664,24 +1675,32 @@ class AntFarm : ModelTask() {
                 var isDonation = false
                 for (i in 0..<jaActivityInfos.length()) {
                     jo = jaActivityInfos.getJSONObject(i)
+                    val currentActivityId = jo.optString("activityId")
+                    if (currentActivityId.isBlank() || skipActivityIds.contains(currentActivityId)) {
+                        continue
+                    }
                     if (jo.get("donationTotal") != jo.get("donationLimit")) {
-                        activityId = jo.getString("activityId")
+                        activityId = currentActivityId
                         activityName = jo.optString("projectName", activityId)
                         if (performDonation(activityId, activityName)) {
                             isDonation = true
+                            donatedActivityIds.add(currentActivityId)
                             if (donationType == DonationCount.ONE) {
                                 break
                             }
                         }
                     }
                 }
-                if (isDonation) {
+                lastDonationActivityIds = donatedActivityIds
+                if (isDonation && markStatusDone) {
                     val userId = UserMap.currentUid
                     Status.donationEgg(userId)
                 }
                 if (activityId == null) {
+                    lastDonationNoMoreActivities = true
                     Log.farm(TAG, "今日已无可捐赠的活动")
                 }
+                return isDonation
             } else {
                 Log.farm(memo)
                 Log.farm(s)
@@ -1689,6 +1708,7 @@ class AntFarm : ModelTask() {
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "donation err:",t)
         }
+        return false
     }
 
     private fun performDonation(activityId: String?, activityName: String?): Boolean {
