@@ -755,16 +755,24 @@ class AntSports : ModelTask() {
             } else {
                 val errorMsg = extractSportsRpcErrorMessage(resultData)
                 val errorCode = extractSportsRpcErrorCode(resultData)
-                val isBenignFailure =
-                    !resultData.optBoolean("retryable", true) ||
-                        errorCode == "CAMP_TRIGGER_ERROR" ||
-                        errorCode == "RECEIVE_REWARD_REPEATED"
-                if (isBenignFailure) {
+                if (errorCode == "RECEIVE_REWARD_REPEATED") {
                     Log.sports(
                         TAG,
-                        "做任务得能量🎈[领取跳过：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]"
+                        "做任务得能量🎈[奖励已领取：$taskName，按完成处理：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]"
                     )
                     true
+                } else if (errorCode == "CAMP_TRIGGER_ERROR") {
+                    Log.error(
+                        TAG,
+                        "做任务得能量🎈[领取失败-业务RPC受限：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]"
+                    )
+                    false
+                } else if (!resultData.optBoolean("retryable", true)) {
+                    Log.error(
+                        TAG,
+                        "做任务得能量🎈[领取失败-非重试RPC：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]"
+                    )
+                    false
                 } else {
                     Log.error(TAG, "做任务得能量🎈[领取失败：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]")
                     false
@@ -815,15 +823,31 @@ class AntSports : ModelTask() {
                 } else {
                     val errorCode = extractSportsRpcErrorCode(result)
                     val errorMsg = extractSportsRpcErrorMessage(result)
-                    if (errorCode.isNotEmpty()) {
+                    val shouldKeepRpcErrorVisible =
+                        errorCode == "CAMP_TRIGGER_ERROR" || errorCode == "RECEIVE_REWARD_REPEATED"
+                    if (errorCode.isNotEmpty() && !shouldKeepRpcErrorVisible) {
                         TaskBlacklist.autoAddToBlacklist(taskId, taskName, errorCode)
                     }
-                    if (!result.optBoolean("retryable", true) || errorCode == "CAMP_TRIGGER_ERROR") {
-                        Log.sports(
+                    if (errorCode == "CAMP_TRIGGER_ERROR") {
+                        Log.error(
                             TAG,
-                            "做任务得能量🎈[任务跳过：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]#(${i + 1}/$remainingNum)"
+                            "做任务得能量🎈[任务失败-业务RPC受限：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]#(${i + 1}/$remainingNum)"
                         )
-                        return true
+                        return false
+                    }
+                    if (!result.optBoolean("retryable", true)) {
+                        Log.error(
+                            TAG,
+                            "做任务得能量🎈[任务失败-非重试RPC：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]#(${i + 1}/$remainingNum)"
+                        )
+                        return false
+                    }
+                    if (errorCode == "RECEIVE_REWARD_REPEATED") {
+                        Log.error(
+                            TAG,
+                            "做任务得能量🎈[任务失败-状态异常：$taskName，completeTask 返回重复领奖错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]#(${i + 1}/$remainingNum)"
+                        )
+                        return false
                     }
                     Log.error(
                         TAG,
@@ -943,7 +967,6 @@ class AntSports : ModelTask() {
         val errorCode = extractSportsHomeBubbleErrorCode(result)
         return errorCode == "CAMP_TRIGGER_ERROR" ||
             errorCode == "1009" ||
-            errorCode == "3000" ||
             (
                 errorCode == "I07" &&
                     ApplicationHookConstants.isOffline() &&
@@ -1103,9 +1126,9 @@ class AntSports : ModelTask() {
                 val errorMsg = extractSportsHomeBubbleErrorMessage(completeRes)
                 if (shouldCooldownSportsHomeBubbleTask(completeRes)) {
                     Status.setFlagToday(cooldownFlag)
-                    Log.sports(
+                    Log.error(
                         TAG,
-                        "运动首页任务[今日冷却：$taskName，taskId=$taskId，code=$errorCode，msg=$errorMsg]"
+                        "运动首页任务业务RPC失败[进入冷却：$taskName，taskId=$taskId，code=$errorCode，msg=$errorMsg] 响应：$completeRes"
                     )
                 } else {
                     Log.error(
@@ -1934,14 +1957,14 @@ class AntSports : ModelTask() {
                                 errorMsg.contains("系统出错") ||
                                 errorMsg.contains("系統出錯")
                             ) {
-                                Log.sports(
+                                Log.error(
                                     TAG,
-                                    "走路挑战赛暂不可用[code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]"
+                                    "走路挑战赛业务RPC失败[暂不可用][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$res"
                                 )
                             } else {
                                 Log.error(
                                     TAG,
-                                    "走路挑战赛失败[code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$res"
+                                    "走路挑战赛RPC失败[code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$res"
                                 )
                             }
                         }

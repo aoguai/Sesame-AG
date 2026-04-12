@@ -15,7 +15,6 @@ object ResChecker {
     private val silentFailureCodes = setOf(
         "400000012",
         "2600000014",
-        "400000040",
         "NEED_UPGRADE_VILLAGE",
         "FAMILY12",
         "391",
@@ -33,8 +32,6 @@ object ResChecker {
     private val silentFailureKeywords = listOf(
         "权益获取次数超过上限",
         "抽奖活动已结束",
-        "不支持rpc调用",
-        "无状态转换处理",
         "垃圾刚被别人收走了",
         "清理次数已达20次上限",
         "保护地“休养生息”中",
@@ -80,7 +77,7 @@ object ResChecker {
 
     private fun isSilentFailure(info: FailureInfo): Boolean {
         if (silentFailureCodes.contains(info.code) || silentFailureKeywords.any { keyword ->
-                info.desc.contains(keyword) || info.memo.contains(keyword)
+                info.desc.contains(keyword)
             }) {
             return true
         }
@@ -96,7 +93,6 @@ object ResChecker {
             info.memo.contains("饲料槽已满") ||
             info.memo.contains("当日达到上限") ||
             info.memo.contains("适可而止") ||
-            info.memo.contains("不支持rpc完成的任务") ||
             info.memo.contains("庄园的小鸡太多了") ||
             info.memo.contains("任务已完成") ||
             "I07" == info.resultCode ||
