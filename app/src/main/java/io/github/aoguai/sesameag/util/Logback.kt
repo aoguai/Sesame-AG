@@ -2,13 +2,17 @@ package io.github.aoguai.sesameag.util
 
 import android.content.Context
 import android.util.Log
+import ch.qos.logback.classic.AsyncAppender
+import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.android.LogcatAppender
 import ch.qos.logback.classic.encoder.PatternLayoutEncoder
 import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.FileAppender
 import ch.qos.logback.core.rolling.RollingFileAppender
 import ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy
 import ch.qos.logback.core.util.FileSize
+import io.github.aoguai.sesameag.data.General
 import org.slf4j.LoggerFactory
 import java.io.File
 
@@ -40,7 +44,7 @@ object Logback {
 
             // 为根 Logger 添加 Logcat 输出
             lc.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME).apply {
-                // 默认先不设 Level，让它继承或默认 DEBUG/INFO，避免过滤掉重要信息
+                level = Level.DEBUG // 默认根级别
                 addAppender(logcatAppender)
             }
 
@@ -57,90 +61,101 @@ object Logback {
     fun initFileLogging(context: Context) {
         if (isFileInitialized) return
 
-        // 🔥 修复点：恢复原有的路径判断逻辑
         val logDir = resolveLogDir(context)
+        val isMainProcess = context.packageName == General.PACKAGE_NAME
 
         try {
             val lc = LoggerFactory.getILoggerFactory() as LoggerContext
 
             // 为每个特定业务的 Logger 添加文件 Appender
             LogCatalog.loggerNames().forEach { logName ->
-                addFileAppender(lc, logName, logDir)
+                addFileAppender(lc, logName, logDir, isMainProcess)
             }
 
             isFileInitialized = true
-            Log.i("SesameLog", "File logging initialized at: $logDir")
+            Log.i("SesameLog", "File logging initialized at: $logDir (MainProcess: $isMainProcess)")
         } catch (e: Exception) {
             Log.e("SesameLog", "Logback initFileLogging failed", e)
         }
     }
 
     /**
-     * 核心路径逻辑：完全还原 Java 版本的判断
-     * 优先 Files.LOG_DIR -> 失败则回退到 Context.external -> Context.files
+     * 核心路径逻辑
      */
     private fun resolveLogDir(context: Context): String {
-        // 1. 尝试使用 Files 类中定义的路径
         var targetDir = Files.LOG_DIR
 
-        // 尝试创建目录，确保 exists() 判断准确
         if (!targetDir.exists()) {
             targetDir.mkdirs()
         }
 
-        // 2. 检查是否有权写入
         if (!targetDir.exists() || !targetDir.canWrite()) {
-            // 回退逻辑
             val fallbackDir = context.getExternalFilesDir("logs")
             targetDir = fallbackDir ?: File(context.filesDir, "logs")
         }
 
-        // 3. 确保目录结构完整 (创建 bak 子目录)
         File(targetDir, "bak").mkdirs()
 
         return targetDir.absolutePath + File.separator
     }
 
-    private fun addFileAppender(lc: LoggerContext, logName: String, logDir: String) {
-        // 1. 先创建实例，不要直接链式 apply，以便后面引用它
-        val fileAppender = RollingFileAppender<ILoggingEvent>()
+    private fun addFileAppender(lc: LoggerContext, logName: String, logDir: String, isMainProcess: Boolean) {
+        // 主进程使用带滚动策略的 Appender，非主进程使用普通追加 Appender
+        val fileAppender = if (isMainProcess) RollingFileAppender<ILoggingEvent>() else FileAppender<ILoggingEvent>()
 
         fileAppender.apply {
             context = lc
-            name = "FILE-$logName"
+            // 如果是 UI 进程，将其命名为内部 Appender，因为它会被 AsyncAppender 包装
+            name = if (isMainProcess) "FILE-$logName" else "INTERNAL-FILE-$logName"
             file = "$logDir$logName.log"
+            isAppend = true
 
-            // 2. 配置 Policy (保持与 Java 版本参数一致)
-            val policy = SizeAndTimeBasedRollingPolicy<ILoggingEvent>().apply {
-                context = lc
-                fileNamePattern = "${logDir}bak/$logName-%d{yyyy-MM-dd}.%i.log"
-                setMaxFileSize(FileSize.valueOf("7MB")) // 还原为 50MB
-                setTotalSizeCap(FileSize.valueOf("32MB"))
-                maxHistory = 3
-                isCleanHistoryOnStart = true // 还原 Java 中的 setCleanHistoryOnStart(true)
-                // 必须调用 setParent
-                setParent(fileAppender)
-                start()
+            if (this is RollingFileAppender) {
+                val rfa = this
+                // 只有主进程配置滚动策略
+                rollingPolicy = SizeAndTimeBasedRollingPolicy<ILoggingEvent>().apply {
+                    context = lc
+                    fileNamePattern = "${logDir}bak/$logName-%d{yyyy-MM-dd}.%i.log"
+                    setMaxFileSize(FileSize.valueOf("7MB"))
+                    setTotalSizeCap(FileSize.valueOf("32MB"))
+                    maxHistory = 3
+                    isCleanHistoryOnStart = true
+                    setParent(rfa)
+                    start()
+                }
+            } else {
+                // 非主进程开启 Prudent 模式，确保能感知到主进程随时可能触发的滚动（按天或按大小）
+                isPrudent = true
             }
-            rollingPolicy = policy
 
-            // 3. 配置 Encoder
+            // 配置编码器
             encoder = PatternLayoutEncoder().apply {
                 context = lc
                 pattern = "%d{dd日 HH:mm:ss.SS} %msg%n"
                 start()
             }
 
-            // 启动 Appender
             start()
         }
 
-        // 4. 获取对应的 Logger 并添加 Appender
+        val finalAppender = if (!isMainProcess) {
+            AsyncAppender().apply {
+                context = lc
+                name = "FILE-$logName"
+                queueSize = 256
+                discardingThreshold = 0
+                addAppender(fileAppender)
+                start()
+            }
+        } else {
+            fileAppender
+        }
+
+        // 获取对应的 Logger 并添加 Appender
         lc.getLogger(logName).apply {
-            // 这里可以不强制 setLevel，沿用默认配置
+            level = Level.ALL
             isAdditive = true
-            addAppender(fileAppender)
+            addAppender(finalAppender)
         }
     }
 }
-
