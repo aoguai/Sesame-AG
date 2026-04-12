@@ -2609,22 +2609,26 @@ class AntFarm : ModelTask() {
         return dailyLimitValue >= 0 && Status.INSTANCE.useAccelerateToolCount >= dailyLimitValue
     }
 
+    /**
+     * 检测加速卡限制原因
+     * @param syncFlag 是否同步持久化标记。
+     */
     private fun detectAccelerateToolLimit(syncFlag: Boolean = false): AccelerateToolLimitReason? {
         if (Status.hasFlagToday(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT)) {
             return AccelerateToolLimitReason.FLAGGED
         }
+
         if (!Status.canUseAccelerateTool()) {
             if (syncFlag) {
                 Status.setFlagToday(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT)
             }
             return AccelerateToolLimitReason.SYSTEM_LIMIT
         }
+
         if (hasReachedConfiguredAccelerateToolLimit()) {
-            if (syncFlag) {
-                Status.setFlagToday(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT)
-            }
             return AccelerateToolLimitReason.USER_LIMIT
         }
+
         return null
     }
 
