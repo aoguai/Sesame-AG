@@ -49,12 +49,18 @@ private val sesameCreditDefaultBlacklist = setOf(
     "0.01元/日起",           // 参数错误：promiseActivityExtCheck / ILLEGAL_ARGUMENT
     "0.1元起租会员攒粒",      // 参数错误：ILLEGAL_ARGUMENT
     "完成旧衣回收得现金",      // 参数错误：ILLEGAL_ARGUMENT
+    "完成任务逛逛天猫领红包",   // 参数错误：ILLEGAL_ARGUMENT
+    "完成任务坚持逛裹酱领福利", // 参数错误：ILLEGAL_ARGUMENT
+    "完成任务去玩一局斗地主",   // 参数错误：ILLEGAL_ARGUMENT
+    "完成任务添加桌面小组件",   // 参数错误：ILLEGAL_ARGUMENT
     "坚持刷视频赚福利",       // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE
     "去领目标应用积分",       // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE
     "去参与花呗活动",         // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE
     "逛网商领福利金",         // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE
     "去浏览租赁大促会场",      // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE
-    "逛一逛免费领点餐优惠"     // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE
+    "逛一逛免费领点餐优惠",    // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE
+    "领取任务将芝麻信用添加到首页", // 服务端模板不存在：PROMISE_TEMPLATE_NOT_EXIST
+    "领取任务去开通信用额度"    // 服务端模板不存在：PROMISE_TEMPLATE_NOT_EXIST
 )
 
 private val sesameAlchemyDefaultBlacklist = setOf(
