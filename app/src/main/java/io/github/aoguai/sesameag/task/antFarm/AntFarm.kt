@@ -3011,7 +3011,37 @@ class AntFarm : ModelTask() {
 
     internal suspend fun feedFriend() {
         val pendingInvalidUserIds = linkedSetOf<String>()
+        var lastInsufficientFriendFeedStock: Int? = null
         try {
+            suspend fun ensureFriendFeedStock(user: String? = null): Boolean {
+                if (foodStock >= 180) {
+                    lastInsufficientFriendFeedStock = null
+                    return true
+                }
+
+                if (receiveFarmTaskAward?.value == true && lastInsufficientFriendFeedStock != foodStock) {
+                    Log.farm(TAG, "帮喂前饲料不足180g，尝试领取饲料奖励")
+                    val previousFoodStock = foodStock
+                    receiveFarmAwards()
+                    if (foodStock > previousFoodStock) {
+                        lastInsufficientFriendFeedStock = null
+                    }
+                }
+
+                if (foodStock >= 180) {
+                    lastInsufficientFriendFeedStock = null
+                    return true
+                }
+
+                lastInsufficientFriendFeedStock = foodStock
+                if (user.isNullOrBlank()) {
+                    Log.farm(TAG, "😞当前饲料不足180g，停止本轮帮喂")
+                } else {
+                    Log.farm(TAG, "😞喂鸡[$user]饲料不足，停止本轮帮喂")
+                }
+                return false
+            }
+
             val feedFriendAnimalMap: Map<String?, Int?> = feedFriendAnimalList?.value ?: emptyMap()
             val useFamilyFeedForMembers =
                 family?.value == true && familyOptions?.value?.contains("feedFamilyAnimal") == true
@@ -3045,6 +3075,9 @@ class AntFarm : ModelTask() {
                 }
 
                 if (!Status.canFeedFriendToday(userId, maxDailyCount)) continue
+                if (!ensureFriendFeedStock()) {
+                    return
+                }
                 val jo = enterFriendFarmIfAvailable(userId, "帮好友喂鸡", pendingInvalidUserIds)
                 if (jo != null) {
                     val subFarmVOjo = jo.getJSONObject("farmVO").getJSONObject("subFarmVO")
@@ -3062,37 +3095,32 @@ class AntFarm : ModelTask() {
                                 animalStatusVO.getString("animalFeedStatus") //动物饲料状态
                             if (AnimalInteractStatus.HOME.name == animalInteractStatus && AnimalFeedStatus.HUNGRY.name == animalFeedStatus) { //状态是饥饿 并且在庄园
                                 val user = UserMap.getMaskName(userId) //喂 给我喂
-                                if (foodStock < 180 && receiveFarmTaskAward?.value == true) {
-                                    Log.farm(TAG, "帮喂前饲料不足180g，尝试领取饲料奖励")
-                                    receiveFarmAwards()
+                                if (!ensureFriendFeedStock(user)) {
+                                    return
                                 }
-                                //第二次检查
-                                if (foodStock >= 180) {
-                                    if (Status.hasFlagToday(StatusFlags.FLAG_FARM_FEED_FRIEND_LIMIT)) {
+                                if (Status.hasFlagToday(StatusFlags.FLAG_FARM_FEED_FRIEND_LIMIT)) {
+                                    return
+                                }
+                                val feedFriendAnimaljo =
+                                    JSONObject(AntFarmRpcCall.feedFriendAnimal(friendFarmId))
+                                if (ResChecker.checkRes(TAG, feedFriendAnimaljo)) {
+                                    foodStock = feedFriendAnimaljo.getInt("foodStock")
+                                    lastInsufficientFriendFeedStock = null
+                                    Log.farm("帮喂好友🥣[" + user + "]的小鸡[180g]#剩余" + foodStock + "g")
+                                    Status.feedFriendToday(userId)
+                                } else {
+                                    val resultCode = feedFriendAnimaljo.optString("resultCode", "")
+                                    val memo = feedFriendAnimaljo.optString("memo", "")
+                                    if ("391" == resultCode || memo.contains("今日帮喂次数已达上限")) {
+                                        Status.setFlagToday(StatusFlags.FLAG_FARM_FEED_FRIEND_LIMIT)
+                                        Log.farm(TAG, "😞喂[$user]的鸡失败：今日帮喂次数已达上限，已记录为当日限制")
                                         return
                                     }
-                                    val feedFriendAnimaljo =
-                                        JSONObject(AntFarmRpcCall.feedFriendAnimal(friendFarmId))
-                                    if (ResChecker.checkRes(TAG, feedFriendAnimaljo)) {
-                                        foodStock = feedFriendAnimaljo.getInt("foodStock")
-                                        Log.farm("帮喂好友🥣[" + user + "]的小鸡[180g]#剩余" + foodStock + "g")
-                                        Status.feedFriendToday(userId)
-                                    } else {
-                                        val resultCode = feedFriendAnimaljo.optString("resultCode", "")
-                                        val memo = feedFriendAnimaljo.optString("memo", "")
-                                        if ("391" == resultCode || memo.contains("今日帮喂次数已达上限")) {
-                                            Status.setFlagToday(StatusFlags.FLAG_FARM_FEED_FRIEND_LIMIT)
-                                            Log.farm(TAG, "😞喂[$user]的鸡失败：今日帮喂次数已达上限，已记录为当日限制")
-                                            return
-                                        }
-                                        Log.error(
-                                            TAG,
-                                            "😞喂[$user]的鸡失败$feedFriendAnimaljo"
-                                        )
-                                        continue
-                                    }
-                                } else {
-                                    Log.farm(TAG, "😞喂鸡[$user]饲料不足")
+                                    Log.error(
+                                        TAG,
+                                        "😞喂[$user]的鸡失败$feedFriendAnimaljo"
+                                    )
+                                    continue
                                 }
                             }
                             break
