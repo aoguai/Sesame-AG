@@ -2482,10 +2482,10 @@ class AntMember : ModelTask() {
             }
 
             if (needWelfareCheck) {
-                val welfareHandled = handleGoldTicketWelfareTasks()
-                if (!welfareHandled) {
+                val welfareHandleResult = handleGoldTicketWelfareTasks()
+                if (!welfareHandleResult.querySuccess) {
                     Log.error("黄金票🎫[福利中心任务查询失败]")
-                } else {
+                } else if (welfareHandleResult.canMarkDone) {
                     setFlagToday(StatusFlags.FLAG_ANTMEMBER_GOLD_TICKET_WELFARE_DONE)
                 }
             }
@@ -2666,6 +2666,11 @@ class AntMember : ModelTask() {
         }
     }
 
+    private data class GoldTicketWelfareHandleResult(
+        val querySuccess: Boolean,
+        val canMarkDone: Boolean
+    )
+
     private fun isGoldTicketSesameBrowseTask(task: JSONObject): Boolean {
         val taskId = task.optString("taskId")
         if (taskId == "AP16338809") {
@@ -2684,6 +2689,52 @@ class AntMember : ModelTask() {
             return true
         }
         return task.optString("title").contains("蛋定生财")
+    }
+
+    private fun isGoldTicketKnownWelfareAutoTask(task: JSONObject): Boolean {
+        return when (task.optString("taskId")) {
+            "AP11249033", // 逛蛋定生财去签到
+            "AP10247402", // 逛逛稳健理财领红包
+            "AP13250426"  // 逛定期市场领红包
+            -> true
+
+            else -> false
+        }
+    }
+
+    private fun queryGoldTicketWelfareResult(): JSONObject? {
+        return try {
+            val welfareResponse = AntMemberRpcCall.queryWelfareHome() ?: return null
+            val welfareJson = JSONObject(welfareResponse)
+            if (!ResChecker.checkRes(TAG, welfareJson)) {
+                return null
+            }
+            welfareJson.optJSONObject("result")
+        } catch (e: Exception) {
+            Log.printStackTrace(TAG, e)
+            null
+        }
+    }
+
+    private fun queryGoldTicketWelfareTodoTasks(): JSONArray? {
+        val welfareResult = queryGoldTicketWelfareResult() ?: return null
+        return welfareResult.optJSONObject("goldbillTasks")
+            ?.optJSONArray("todo")
+            ?: JSONArray()
+    }
+
+    private fun countGoldTicketPendingWelfareAutoTasks(todoTasks: JSONArray?): Int {
+        if (todoTasks == null || todoTasks.length() == 0) {
+            return 0
+        }
+        var pendingCount = 0
+        for (i in 0 until todoTasks.length()) {
+            val task = todoTasks.optJSONObject(i) ?: continue
+            if (isGoldTicketKnownWelfareAutoTask(task)) {
+                pendingCount++
+            }
+        }
+        return pendingCount
     }
 
     private fun resolveGoldTicketTaskWaitMillis(task: JSONObject): Long {
@@ -2795,31 +2846,30 @@ class AntMember : ModelTask() {
     }
 
     /**
-     * 福利中心金票任务仅补已确认闭环的“蛋定生财”链路：
-     * `SIGNUP_COMPLETE -> needle.taskQueryPush`
+     * 福利中心已确认的浏览类任务会走：
+     * `goldbill.v4.task.trigger -> needle.taskQueryPush -> welfareCenter.index`
+     * 这里仅放开抓包已确认的 taskId，避免把未知福利任务误判成可自动完成。
      */
-    private fun handleGoldTicketWelfareTasks(): Boolean {
+    private fun handleGoldTicketWelfareTasks(): GoldTicketWelfareHandleResult {
         try {
-            val welfareResponse = AntMemberRpcCall.queryWelfareHome() ?: return false
-            val welfareJson = JSONObject(welfareResponse)
-            if (!ResChecker.checkRes(TAG, welfareJson)) {
-                return false
-            }
+            val todoTasks = queryGoldTicketWelfareTodoTasks()
+                ?: return GoldTicketWelfareHandleResult(querySuccess = false, canMarkDone = false)
 
-            val todoTasks = welfareJson.optJSONObject("result")
-                ?.optJSONObject("goldbillTasks")
-                ?.optJSONArray("todo") ?: return true
+            val trackedAutoTaskCount = countGoldTicketPendingWelfareAutoTasks(todoTasks)
+            if (trackedAutoTaskCount == 0) {
+                return GoldTicketWelfareHandleResult(querySuccess = true, canMarkDone = true)
+            }
 
             var autoReceivedCount = 0
             var manualCount = 0
             for (i in 0 until todoTasks.length()) {
                 val task = todoTasks.optJSONObject(i) ?: continue
-                if (!isGoldTicketEggSignTask(task)) {
+                if (!isGoldTicketKnownWelfareAutoTask(task)) {
                     continue
                 }
 
                 when (task.optString("taskProcessStatus")) {
-                    "SIGNUP_COMPLETE" -> {
+                    "TO_RECEIVE", "NONE_SIGNUP", "SIGNUP_EXPIRED", "SIGNUP_COMPLETE" -> {
                         if (tryReceiveGoldTicketTask(task, "福利中心")) {
                             autoReceivedCount++
                         } else {
@@ -2827,20 +2877,39 @@ class AntMember : ModelTask() {
                         }
                     }
 
+                    "RECEIVE_SUCCESS" -> Unit
                     else -> manualCount++
                 }
             }
 
-            if (autoReceivedCount > 0) {
-                Log.member("黄金票🎫[福利中心任务自动领取] ${autoReceivedCount}项")
-            }
             if (manualCount > 0) {
                 Log.member("黄金票🎫[福利中心任务待手动处理] ${manualCount}项")
             }
-            return true
+
+            val refreshedTodoTasks = queryGoldTicketWelfareTodoTasks()
+            if (refreshedTodoTasks == null) {
+                Log.member("黄金票🎫[福利中心任务复查失败] 暂不写入今日完成")
+                return GoldTicketWelfareHandleResult(
+                    querySuccess = true,
+                    canMarkDone = false
+                )
+            }
+
+            val pendingRetryCount = countGoldTicketPendingWelfareAutoTasks(refreshedTodoTasks)
+            val confirmedAutoReceivedCount = (trackedAutoTaskCount - pendingRetryCount).coerceAtLeast(0)
+            if (confirmedAutoReceivedCount > 0) {
+                Log.member("黄金票🎫[福利中心任务自动领取] ${confirmedAutoReceivedCount}项")
+            }
+            if (pendingRetryCount > 0) {
+                Log.member("黄金票🎫[福利中心任务保留下次重试] ${pendingRetryCount}项")
+            }
+            return GoldTicketWelfareHandleResult(
+                querySuccess = true,
+                canMarkDone = pendingRetryCount == 0
+            )
         } catch (e: Exception) {
             Log.printStackTrace(TAG, e)
-            return false
+            return GoldTicketWelfareHandleResult(querySuccess = false, canMarkDone = false)
         }
     }
 
