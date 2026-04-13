@@ -155,7 +155,9 @@ private val forestDefaultBlacklist = setOf(
 private val yuebaoDefaultBlacklist = setOf(
     // 余额宝
     "余额宝体验金签到(10元)",
-    "添加余额宝小组件"
+    "添加余额宝小组件",
+    "让余额宝自动赚更多",
+    "去余额宝攒一笔钱"
 )
 
 private val goldTicketDefaultBlacklist = emptySet<String>()
