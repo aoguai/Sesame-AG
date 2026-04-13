@@ -62,8 +62,6 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.Objects
 import java.util.Random
-import kotlin.compareTo
-import kotlin.dec
 import kotlin.math.min
 
 @Suppress("unused", "EnumEntryName", "EnumEntryName", "EnumEntryName", "EnumEntryName")
@@ -2061,7 +2059,12 @@ class AntFarm : ModelTask() {
      * 策略：批量领奖 -> 批量完成 -> 再次循环，减少 RPC 请求次数。
      * 限制：仅处理多阶段任务，饲料满则停止领取后续奖励，但即便满也执行 TODO 以推进进度。
      */
-    internal suspend fun AntFarm.handleMultiStageTasksLoop() {
+    internal suspend fun handleMultiStageTasksLoop(isManual: Boolean = false) {
+
+        if (!isManual && Status.hasFlagToday(StatusFlags.FLAG_FARM_MULTI_STAGE_TASK_FINISHED)) {
+            return
+        }
+
         try {
             syncAnimalStatus(ownerFarmId)
             val startStock = foodStock
@@ -2086,9 +2089,9 @@ class AntFarm : ModelTask() {
                 Log.farm("庄园任务处理完毕，静默获得饲料(直接领取了奖励): ${silentGained}g")
             }
 
-            Log.farm(TAG, "开始多阶段任务循环...")
+            Log.record(TAG, "${if (isManual) "手动" else "自动"}多阶段任务补全循环开始...")
             var loopCount = 0
-            var continuousNoAction = 0 // 记录连续没有操作的次数
+            var continuousNoAction = 0
             while (loopCount < 15) {
                 loopCount++
 
@@ -2096,45 +2099,109 @@ class AntFarm : ModelTask() {
                 if (listRes.isEmpty()) break
                 val jo = JSONObject(listRes)
                 if (!ResChecker.checkRes(TAG, jo)) break
+
                 val farmTaskList = jo.getJSONArray("farmTaskList")
+                val isGameFinished = Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)
+                this.syncAnimalStatus(this.ownerFarmId)
+                val foodSpace = foodStockLimit - foodStock
 
-                var hasTodoMultiStage = false
-                var anyActionTaken = false
+                val multiStageTasks = mutableListOf<JSONObject>()
+                var totalAvailableAwards = 0
+                var anyTaskFullyDone = false
 
+                // 1. 预扫描：识别多阶段任务并统计可用奖励
+                var hasIncompleteMultiStage = false
                 for (i in 0 until farmTaskList.length()) {
-                    if (foodStock >= foodStockLimit) break
                     val task = farmTaskList.getJSONObject(i)
-                    if (task.optInt("rightsTimesLimit", 1) <= 1) continue
+                    val limit = task.optInt("rightsTimesLimit", 1)
+                    if (limit <= 1) continue
 
-                    val bizKey = task.getString("bizKey")
                     val title = task.optString("title")
+                    val bizKey = task.getString("bizKey")
+
                     if (TaskBlacklist.isTaskInBlacklist(title) ||
                         TaskBlacklist.isTaskInBlacklist(bizKey)) continue
 
-                    if (task.getString("taskStatus") == TaskStatus.FINISHED.name) {
-                        val awardCount = task.optInt("awardCount", 0)
-                        val taskId = task.getString("taskId")
-                        val receiveRes = JSONObject(AntFarmRpcCall.receiveFarmTaskAward(taskId))
-                        if (ResChecker.checkRes(TAG, receiveRes)) {
-                            add2FoodStock(awardCount)
-                            Log.farm("领取多阶段奖励[$bizKey] 🍪${awardCount}g")
-                            anyActionTaken = true
+                    multiStageTasks.add(task)
+                    val status = task.getString("taskStatus")
+                    val rightsTimes = task.optInt("rightsTimes", 0)
+
+                    val currentTotalAward = task.optInt("awardCount", 0)
+                    val alreadyReceived = task.optInt("alreadyReceiveStageAwardCount", 0)
+                    val accumulatedAward = currentTotalAward - alreadyReceived
+
+                    if (rightsTimes < limit) {
+                        hasIncompleteMultiStage = true
+                    }
+
+                    if (status == TaskStatus.FINISHED.name || accumulatedAward > 0) {
+                        totalAvailableAwards += accumulatedAward
+                        if (rightsTimes >= limit) {
+                            anyTaskFullyDone = true
+                        }
+                    }
+
+                    if (rightsTimes < limit || accumulatedAward > 0) {
+                        val awardInfo = if (accumulatedAward > 0) ", 待领奖励: ${accumulatedAward}g" else ""
+                        Log.record(TAG, "任务[$title] 进度: $rightsTimes/$limit$awardInfo")
+                    }
+                }
+
+                if (!hasIncompleteMultiStage) {
+                    if (!isManual) {
+                        Status.setFlagToday(StatusFlags.FLAG_FARM_MULTI_STAGE_TASK_FINISHED)
+                    }
+                    break
+                }
+
+                var anyActionTaken = false
+
+                // 2. 领取奖励
+                val shouldReceiveGlobal = if (!isGameFinished) {
+                    foodStock < 180
+                } else {
+                    // 饲料空间充足且总奖励量足够，或所有任务已满
+                    (foodSpace > 0 && totalAvailableAwards >= foodSpace) || anyTaskFullyDone
+                }
+
+                if (shouldReceiveGlobal) {
+                    for (task in multiStageTasks) {
+                        if (foodStock >= foodStockLimit) {
+                            Log.record(TAG, "饲料已满 ($foodStock g)，停止后续多阶段领奖请求")
+                            break
+                        }
+                        // 游戏未完成时
+                        if (!isGameFinished && foodStock >= 180) break
+
+                        val status = task.getString("taskStatus")
+                        val currentTotalAward = task.optInt("awardCount", 0)
+                        val alreadyReceived = task.optInt("alreadyReceiveStageAwardCount", 0)
+                        val accumulatedAward = currentTotalAward - alreadyReceived
+
+                        if (status == TaskStatus.FINISHED.name || accumulatedAward > 0) {
+                            val taskId = task.getString("taskId")
+                            val title = task.optString("title")
+
+                            val receiveRes = JSONObject(AntFarmRpcCall.receiveFarmTaskAward(taskId))
+                            if (ResChecker.checkRes(TAG, receiveRes)) {
+                                add2FoodStock(accumulatedAward)
+                                Log.farm("领取多阶段奖励[$title] 🍪${accumulatedAward}g (当前饲料: ${foodStock}g)")
+                                anyActionTaken = true
+                            }
                         }
                     }
                 }
 
-                for (i in 0 until farmTaskList.length()) {
-                    val task = farmTaskList.getJSONObject(i)
-                    if (task.optInt("rightsTimesLimit", 1) <= 1) continue
+                // 3. 执行任务阶段
+                for (task in multiStageTasks) {
+                    val limit = task.optInt("rightsTimesLimit", 1)
+                    val rightsTimes = task.optInt("rightsTimes", 0)
 
-                    if (task.getString("taskStatus") == TaskStatus.TODO.name) {
-                        hasTodoMultiStage = true
+                    if (rightsTimes < limit) {
                         val bizKey = task.getString("bizKey")
                         val title = task.optString("title")
-                        if (TaskBlacklist.isTaskInBlacklist(title) ||
-                            TaskBlacklist.isTaskInBlacklist(bizKey)) continue
 
-                        handleGeneralTask(bizKey, title)
+                        handleGeneralTask(bizKey, title, silent = true)
                         anyActionTaken = true
                         delay(2000)
                     }
@@ -2146,11 +2213,10 @@ class AntFarm : ModelTask() {
                     continuousNoAction++
                 }
 
-                // 如果饲料满了且没有TO DO，或者连续2轮没有检测到任何动作，则退出
-                if ((foodStock >= foodStockLimit && !hasTodoMultiStage) || continuousNoAction >= 2) {
+                // 退出条件：如果连续 2 轮没有任何进度，则停止尝试
+                if (continuousNoAction >= 2) {
                     break
                 }
-
                 delay(3000)
             }
         } catch (e: CancellationException) {
@@ -2222,13 +2288,13 @@ class AntFarm : ModelTask() {
     }
 
     // 抽取通用任务处理逻辑
-    private fun handleGeneralTask(bizKey: String, title: String) {
+    private fun handleGeneralTask(bizKey: String, title: String, silent: Boolean = false) {
         val result = AntFarmRpcCall.doFarmTask(bizKey)
         if (result.isNullOrEmpty()) return
 
         val jo = JSONObject(result)
         if (ResChecker.checkRes(TAG, jo)) {
-            Log.farm("庄园任务完成🧾[$title]")
+            if (!silent) Log.farm("庄园任务完成🧾[$title]")
         } else {
             val resultCode = jo.optString("resultCode", "")
             if (resultCode == "309") {

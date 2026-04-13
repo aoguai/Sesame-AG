@@ -229,6 +229,9 @@ object StatusFlags {
     /** 今日饲料任务是否已完成 */
     const val FLAG_FARM_TASK_FINISHED = "antFarm::farmTaskFinished"
 
+    /** 今日多阶段任务是否已完成 */
+    const val FLAG_FARM_MULTI_STAGE_TASK_FINISHED = "AntFarm::multiStageTaskFinished"
+
     /** 庄园：加速卡每日次数上限标记 */
     const val FLAG_FARM_ACCELERATE_LIMIT = "antFarm::accelerateLimit"
 
