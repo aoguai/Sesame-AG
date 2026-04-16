@@ -8,8 +8,15 @@ import io.github.aoguai.sesameag.util.JsonUtil
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.TimeUtil
 import io.github.aoguai.sesameag.util.maps.UserMap
+import org.json.JSONObject
+import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
+import java.util.Locale
+import kotlin.collections.component1
+import kotlin.collections.component2
+import kotlin.collections.get
+import kotlin.collections.set
 
 class Status {
 
@@ -75,11 +82,29 @@ class Status {
     var memberSignInList: MutableSet<String> = HashSet()
     val flagList: MutableSet<String> = HashSet()
 
+    /** 模块化标记与计数存储 (Key: 模块名, Value: Map<标记名, 次数>) */
+    var moduleFlags: MutableMap<String, MutableMap<String, Int>> = HashMap()
+
     /** 口碑签到 */
     var kbSignIn: Long = 0
 
-    /** 保存时间 */
-    var saveTime: Long = 0L
+    /** 上次任务启动时间 */
+    var lastTaskTime: Long = 0L
+
+    /** 预定的下次任务执行时间 */
+    var nextExecutionTime: Long = 0L
+
+    /** 🚀 新增：上次高优任务（能量|小鸡任务）启动时间 */
+    var lastCoreTaskTime: Long = 0L
+
+    /** 持久化身份锚定：标记此内存状态属于哪个用户 */
+    var currentUid: String? = null
+
+    /** 保存时间：默认为创建时刻，确保新对象不会被判定为“跨天” */
+    var saveTime: Long = System.currentTimeMillis()
+
+    /** 是否正在运行主任务 (用于进程重启检测) */
+    var isTaskRunning: Boolean = false
 
     /** 新村助力好友，已上限的用户 */
     var antStallAssistFriend: MutableSet<String> = HashSet()
@@ -99,11 +124,44 @@ class Status {
     /** 会员权益 */
     var memberPointExchangeBenefitLogList: MutableSet<String> = HashSet()
 
+    /**
+     * 检查今日已完成状态（实例方法，供 ModelFieldTodayStateResolver 使用）
+     */
+    fun hasFlagTodayInstance(flag: String, retryLimit: Int = 0, retryTimes: String? = null): Boolean {
+        val (module, name) = parseFlag(flag)
+        val flags = moduleFlags[module] ?: return false
+        val currentCount = flags[name] ?: return false
+        if (retryLimit > 0 && currentCount < retryLimit) return false
+        if (!retryTimes.isNullOrEmpty()) {
+            val sdf = SimpleDateFormat("HHmm", Locale.getDefault())
+            val nowTime = sdf.format(Date(System.currentTimeMillis()))
+            val timeArray = retryTimes.split(",")
+            for (t in timeArray) {
+                val threshold = t.trim()
+                if (nowTime >= threshold && !flags.containsKey("${name}_$threshold")) {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+    /**
+     * 获取今日整型标记（实例方法）
+     */
+    fun getIntFlagTodayInstance(flag: String): Int? {
+        val (module, name) = parseFlag(flag)
+        return moduleFlags[module]?.get(name)
+    }
+
     companion object {
         private val TAG = Status::class.java.simpleName
 
         @JvmStatic
         val INSTANCE: Status = Status()
+
+        private var lastModifiedTime: Long = 0L
+        private var lastUid: String? = null
 
         @JvmStatic
         val currentDayTimestamp: Long
@@ -115,6 +173,33 @@ class Status {
                 calendar.set(Calendar.MILLISECOND, 0)
                 return calendar.timeInMillis
             }
+
+        private fun parseFlag(flag: String): Pair<String, String> {
+            val index = flag.indexOf("::")
+            return if (index > 0) {
+                flag.substring(0, index) to flag.substring(index + 2)
+            } else {
+                "general" to flag
+            }
+        }
+
+        /**
+         * 🚀 核心新增：加载一个独立的状态实例而不影响 INSTANCE
+         */
+        @JvmStatic
+        fun loadStandalone(userId: String): Status? {
+            try {
+                val statusFile = Files.getStatusFile(userId) ?: return null
+                if (!statusFile.exists()) return null
+                val json = Files.readFromFile(statusFile)
+                if (json.isBlank()) return null
+                val status = JsonUtil.parseObject(json, Status::class.java)
+                return status
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load standalone status for $userId", e)
+                return null
+            }
+        }
 
         @JvmStatic
         fun getVitalityCount(skuId: String): Int {
@@ -553,40 +638,71 @@ class Status {
         @Synchronized
         @JvmStatic
         fun load(currentUid: String?): Status {
+            return load(currentUid, true)
+        }
+
+        @Synchronized
+        @JvmStatic
+        fun load(currentUid: String?, showLog: Boolean): Status {
             if (currentUid.isNullOrEmpty()) {
-                Log.record(TAG, "用户为空，状态加载失败")
+                if (showLog) Log.record(TAG, "用户为空，状态加载失败")
                 throw RuntimeException("用户为空，状态加载失败")
             }
+
             try {
                 val statusFile = Files.getStatusFile(currentUid)
                 if (statusFile!!.exists()) {
-                    Log.record(TAG, "加载 status.json")
-                    val json = Files.readFromFile(statusFile)
-                    if (json.trim().isNotEmpty()) {
-                        // 使用 Jackson 更新现有对象
-                        JsonUtil.copyMapper().readerForUpdating(INSTANCE).readValue<Status>(json)
-                        // 格式化检查
-                        val formatted = JsonUtil.formatJson(INSTANCE)
-                        if (formatted != json) {
-                            Log.record(TAG, "重新格式化 status.json")
-                            Files.write2File(formatted, statusFile)
-                        }
+                    val fileTime = statusFile.lastModified()
+                    val isUserChanged = currentUid != lastUid
+
+                    // 缓存检查：如果 UID 和文件修改时间都没变，跳过 IO
+                    if (!isUserChanged && fileTime != 0L && fileTime == lastModifiedTime) {
+                        // 同一用户重复加载，不打印 record 日志
                     } else {
-                        Log.record(TAG, "配置文件为空，初始化默认配置")
-                        initializeDefaultConfig(statusFile)
+                        if (showLog) {
+                            if (isUserChanged) Log.record(TAG, "加载用户[$currentUid]的 status.json")
+                            else Log.record(TAG, "加载 status.json")
+                        }
+
+                        val json = Files.readFromFile(statusFile)
+                        if (json.trim().isNotEmpty()) {
+                            JsonUtil.copyMapper().readerForUpdating(INSTANCE).readValue(json, Status::class.java)
+
+                            val formatted = JsonUtil.formatJson(INSTANCE)
+                            if (formatted != json) {
+                                if (showLog) Log.record(TAG, "重新格式化 status.json")
+                                Files.write2File(formatted, statusFile)
+                            }
+                            lastModifiedTime = statusFile.lastModified()
+                            lastUid = currentUid
+                            // 🚩 关键：修正加载后的身份
+                            INSTANCE.currentUid = currentUid
+                        } else {
+                            if (showLog) Log.record(TAG, "配置文件为空，初始化默认配置")
+                            initializeDefaultConfig(statusFile)
+                        }
                     }
                 } else {
-                    Log.record(TAG, "配置文件不存在，初始化默认配置")
+                    if (showLog) Log.record(TAG, "配置文件不存在，初始化默认配置")
                     initializeDefaultConfig(statusFile)
                 }
             } catch (t: Throwable) {
                 Log.printStackTrace(TAG, t)
-                Log.record(TAG, "状态文件格式有误，已重置")
+                if (showLog) Log.record(TAG, "状态文件格式有误，已重置")
                 resetAndSaveConfig()
             }
 
-            // 这里逻辑有点奇怪，如果 saveTime 是 0，则设为当前时间。
-            // 原始 Java 代码中 Long 默认为 null，但这里属性初始化为 0L。
+            // 无论加载还是初始化，确保身份锚定
+            if (INSTANCE.currentUid == null) INSTANCE.currentUid = currentUid
+
+            // 无论是否命中缓存，日期检查逻辑保持不变
+            if (updateDay(Calendar.getInstance())) {
+                if (showLog) Log.record(TAG, "发现日期更新，重置 status.json 状态")
+                // 如果过期重置了，重新确保新日期的身份和时间有效
+                INSTANCE.currentUid = currentUid
+                INSTANCE.saveTime = System.currentTimeMillis()
+            }
+
             if (INSTANCE.saveTime == 0L) {
                 INSTANCE.saveTime = System.currentTimeMillis()
             }
@@ -597,7 +713,12 @@ class Status {
             try {
                 JsonUtil.copyMapper().updateValue(INSTANCE, Status())
                 Log.record(TAG, "初始化 status.json")
+                INSTANCE.currentUid = UserMap.currentUid
+                INSTANCE.saveTime = System.currentTimeMillis()
                 Files.write2File(JsonUtil.formatJson(INSTANCE), statusFile)
+                // 同步缓存标记
+                lastModifiedTime = statusFile.lastModified()
+                lastUid = UserMap.currentUid
             } catch (e: JsonMappingException) {
                 Log.printStackTrace(TAG, e)
                 throw RuntimeException("初始化配置失败", e)
@@ -607,7 +728,13 @@ class Status {
         private fun resetAndSaveConfig() {
             try {
                 JsonUtil.copyMapper().updateValue(INSTANCE, Status())
-                Files.write2File(JsonUtil.formatJson(INSTANCE), Files.getStatusFile(UserMap.currentUid)!!)
+                val statusFile = Files.getStatusFile(UserMap.currentUid)!!
+                INSTANCE.currentUid = UserMap.currentUid
+                INSTANCE.saveTime = System.currentTimeMillis()
+                Files.write2File(JsonUtil.formatJson(INSTANCE), statusFile)
+                // 同步缓存标记
+                lastModifiedTime = statusFile.lastModified()
+                lastUid = UserMap.currentUid
             } catch (e: JsonMappingException) {
                 Log.printStackTrace(TAG, e)
                 throw RuntimeException("重置配置失败", e)
@@ -620,9 +747,13 @@ class Status {
             try {
                 // 创建新状态实例并确保清空所有每日标记
                 val newStatus = Status()
-                // 确保清空flagList
+                // 确保清空所有标记和计数
                 INSTANCE.flagList.clear()
+                INSTANCE.moduleFlags.clear()
                 JsonUtil.copyMapper().updateValue(INSTANCE, newStatus)
+                // 清除缓存标记，强制下次加载重新读取
+                lastModifiedTime = 0L
+                lastUid = null
             } catch (e: JsonMappingException) {
                 Log.printStackTrace(TAG, e)
             }
@@ -631,11 +762,18 @@ class Status {
         @Synchronized
         @JvmStatic
         fun save(nowCalendar: Calendar = Calendar.getInstance()) {
-            val currentUid = UserMap.currentUid
-            if (currentUid.isNullOrEmpty()) {
+            val targetUid = UserMap.currentUid
+            if (targetUid.isNullOrEmpty()) {
                 Log.record(TAG, "用户为空，状态保存失败")
-                throw RuntimeException("用户为空，状态保存失败")
+                throw RuntimeException("用户为空，状态加载失败")
             }
+
+            // 🚩 核心防御：如果内存里的 UID 与当前全局 UID 不符，说明处于切换中，严禁写入
+            if (INSTANCE.currentUid != null && INSTANCE.currentUid != targetUid) {
+                Log.record(TAG, "拒绝跨账号保存: Memory(${INSTANCE.currentUid}) -> Disk($targetUid)")
+                return
+            }
+
             if (updateDay(nowCalendar)) {
                 Log.record(TAG, "重置 status.json")
             } else {
@@ -643,8 +781,13 @@ class Status {
             }
             val lastSaveTime = INSTANCE.saveTime
             try {
+                INSTANCE.currentUid = targetUid
                 INSTANCE.saveTime = System.currentTimeMillis()
-                Files.write2File(JsonUtil.formatJson(INSTANCE), Files.getStatusFile(currentUid)!!)
+                val statusFile = Files.getStatusFile(targetUid)!!
+                Files.write2File(JsonUtil.formatJson(INSTANCE), statusFile)
+                // 关键：更新标记，防止下一次 load 触发冗余读取
+                lastModifiedTime = statusFile.lastModified()
+                lastUid = targetUid
             } catch (e: Exception) {
                 INSTANCE.saveTime = lastSaveTime
                 throw e
@@ -687,19 +830,16 @@ class Status {
         }
 
         /**
-         * ## 设置今日已运行状态
-         * @param flag tagName::done
+         * ## 检查今日已运行状态
+         * @param flag 标记名，支持 "Module::Task"格式
+         * @param retryLimit 允许运行的最大次数。0 表示不限制次数（只要 flag 存在即拦截）
+         * @param retryTimes 重试时间点，格式 "0800,1200"。到达时间点后允许再次运行。
+         * @return true 表示“已完成/需拦截”，false 表示“未完成/需运行”
          */
         @JvmStatic
-        fun hasFlagToday(flag: String): Boolean {
-            return INSTANCE.flagList.contains(flag)
-        }
-
-        @JvmStatic
-        fun setFlagToday(flag: String) {
-            if (INSTANCE.flagList.add(flag)) {
-                save()
-            }
+        @JvmOverloads
+        fun hasFlagToday(flag: String, retryLimit: Int = 0, retryTimes: String? = null): Boolean {
+            return INSTANCE.hasFlagTodayInstance(flag, retryLimit, retryTimes)
         }
 
         @JvmStatic
@@ -711,32 +851,116 @@ class Status {
         }
 
         /**
-         * 带 UID 保护的“今日标记”。
-         *
-         * 用于规避：任务执行过程中切号导致 Status 标记写入到下一个账号的极少数情况。
+         * ## 完善的标记设置逻辑 (单次或分时段)
+         * 1. 自动过滤重复调用，仅在状态变更时保存，降低 I/O 损耗。
+         * 2. 支持分时段逻辑，确保每个时间点仅触发一次更新。
          */
         @JvmStatic
-        fun setFlagToday(flag: String, taskUid: String?) {
-            if (taskUid.isNullOrBlank()) {
-                setFlagToday(flag)
-                return
+        @JvmOverloads
+        fun setFlagToday(flag: String, retryTimes: String? = null) {
+            val (module, name) = parseFlag(flag)
+            val flags = INSTANCE.moduleFlags.getOrPut(module) { HashMap() }
+            val oldCount = flags[name] ?: 0
+
+            var changed = false
+            val nowTime = SimpleDateFormat("HHmm", Locale.getDefault()).format(Date())
+
+            if (oldCount == 0) {
+                flags[name] = 1
+                changed = true
             }
-            if (taskUid != UserMap.currentUid) return
-            if (INSTANCE.flagList.add(flag)) {
+
+            if (!retryTimes.isNullOrEmpty()) {
+                retryTimes.split(",").forEach {
+                    val threshold = it.trim()
+                    if (nowTime >= threshold) {
+                        val slotKey = "${name}_$threshold"
+                        if (flags[slotKey] != 1) {
+                            flags[slotKey] = 1
+                            changed = true
+                            // 此时增加总计数，代表进入了新阶段
+                            flags[name] = (flags[name] ?: 0) + 1
+                        }
+                    }
+                }
+            }
+
+            if (changed) {
                 save()
             }
         }
 
-        // 2025/12/4 用来获取 自定义flag的int
+        /**
+         * 🚀 完善的 RPC 结果自动补标记工具
+         * 适配光盘打卡、健康岛签到等“远程已完成”场景。
+         * @param jo RPC 返回的 JSONObject
+         * @param extraDoneCodes 额外的“视为完成”的 resultCode 或 errorCode
+         */
         @JvmStatic
-        fun getIntFlagToday(key: String): Int? {
-            return INSTANCE.intFlagMap[key]
+        fun setFlagIfDone(flag: String, jo: JSONObject?, vararg extraDoneCodes: String) {
+            if (jo == null) return
+            val resultCode = jo.optString("resultCode")
+            val errorCode = jo.optString("errorCode")
+            val success = jo.optBoolean("success") || jo.optBoolean("isSuccess") ||
+                    "SUCCESS" == jo.optString("memo")
+
+            val isAlreadyDone = resultCode == "ACTION_ALREADY_TICKED" ||
+                    resultCode == "ALREADY_SIGN_IN" ||
+                    errorCode == "ALREADY_SIGN_IN" ||
+                    extraDoneCodes.any { it == resultCode || it == errorCode }
+
+            if (success || isAlreadyDone) {
+                setFlagToday(flag)
+            }
+        }
+
+        /**
+         * 清除今日标记
+         * 支持 "Module::Task" 格式，兼容 flagList 和 moduleFlags
+         */
+        @JvmStatic
+        fun removeFlag(flag: String) {
+            var changed = false
+            val (module, name) = parseFlag(flag)
+
+            // 1. 从 moduleFlags 中移除
+            INSTANCE.moduleFlags[module]?.let {
+                if (it.remove(name) != null) {
+                    changed = true
+                }
+                // 同时移除带时间点的子标记（如 Task_0800）
+                val keysToRemove = it.keys.filter { key -> key.startsWith("${name}_") }
+                if (keysToRemove.isNotEmpty()) {
+                    keysToRemove.forEach { k -> it.remove(k) }
+                    changed = true
+                }
+            }
+
+            // 2. 从旧的 flagList 中移除
+            if (INSTANCE.flagList.remove(flag)) {
+                changed = true
+            }
+
+            if (changed) {
+                save()
+            }
         }
 
         @JvmStatic
-        fun setIntFlagToday(key: String, value: Int) {
-            INSTANCE.intFlagMap[key] = value
-            save()
+        fun getIntFlagToday(flag: String): Int? {
+            return INSTANCE.getIntFlagTodayInstance(flag)
+        }
+
+        @JvmStatic
+        fun setIntFlagToday(flag: String, value: Int) {
+            val (module, name) = parseFlag(flag)
+            val flags = INSTANCE.moduleFlags.getOrPut(module) { HashMap() }
+
+            // 仅当数值确实不同时才保存，避免冗余 I/O
+            if (flags[name] != value) {
+                flags[name] = value
+                save()
+            }
         }
 
         @JvmStatic
@@ -762,6 +986,22 @@ class Status {
         fun canParadiseCoinExchangeBenefitToday(spuId: String): Boolean {
             return !hasFlagToday(StatusFlags.FLAG_FARM_PARADISE_COIN_EXCHANGE_LIMIT_PREFIX + spuId)
         }
+
+        @JvmStatic
+        fun getFlagModuleNames(): List<String> {
+            return INSTANCE.moduleFlags.keys.toList()
+        }
+
+        @JvmStatic
+        fun getFlagsByModule(module: String): List<String> {
+            return INSTANCE.moduleFlags[module]?.keys?.filter { !it.contains("_") }?.toList() ?: emptyList()
+        }
+
+        @JvmStatic
+        fun clearModuleFlags(module: String) {
+            if (INSTANCE.moduleFlags.remove(module) != null) {
+                save()
+            }
+        }
     }
 }
-

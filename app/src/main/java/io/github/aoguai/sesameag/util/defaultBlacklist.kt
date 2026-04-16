@@ -2,18 +2,6 @@ package io.github.aoguai.sesameag.util
 
 /**
  * 默认黑名单列表（包含常见无法完成、暂无稳定 RPC 或长期仅支持手动完成的任务）
- *
- * 数据来源：
- * 已确认不支持 RPC 的高频任务，避免误杀可领取/可完成的日常任务
- *
- * 使用方法：
- * 1. 检查任务是否在黑名单中（模糊匹配）：
- *    if (TaskBlacklist.isTaskInBlacklist(taskInfo)) { 跳过任务 }
- * 2. 根据错误码自动添加任务到黑名单：
- *    TaskBlacklist.autoAddToBlacklist(taskId, taskTitle, errorCode)
- * 3. 手动添加/移除任务：
- *    TaskBlacklist.addToBlacklist(taskId)
- *    TaskBlacklist.removeFromBlacklist(taskId)
  */
 
 private fun mergeDefaultBlacklist(vararg groups: Set<String>): Set<String> =
@@ -143,10 +131,61 @@ private val oceanDefaultBlacklist = setOf(
 
 private val forestDefaultBlacklist = setOf(
     // 蚂蚁森林
-    "ZHRW_AQapp_202512",   // 去蚂蚁阿福健康问答
+    "ENERGY_XUANJIAO_huanbaobei环保杯",
+    "ENERGY_XUANJIAO_zhiyinshui直饮水",
+    "ENERGY_XUANJIAO_dianzibaodan电子保单",
+    "ENERGY_XUANJIAO_gongjiaochuxing公交出行",
+    "ENERGY_XUANJIAO_lvsejiazhuang绿色家装",
+    "ENERGY_XUANJIAO_shenghuojiaofei生活缴费",
+    "ENERGY_XUANJIAO_lvsezhengwu绿色政务",
+    "ENERGY_XUANJIAO_saomagoupiao扫码购票",
+    "ENERGY_XUANJIAO_lvseruzhu绿色入住",
+    "ENERGY_XUANJIAO_tingchejiaofei停车缴费",
+    "ENERGY_XUANJIAO_lvsehuishou绿色回收",
+    "ENERGY_XUANJIAO_xinyongzhu信用住",
+    "ENERGY_XUANJIAO_wangshangjijian网上寄件",
+    "ENERGY_XUANJIAO_gongxiangdanche共享单车",
+    "ENERGY_XUANJIAO_gongxiangzulin共享租赁",
+    "ENERGY_XUANJIAO_gongxianchongdianbao共享充电宝",
+    "ENERGY_XUANJIAO_lvseyinhang绿色银行",
+    "ENERGY_XUANJIAO_dianzizhangdan电子账单",
+    "ENERGY_XUANJIAO_faxianlvseshenhuo探动植物",
+    "ENERGY_XUANJIAO_lvsebaozhuang绿色包装",
+    "ENERGY_XUANJIAO_etcjiaofeiETC缴费",
+    "ENERGY_XUANJIAO_linqishipin临期食品",
+    "ENERGY_XUANJIAO_lvsechexian绿色车险",
+    "ENERGY_XUANJIAO_lvsewaimai绿色外卖",
+    "ENERGY_XUANJIAO_xinnengyuanzuche新能源租车",
+    "ENERGY_XUANJIAO_wuzhihuayuedu无纸化阅读",
+    "ENERGY_XUANJIAO_tushujieyue图书借阅",
+    "ENERGY_XUANJIAO_cheliangtingshi车辆停驶",
+    "ENERGY_XUANJIAO_lvsefeixing绿色飞行",
+    "ENERGY_XUANJIAO_dianzixiaopiao电子小票",
+    "ENERGY_XUANJIAO_xianshanghuankuan线上还款",
+    "ENERGY_XUANJIAO_saomadiandan扫码点单",
+    "ENERGY_XUANJIAO_lvseyiliao绿色医疗",
+    "ZHRW_AQapp_202512去蚂蚁阿福健康问答",
+    "ENERGY_XUANJIAO_xianxiazhifu线下支付",
+    "ENERGY_XUANJIAO_dianzifapiao电子发票",
+    "ENERGY_XUANJIAO_huanbaojiansu环保减塑",
+    "widget_100g_202509添加组件及时收能量",
+    "ENERGY_XUANJIAO_wanggouhuochepiao网购火车票",
+    "ENERGY_XUANJIAO_xingzou行走",
+    "ENERGY_XUANJIAO_wangluogoupiao网络购票",
+    "SHARETASK_NEW邀请1位好友助力",
+    "ENERGY_XUANJIAO_lvsechangguan绿色场馆",
+    "ENERGY_XUANJIAO_daxinnengyuanche打新能源车",
+    "ENERGY_XUANJIAO_guojituishui国际退税",
+    "ENERGY_XUANJIAO_dianzijiayou电子加油",
+    "ENERGY_XUANJIAO_lvsejiadian绿色家电",
+    "ENERGY_XUANJIAO_gonggongchongdianzhuang公共充电桩",
+    "ENERGY_XUANJIAO_lvsebangong绿色办公",
+    "ENERGY_XUANJIAO_ditiechuxing地铁出行",
+    "ENERGY_XUANJIAO_guangpanxingdong光盘行动",
+    "ENERGY_XUANJIAO_dianzizhifu电子支付",
+    "FOREST_CONTINUOUS_COLLECT_ENERGY_7连续7天收自己能量",
     "LSHS_huisho20_202508", // 完成旧衣回收得能量
     "TEST_LEAF_TASK",      // 逛农场得落叶肥料
-    "SHARETASK_NEW",       // 邀请1位好友助力
     "YUSHU_202511",        // 单种榆树，年年有榆
     "KTKZ_YS202511",       // 一起组团种榆树
     "mokuai_senlin_hlz"    // 去玩一玩得活力值
@@ -196,6 +235,19 @@ private val memberDefaultBlacklist = setOf(
 
 private val sportsDefaultBlacklist = emptySet<String>()
 
+val DEFAULT_BLACKLIST: Map<String, Set<String>> = mapOf(
+    "芝麻信用" to sesameCreditDefaultBlacklist,
+    "芝麻炼金" to sesameAlchemyDefaultBlacklist,
+    "芭芭农场" to orchardDefaultBlacklist,
+    "蚂蚁庄园" to farmDefaultBlacklist,
+    "神奇海洋" to oceanDefaultBlacklist,
+    "蚂蚁森林" to forestDefaultBlacklist,
+    "余额宝" to yuebaoDefaultBlacklist,
+    "黄金票" to goldTicketDefaultBlacklist,
+    "支付宝会员" to memberDefaultBlacklist,
+    "运动" to sportsDefaultBlacklist
+)
+
 val defaultBlacklist: Set<String> = mergeDefaultBlacklist(
     sesameCreditDefaultBlacklist,
     sesameAlchemyDefaultBlacklist,
@@ -208,4 +260,3 @@ val defaultBlacklist: Set<String> = mergeDefaultBlacklist(
     memberDefaultBlacklist,
     sportsDefaultBlacklist
 )
-
