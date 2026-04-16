@@ -1,6 +1,5 @@
 package io.github.aoguai.sesameag.task.antOcean
 
-import com.fasterxml.jackson.core.type.TypeReference
 import io.github.aoguai.sesameag.data.Status
 import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.entity.AlipayBeach
@@ -14,14 +13,11 @@ import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.ChoiceModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectAndCountModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectModelField
-import io.github.aoguai.sesameag.util.ActionDelayUtil
-import io.github.aoguai.sesameag.util.DataStore
 import io.github.aoguai.sesameag.util.FriendGuard
 import io.github.aoguai.sesameag.task.ModelTask
 import io.github.aoguai.sesameag.task.TaskCommon
 import io.github.aoguai.sesameag.task.TaskStatus
 import io.github.aoguai.sesameag.task.antForest.AntForestRpcCall
-import io.github.aoguai.sesameag.util.GlobalThreadPools
 import io.github.aoguai.sesameag.util.JsonUtil
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.maps.BeachMap
@@ -36,6 +32,7 @@ import kotlinx.coroutines.isActive
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import java.util.HashSet
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -165,6 +162,7 @@ class AntOcean : ModelTask() {
     private var PDL_task: BooleanModelField? = null
 
     private val oceanTaskTryCount = ConcurrentHashMap<String, AtomicInteger>()
+    private val loggedMessages = HashSet<String>()
 
     private fun buildOceanTaskBizKey(sceneCode: String, taskType: String, taskTitle: String): String {
         return "$sceneCode|$taskType|$taskTitle"
@@ -1256,28 +1254,12 @@ class AntOcean : ModelTask() {
 
     private suspend fun receiveTaskAward() {
         try {
-            val presetBad = LinkedHashSet(listOf("DEMO", "DEMO1"))
-            val badTaskSetSchemaVersion = 2
-            val badTaskSetSchemaKey = "badOceanTaskSetSchemaVersion"
-            val typeRef = object : TypeReference<MutableSet<String>>() {}
-            var badTaskSet = DataStore.getOrCreate("badOceanTaskSet", typeRef)
-            val storedSchemaVersion = DataStore.getOrCreate<Int>(badTaskSetSchemaKey)
-            if (storedSchemaVersion != badTaskSetSchemaVersion) {
-                badTaskSet.clear()
-                badTaskSet.addAll(presetBad)
-                DataStore.put("badOceanTaskSet", badTaskSet)
-                DataStore.put(badTaskSetSchemaKey, badTaskSetSchemaVersion)
-            }
-            if (badTaskSet.isEmpty()) {
-                badTaskSet.addAll(presetBad)
-                DataStore.put("badOceanTaskSet", badTaskSet)
-            }
-                        while (currentCoroutineContext().isActive) {
+            while (currentCoroutineContext().isActive) {
                 var done = false
                 val s = AntOceanRpcCall.queryTaskList()
                 val jo = JsonUtil.parseJSONObjectOrNull(s) ?: break
                 if (!ResChecker.checkRes(TAG, jo)) {
-                    Log.ocean(TAG, "查询任务列表失败：" + jo.getString("resultDesc"))
+                    Log.ocean("查询任务列表失败：" + jo.getString("resultDesc"))
                     break
                 }
                 val jaTaskList = jo.optJSONArray("antOceanTaskVOList") ?: break
@@ -1293,39 +1275,8 @@ class AntOcean : ModelTask() {
                     val sceneCode = task.getString("sceneCode")
                     val taskType = task.getString("taskType")
                     val taskStatus = task.getString("taskStatus")
-                    val bizKey = buildOceanTaskBizKey(sceneCode, taskType, taskTitle)
 
-                    // 在处理任何任务前，先检查当日限制，再检查黑名单
-                    if (Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT) &&
-                        (taskTitle.contains("帮好友清理") || taskType.contains("HELP_CLEAN"))
-                    ) {
-                        if (rememberOceanTaskAttempt(bizKey) == 1) {
-                            Log.ocean(TAG, "海洋任务🌊[$taskTitle]帮助清理次数已达上限，跳过处理")
-                        }
-                        continue
-                    }
-                    if (badTaskSet.contains(taskTitle) ||
-                        badTaskSet.contains(taskType) ||
-                        TaskBlacklist.isTaskInBlacklist(taskTitle) ||
-                        TaskBlacklist.isTaskInBlacklist(taskType)
-                    ) {
-                        if (rememberOceanTaskAttempt(bizKey) == 1) {
-                            Log.ocean(TAG, "海洋任务🌊[$taskTitle]已在黑名单中，跳过处理")
-                        }
-                        continue
-                    }
-
-                    if (!isRewardReadyStatus(taskStatus) && isSelfCleanTask(taskType, taskTitle)) {
-                        if (retrySelfOceanCleanIfNeeded(taskTitle)) {
-                            done = true
-                        }
-                        continue
-                    }
-
-                    if (!isRewardReadyStatus(taskStatus) && isOceanActionTask(taskType, taskTitle)) {
-                        continue
-                    }
-
+                    // 1. 领奖分支：只要是可领奖状态，无论是否在黑名单，都优先领奖
                     if (isRewardReadyStatus(taskStatus)) {
                         val awardResponse = AntOceanRpcCall.receiveTaskAward(sceneCode, taskType)
                         val joAward = JsonUtil.parseJSONObjectOrNull(awardResponse) ?: continue
@@ -1336,100 +1287,56 @@ class AntOcean : ModelTask() {
                             Log.error(TAG, "海洋奖励🌊领取失败：$joAward")
                         }
                     } else if (TaskStatus.TODO.name == taskStatus) {
+                        // 2. 待办分支
+                        // 仅在 TO DO 状态检查黑名单
+                        if (TaskBlacklist.isTaskInBlacklist(taskTitle) ||
+                            TaskBlacklist.isTaskInBlacklist(taskType)
+                        ) {
+                            val msg = "海洋任务🌊[$taskTitle]已在黑名单中，跳过处理"
+                            if (loggedMessages.add(msg)) {
+                                Log.ocean(msg)
+                            }
+                            continue
+                        }
+
+                        // 清理任务限制检查
+                        if (Status.hasFlagToday(StatusFlags.FLAG_ANTOCEAN_HELP_CLEAN_ALL_FRIEND_LIMIT) &&
+                            (taskTitle.contains("帮好友清理") || taskType.contains("HELP_CLEAN"))
+                        ) {
+                            val msg = "海洋任务🌊[$taskTitle]帮助清理次数已达上限，跳过处理"
+                            if (loggedMessages.add(msg)) {
+                                Log.ocean(msg)
+                            }
+                            continue
+                        }
+
+                        // 拦截清理类动作，不通过 RPC 完成 TO DO
+                        if (isSelfCleanTask(taskType, taskTitle)) {
+                            if (retrySelfOceanCleanIfNeeded(taskTitle)) {
+                                done = true
+                            }
+                            continue
+                        }
+                        if (isOceanActionTask(taskType, taskTitle)) {
+                            continue
+                        }
+
+                        // 处理其它任务
                         if (taskTitle.contains("答题")) {
                             if (answerQuestion()) {
                                 done = true
                             }
                         } else {
-                            val waitSeconds = resolveOceanTaskWaitSeconds(taskTitle, bizInfo)
-                            if (waitSeconds > 0) {
-                                val finishSource = resolveOceanTaskFinishSource(taskType, taskTitle, bizInfo)
-                                val safeByRpc = isOceanTimedBrowseTaskSafeByRpc(taskType, taskTitle, bizInfo)
-                                val count = rememberOceanTaskAttempt(bizKey)
-                                if (count > 1) {
-                                    if (count == 2) {
-                                        val duplicateReason = if (safeByRpc) "浏览任务本轮已尝试过" else "未支持任务本轮已记录过"
-                                        Log.ocean(
-                                            TAG,
-                                            "海洋任务🌊[$taskTitle]$duplicateReason，后续静默跳过[taskType=$taskType]"
-                                        )
-                                    }
-                                    continue
-                                }
-                                if (!safeByRpc) {
-                                    Log.ocean(
-                                        TAG,
-                                        "海洋任务🌊[$taskTitle]广告/高风险浏览任务待支持[wait=${waitSeconds}s][taskType=$taskType][source=$finishSource]，跳过处理"
-                                    )
-                                    continue
-                                }
-
-                                val waitMillis = resolveOceanTaskWaitMillis(waitSeconds)
-                                Log.ocean(
-                                    TAG,
-                                    "海洋任务🌊[$taskTitle]开始等待${waitSeconds}s后尝试RPC完成[taskType=$taskType]"
-                                )
-                                ActionDelayUtil.humanActionDelay(500L)
-                                delay(waitMillis)
-
-                                val sourcesToTry = listOf(finishSource)
-                                var joFinishTask: JSONObject? = null
-                                var finishOk = false
-                                var notSupportedCount = 0
-
-                                for (source in sourcesToTry) {
-                                    val finishResponse = AntOceanRpcCall.finishTask(sceneCode, taskType, source)
-                                    val parsed = JsonUtil.parseJSONObjectOrNull(finishResponse) ?: continue
-                                    joFinishTask = parsed
-
-                                    val errorCode = parsed.optString("code", "")
-                                    val desc = parsed.optString("desc", "")
-                                    if (errorCode == "400000040" || desc.contains("不支持RPC完成")) {
-                                        notSupportedCount++
-                                        continue
-                                    }
-
-                                    if (ResChecker.checkRes(TAG, parsed)) {
-                                        finishOk = true
-                                        break
-                                    }
-                                }
-
-                                if (finishOk) {
-                                    oceanTaskTryCount.remove(bizKey)
-                                    Log.ocean("海洋任务🌊完成[$taskTitle]")
-                                    done = true
-                                } else if (notSupportedCount >= sourcesToTry.size) {
-                                    Log.ocean(
-                                        TAG,
-                                        "海洋任务🌊[$taskTitle]浏览任务暂不支持RPC完成[wait=${waitSeconds}s][taskType=$taskType][source=$finishSource]，保持跳过"
-                                    )
-                                } else {
-                                    val finishResult = joFinishTask
-                                    if (finishResult == null) {
-                                        Log.error(
-                                            TAG,
-                                            "海洋任务🌊浏览任务完成失败[$taskTitle][taskType=$taskType][waitSec=$waitSeconds][waitMillis=$waitMillis][source=$finishSource]: 响应为空"
-                                        )
-                                    } else {
-                                        Log.error(
-                                            TAG,
-                                            "海洋任务🌊浏览任务完成失败[$taskTitle][taskType=$taskType][waitSec=$waitSeconds][waitMillis=$waitMillis][source=$finishSource]: ${extractOceanResultDesc(finishResult)}"
-                                        )
-                                    }
-                                }
-
-                                delay(500)
-                                continue
-                            }
-
-                            val count = rememberOceanTaskAttempt(bizKey)
+                            val bizKey = "${sceneCode}_$taskType"
+                            val count = oceanTaskTryCount.computeIfAbsent(bizKey) { AtomicInteger(0) }
+                                    .incrementAndGet()
 
                             val finishSource = resolveOceanTaskFinishSource(taskType, taskTitle, bizInfo)
                             val fallbackSource = if (finishSource == "ADBASICLIB") "ANTFOCEAN" else "ADBASICLIB"
                             val sourcesToTry = listOf(finishSource, fallbackSource).distinct()
-                            var joFinishTask: JSONObject? = null
+
                             var finishOk = false
+                            var joFinishTask: JSONObject? = null
                             var notSupportedCount = 0
 
                             for (source in sourcesToTry) {
@@ -1437,7 +1344,6 @@ class AntOcean : ModelTask() {
                                 val parsed = JsonUtil.parseJSONObjectOrNull(finishResponse) ?: continue
                                 joFinishTask = parsed
 
-                                // 检查特定错误码：不支持RPC完成的任务，仅在两种 source 都不支持时再加入黑名单
                                 val errorCode = parsed.optString("code", "")
                                 val desc = parsed.optString("desc", "")
                                 if (errorCode == "400000040" || desc.contains("不支持RPC完成")) {
@@ -1452,10 +1358,8 @@ class AntOcean : ModelTask() {
                             }
 
                             if (!finishOk && notSupportedCount >= sourcesToTry.size) {
-                                Log.error(TAG, "海洋任务🌊[$taskTitle]不支持RPC完成，已加入黑名单")
-                                badTaskSet.add(taskTitle)
-                                badTaskSet.add(taskType)
-                                DataStore.put("badOceanTaskSet", badTaskSet)
+                                Log.ocean("海洋任务🌊[$taskTitle]不支持RPC完成，已加入黑名单")
+                                TaskBlacklist.addToBlacklist(taskType, taskTitle)
                                 continue
                             }
 
@@ -1467,13 +1371,10 @@ class AntOcean : ModelTask() {
                             } else {
                                 Log.error(TAG, "海洋任务🌊完成失败：$finishResult")
                                 if (count > 1) {
-                                    badTaskSet.add(taskTitle)
-                                    badTaskSet.add(taskType)
-                                    DataStore.put("badOceanTaskSet", badTaskSet)
+                                    TaskBlacklist.addToBlacklist(taskType, taskTitle)
                                 }
                             }
                         }
-
                         delay(500)
                     }
                 }
