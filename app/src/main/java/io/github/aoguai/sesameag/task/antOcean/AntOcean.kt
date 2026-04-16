@@ -1288,9 +1288,10 @@ class AntOcean : ModelTask() {
                         }
                     } else if (TaskStatus.TODO.name == taskStatus) {
                         // 2. 待办分支
+                        val moduleName = getName()
                         // 仅在 TO DO 状态检查黑名单
-                        if (TaskBlacklist.isTaskInBlacklist(taskTitle) ||
-                            TaskBlacklist.isTaskInBlacklist(taskType)
+                        if (TaskBlacklist.isTaskInBlacklist(moduleName, taskTitle) ||
+                            TaskBlacklist.isTaskInBlacklist(moduleName, taskType)
                         ) {
                             val msg = "海洋任务🌊[$taskTitle]已在黑名单中，跳过处理"
                             if (loggedMessages.add(msg)) {
@@ -1359,7 +1360,7 @@ class AntOcean : ModelTask() {
 
                             if (!finishOk && notSupportedCount >= sourcesToTry.size) {
                                 Log.ocean("海洋任务🌊[$taskTitle]不支持RPC完成，已加入黑名单")
-                                TaskBlacklist.addToBlacklist(taskType, taskTitle)
+                                TaskBlacklist.addToBlacklist(moduleName, taskType, taskTitle)
                                 continue
                             }
 
@@ -1371,7 +1372,7 @@ class AntOcean : ModelTask() {
                             } else {
                                 Log.error(TAG, "海洋任务🌊完成失败：$finishResult")
                                 if (count > 1) {
-                                    TaskBlacklist.addToBlacklist(taskType, taskTitle)
+                                    TaskBlacklist.addToBlacklist(moduleName, taskType, taskTitle)
                                 }
                             }
                         }
