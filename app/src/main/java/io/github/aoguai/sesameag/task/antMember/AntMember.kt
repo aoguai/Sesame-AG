@@ -19,7 +19,6 @@ import io.github.aoguai.sesameag.model.ModelGroup
 import io.github.aoguai.sesameag.model.withDesc
 import io.github.aoguai.sesameag.model.modelFieldExt.BooleanModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectModelField
-import io.github.aoguai.sesameag.util.TaskBlacklist.autoAddToBlacklist
 import io.github.aoguai.sesameag.task.ModelTask
 import io.github.aoguai.sesameag.task.antOrchard.AntOrchardRpcCall.orchardSpreadManure
 import io.github.aoguai.sesameag.task.antOrchard.UrlUtil
@@ -30,6 +29,8 @@ import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.Log.record
 import io.github.aoguai.sesameag.util.ResChecker
 import io.github.aoguai.sesameag.util.TaskBlacklist
+import io.github.aoguai.sesameag.util.TaskBlacklist.autoAddToBlacklist
+import io.github.aoguai.sesameag.util.TaskBlacklist.isTaskInBlacklist
 import io.github.aoguai.sesameag.util.TimeUtil
 import io.github.aoguai.sesameag.util.maps.IdMapManager
 import io.github.aoguai.sesameag.util.maps.MemberBenefitsMap
@@ -52,9 +53,7 @@ import java.util.regex.Pattern
 import kotlin.math.max
 
 class AntMember : ModelTask() {
-    override fun getName(): String {
-        return "会员"
-    }
+    override fun getName(): String = moduleName
 
     override fun getGroup(): ModelGroup {
         return ModelGroup.MEMBER
@@ -2181,9 +2180,9 @@ class AntMember : ModelTask() {
 
     private fun isMemberTaskInBlacklist(taskConfigId: String, taskTitle: String): Boolean {
         val combinedTaskInfo = taskConfigId + taskTitle
-        return TaskBlacklist.isTaskInBlacklist(combinedTaskInfo)
-            || TaskBlacklist.isTaskInBlacklist(taskTitle)
-            || TaskBlacklist.isTaskInBlacklist(taskConfigId)
+        return TaskBlacklist.isTaskInBlacklist(moduleName, combinedTaskInfo)
+            || TaskBlacklist.isTaskInBlacklist(moduleName, taskTitle)
+            || TaskBlacklist.isTaskInBlacklist(moduleName, taskConfigId)
     }
 
     private fun calcMemberTaskWaitMillis(simpleTaskConfig: JSONObject, bizSubType: String): Long {
@@ -3618,7 +3617,7 @@ class AntMember : ModelTask() {
             if (finishFlag) continue
 
             // 使用TaskBlacklist进行黑名单检查
-            if (isTaskInBlacklist(title)) {
+            if (isTaskInBlacklist(moduleName, title)) {
                 // 只有在所有任务组中未处理过时才记录日志
                 if (!processedBlacklistTasks.contains(title)) {
                     Log.sesame(TAG, "跳过黑名单任务: $title")
@@ -4144,6 +4143,7 @@ class AntMember : ModelTask() {
     }
 
     companion object {
+        private const val moduleName = "会员"
         private val TAG: String = AntMember::class.java.getSimpleName()
 
         /**
@@ -4343,7 +4343,7 @@ class AntMember : ModelTask() {
          * @return true表示在黑名单中，应该跳过
          */
         private fun isTaskInBlacklist(taskTitle: String?): Boolean {
-            return TaskBlacklist.isTaskInBlacklist(taskTitle)
+            return TaskBlacklist.isTaskInBlacklist(moduleName, taskTitle)
         }
 
         private fun shouldSkipShareAssistSesameTask(task: JSONObject): Boolean {
@@ -4391,7 +4391,7 @@ class AntMember : ModelTask() {
             if (isTransientSesameTaskError(errorCode, resultView)) {
                 return
             }
-            autoAddToBlacklist(taskTitle, taskTitle, errorCode)
+            autoAddToBlacklist(moduleName, taskTitle, taskTitle, errorCode)
         }
 
         private suspend fun joinSesameTaskWithFallback(

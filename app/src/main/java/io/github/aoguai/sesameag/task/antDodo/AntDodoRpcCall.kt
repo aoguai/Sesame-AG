@@ -62,11 +62,22 @@ object AntDodoRpcCall {
      * @param taskType 任务类型
      */
     @JvmStatic
-    fun finishTask(sceneCode: String, taskType: String): String {
-        val uniqueId = getUniqueId()
+    @JvmOverloads
+    fun finishTask(sceneCode: String?, taskType: String?, outBizNo: String? = null): String {
+        val uniqueId = outBizNo ?: getUniqueId()
         return RequestManager.requestString(
             "com.alipay.antiep.finishTask",
-            "[{\"outBizNo\":\"$uniqueId\",\"requestType\":\"rpc\",\"sceneCode\":\"$sceneCode\",\"source\":\"af-biodiversity\",\"taskType\":\"$taskType\",\"uniqueId\":\"$uniqueId\"}]"
+            ("[{\"outBizNo\":\"" + uniqueId + "\",\"requestType\":\"rpc\",\"sceneCode\":\""
+                    + sceneCode + "\",\"source\":\"af-biodiversity\",\"taskType\":\""
+                    + taskType + "\",\"uniqueId\":\"" + uniqueId + "\"}]")
+        )
+    }
+
+    @JvmStatic
+    fun clickGame(appId: String?): String {
+        return RequestManager.requestString(
+            "com.alipay.charitygamecenter.clickGame",
+            ("[{\"appId\":\"" + appId + "\",\"bizType\":\"ANTFOREST\",\"requestType\":\"RPC\",\"sceneCode\":\"ANTFOREST\",\"source\":\"ANTFOREST\"}]")
         )
     }
 

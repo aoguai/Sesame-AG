@@ -47,47 +47,11 @@ object TaskBlacklist {
     }
 
     /**
-     * 获取黑名单列表
-     * @return 黑名单任务集合
-     */
-    fun getBlacklist(): Set<String> {
-        return try {
-            // 优先从所有模块中合并
-            val allStored = getAllBlacklists().values.flatten().toSet()
-            if (allStored.isNotEmpty()) {
-                (allStored + defaultBlacklist).toSet()
-            } else {
-                // 兼容旧格式
-                val storedBlacklist = DataStore.getOrCreate(BLACKLIST_KEY, object : TypeReference<Set<String>>() {})
-                (storedBlacklist + defaultBlacklist).toSet()
-            }
-        } catch (e: Exception) {
-            Log.printStackTrace(TAG, "获取黑名单失败，使用默认黑名单", e)
-            defaultBlacklist
-        }
-    }
-    
-    
-    
-    /**
-     * 保存黑名单列表
-     * @param blacklist 要保存的黑名单集合
-     */
-    private fun saveBlacklist(blacklist: Set<String>) {
-        try {
-            DataStore.put(BLACKLIST_KEY, blacklist)
-        } catch (e: Exception) {
-            Log.printStackTrace(TAG, "保存黑名单失败", e)
-        }
-    }
-
-    /**
      * 检查任务是否在黑名单中
      * 采用包含匹配逻辑，确保 ID 或 标题 任意一项命中即可
      */
     fun isTaskInBlacklist(moduleName: String?, taskInfo: String?): Boolean {
-        if (taskInfo.isNullOrBlank()) return false
-        if (moduleName.isNullOrBlank()) return isTaskInBlacklist(taskInfo)
+        if (moduleName.isNullOrBlank() || taskInfo.isNullOrBlank()) return false
 
         // 1. 检查内置黑名单
         DEFAULT_BLACKLIST[moduleName]?.let { defaultSet ->
@@ -97,19 +61,6 @@ object TaskBlacklist {
         // 2. 检查持久化存储的黑名单
         val moduleBlacklist = getBlacklist(moduleName)
         return moduleBlacklist.any { isMatch(taskInfo, it) }
-    }
-
-    /**
-     * 兼容旧版调用，检查任务是否在任意模块的黑名单中
-     */
-    fun isTaskInBlacklist(taskInfo: String?): Boolean {
-        if (taskInfo.isNullOrBlank()) return false
-
-        // 1. 检查所有内置黑名单
-        if (DEFAULT_BLACKLIST.values.any { set -> set.any { isMatch(taskInfo, it) } }) return true
-
-        // 2. 检查所有持久化存储的黑名单
-        return getAllBlacklists().values.any { set -> set.any { isMatch(taskInfo, it) } }
     }
 
     /**
@@ -217,18 +168,10 @@ object TaskBlacklist {
     }
 
     /**
-     * 兼容旧版调用，自动添加任务到黑名单
-     */
-    fun autoAddToBlacklist(taskId: String, taskTitle: String, errorCode: String) {
-        autoAddToBlacklist("未分类", taskId, taskTitle, errorCode)
-    }
-
-    /**
      * 自动添加任务到模块黑名单
      */
     fun autoAddToBlacklist(moduleName: String?, taskId: String, taskTitle: String = "", errorCode: String) {
-        if (taskId.isBlank()) return
-        val finalModuleName = if (moduleName.isNullOrBlank()) "未分类" else moduleName
+        if (moduleName.isNullOrBlank() || taskId.isBlank()) return
 
         var shouldAutoAdd = false
         var reason = ""
@@ -253,9 +196,9 @@ object TaskBlacklist {
         }
 
         if (shouldAutoAdd) {
-            addToBlacklist(finalModuleName, taskId, taskTitle)
+            addToBlacklist(moduleName, taskId, taskTitle)
             val taskInfo = if (taskTitle.isNotBlank()) "$taskId - $taskTitle" else taskId
-            Log.record(TAG, "模块[$finalModuleName]任务[$taskInfo]因$reason 自动加入黑名单")
+            Log.record(TAG, "模块[$moduleName]任务[$taskInfo]因$reason 自动加入黑名单")
         }
     }
 }
