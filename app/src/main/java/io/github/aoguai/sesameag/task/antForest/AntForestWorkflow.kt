@@ -134,7 +134,7 @@ internal suspend fun AntForest.runForestHomeFollowUpWorkflow(selfHomeObj: JSONOb
     }
 
     if (forestMarket?.value == true) {
-        GreenLife.ForestMarket("GREEN_LIFE")
+        GreenLife.ForestMarket("GREEN_LIFE", "ANTFOREST")
         tc.countDebug("森林集市")
     }
 

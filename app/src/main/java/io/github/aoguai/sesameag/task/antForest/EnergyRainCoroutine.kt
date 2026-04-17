@@ -6,6 +6,7 @@ import io.github.aoguai.sesameag.hook.Toast
 import io.github.aoguai.sesameag.util.GameTask
 import io.github.aoguai.sesameag.util.FriendGuard
 import io.github.aoguai.sesameag.util.Log
+import io.github.aoguai.sesameag.util.RpcCache
 import io.github.aoguai.sesameag.util.ResChecker
 import io.github.aoguai.sesameag.util.maps.UserMap
 import kotlinx.coroutines.delay
@@ -41,6 +42,11 @@ object EnergyRainCoroutine {
         delay(delayTime)
     }
 
+    private fun invalidateEnergyRainStatusCache() {
+        RpcCache.invalidate("alipay.antforest.forest.h5.queryEnergyRainHome")
+        RpcCache.invalidate("alipay.antforest.forest.h5.queryEnergyRainEndGameList")
+    }
+
     /**
      * 执行能量雨功能
      * @param isManual 是否为手动触发
@@ -57,6 +63,7 @@ object EnergyRainCoroutine {
                 delay(cooldownSeconds * 1000.toLong())
             }
 
+            invalidateEnergyRainStatusCache()
             val executed = energyRain(isManual)
 
             // 更新最后执行时间
@@ -89,15 +96,22 @@ object EnergyRainCoroutine {
                     Log.forest(TAG, "查询能量雨状态失败")
                     break
                 }
+                val energyRainGameFlag = StatusFlags.FLAG_FOREST_RAIN_GAME_TASK
                 val canPlayToday = joEnergyRainHome.optBoolean("canPlayToday", false)
                 val canPlayGame = joEnergyRainHome.optBoolean("canPlayGame", false) // 始终是true
                 val canGrantStatus = joEnergyRainHome.optBoolean("canGrantStatus", false)
+                var grantExceedToday = Status.hasFlagToday(StatusFlags.FLAG_FOREST_RAIN_GRANT_EXCEED)
+                Log.forest(
+                    TAG,
+                    "能量雨状态[轮次:${playedCount + 1}][manual=$isManual][canPlayToday=$canPlayToday][canGrantStatus=$canGrantStatus][canPlayGame=$canPlayGame][grantExceedToday=$grantExceedToday][gameTaskFlag=${Status.hasFlagToday(energyRainGameFlag)}]"
+                )
 
                 var worked = false
 
                 // 1️⃣ 检查是否可以开始能量雨
                 if (canPlayToday) {
                     if (startEnergyRain()) {
+                        invalidateEnergyRainStatusCache()
                         playedCount++
                         randomDelay(3000, 5000) // 随机延迟3-5秒
                         shouldRunPostFlow = true
@@ -106,7 +120,6 @@ object EnergyRainCoroutine {
                 }
 
                 // 2️⃣ 检查是否可以赠送能量雨
-                var grantExceedToday = Status.hasFlagToday(StatusFlags.FLAG_FOREST_RAIN_GRANT_EXCEED)
                 if (canGrantStatus) {
                     Log.forest(TAG, "有送能量雨的机会")
                     if (grantExceedToday) {
@@ -176,7 +189,6 @@ object EnergyRainCoroutine {
 
                 // 3️⃣ 检查是否可以能量雨游戏
                 // canPlayGame 好像一直是true        注意：能量雨游戏只能执行一次，执行后会设置标记防止重复
-                val energyRainGameFlag = StatusFlags.FLAG_FOREST_RAIN_GAME_TASK
                 // 修复逻辑：只有常规机会用完 (!canPlayToday) 且赠送机会也已全部处理 (!canGrantStatus) 时，才检查收尾游戏任务
                 val canEnterGameCheck = isManual || (!canPlayToday && (!canGrantStatus || grantExceedToday))
                 if (canEnterGameCheck) {
@@ -277,6 +289,7 @@ object EnergyRainCoroutine {
     private suspend fun checkAndDoEndGameTask(): TaskResult {
         try {
             // 1. 查询当前是否有可接或已接的游戏任务
+            invalidateEnergyRainStatusCache()
             var response = AntForestRpcCall.queryEnergyRainEndGameList()
             var jo = JSONObject(response)
             if (!ResChecker.checkRes(TAG, jo)) {
@@ -290,6 +303,7 @@ object EnergyRainCoroutine {
                 if (ResChecker.checkRes(TAG, initRes)) {
                     randomDelay(1000, 2000)
                     // 🚀 核心修复：初始化后必须刷新列表，否则下面的 Step 3 使用的是旧数据
+                    invalidateEnergyRainStatusCache()
                     response = AntForestRpcCall.queryEnergyRainEndGameList()
                     jo = JSONObject(response)
                     if (!ResChecker.checkRes(TAG, jo)) return TaskResult.NOT_FOUND
@@ -321,6 +335,7 @@ object EnergyRainCoroutine {
                             AntForestRpcCall.clickGame("2021005113684028")
                             randomDelay(2000, 3000)
                             if (GameTask.Forest_sljyd.report(1)) {
+                                invalidateEnergyRainStatusCache()
                                 Log.forest(TAG, "森林能量雨机会任务[$taskTitle] 已完成")
                                 return TaskResult.SUCCESS
                             }
