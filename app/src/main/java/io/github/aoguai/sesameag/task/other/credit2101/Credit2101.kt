@@ -10,8 +10,6 @@ import io.github.aoguai.sesameag.util.DataStore
 import io.github.aoguai.sesameag.util.GlobalThreadPools
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.ResChecker
-import io.github.aoguai.sesameag.util.TaskBlacklist.autoAddToBlacklist
-import io.github.aoguai.sesameag.util.TaskBlacklist.isTaskInBlacklist
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -59,7 +57,6 @@ object Credit2101 {
     //GOLD_MARK 金色印记，每次消耗5注能值
 
     private const val TAG = "2101"//Credit
-    private const val moduleName = "信用2101"
 
     /**
      * 信用2101 专用任务/游戏类型定义
@@ -368,7 +365,7 @@ object Credit2101 {
             }
 
             // ================== 所有任务结束后检查是否合成 ==================
-            if (!isTaskInBlacklist(moduleName, StatusFlags.FLAG_CREDIT2101_CHAPTER_TASK_DONE)) {
+            if (!Status.hasFlagToday(StatusFlags.FLAG_CREDIT2101_CHAPTER_TASK_DONE)) {
                 handleChapterTasks()
             }
             Log.sesame(TAG, "执行结束 信用2101")
@@ -1868,7 +1865,7 @@ object Credit2101 {
             // 最终检查：只有所有章节都处于 CLAIMED 状态
             if (allFinished) {
                 Log.sesame(TAG, "信用2101🎨[图鉴] 检查完毕：所有图鉴奖励均已领取完毕")
-                autoAddToBlacklist(moduleName, StatusFlags.FLAG_CREDIT2101_CHAPTER_TASK_DONE, "信用2101🎨[图鉴]合成完毕", "1337")
+                Status.setFlagToday(StatusFlags.FLAG_CREDIT2101_CHAPTER_TASK_DONE)
             }
 
         } catch (e: Throwable) {
