@@ -5,6 +5,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import io.github.aoguai.sesameag.hook.ApplicationHook
 import io.github.aoguai.sesameag.hook.RequestManager
+import java.util.UUID
 
 /**
  * @file AntSportsRpcCall.kt
@@ -128,9 +129,32 @@ object AntSportsRpcCall {
      * 
      * @remark 对应API：com.alipay.sportshealth.biz.rpc.SportsHealthCoinTaskRpc.completeTask
      */
-    fun completeTask(taskId: String): String {
-        val args1 = """[{"apiVersion":"energy","chInfo":"medical_health","clientOS":"android","features":$FEATURES,"taskAction":"JUMP","taskId":"$taskId"}]"""
-        return RequestManager.requestString("com.alipay.sportshealth.biz.rpc.SportsHealthCoinTaskRpc.completeTask", args1)
+    fun completeTask(
+        taskId: String,
+        taskAction: String = "JUMP",
+        taskType: String? = null,
+        bizNo: String = buildSportsTaskBizNo(),
+        chInfo: String = "medical_health"
+    ): String {
+        val args = JSONArray().apply {
+            put(JSONObject().apply {
+                put("apiVersion", "energy")
+                put("bizNo", bizNo)
+                put("chInfo", chInfo)
+                put("clientOS", "android")
+                put("features", JSONArray(FEATURES))
+                put("taskAction", taskAction)
+                put("taskId", taskId)
+                if (!taskType.isNullOrBlank()) {
+                    put("taskType", taskType)
+                }
+            })
+        }
+        return RequestManager.requestString("com.alipay.sportshealth.biz.rpc.SportsHealthCoinTaskRpc.completeTask", args.toString())
+    }
+
+    private fun buildSportsTaskBizNo(): String {
+        return "${System.currentTimeMillis()}-${UUID.randomUUID()}"
     }
 
     /**
