@@ -27,6 +27,7 @@ import java.util.Calendar
 class AntOrchard : ModelTask() {
     companion object {
         private val TAG = AntOrchard::class.java.simpleName
+        private const val MODULE_NAME = "农场"
         private const val ORCHARD_SOURCE = "ch_appcenter__chsub_9patch"
         private const val YEB_SOURCE = "yaoqianshu_qiehuan"
         private const val XLIGHT_PAGE_FROM = "ch_url-https://render.alipay.com/p/yuyan/180020010001263018/game.html"
@@ -543,7 +544,7 @@ class AntOrchard : ModelTask() {
             ?.toString()
             .orEmpty()
         val title = if (amount.isBlank()) "余额宝体验金签到" else "余额宝体验金签到(${amount}元)"
-        if (TaskBlacklist.isTaskInBlacklist(title)) {
+        if (TaskBlacklist.isTaskInBlacklist(MODULE_NAME, title)) {
             Log.orchard(TAG, "跳过黑名单任务[$title]")
             Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_SIGN_DONE)
             return false
@@ -983,8 +984,8 @@ class AntOrchard : ModelTask() {
         title: String,
         taskId: String
     ): Boolean {
-        return TaskBlacklist.isTaskInBlacklist(title) ||
-            (taskId.isNotBlank() && TaskBlacklist.isTaskInBlacklist(taskId))
+        return TaskBlacklist.isTaskInBlacklist(MODULE_NAME, title) ||
+            (taskId.isNotBlank() && TaskBlacklist.isTaskInBlacklist(MODULE_NAME, taskId))
     }
 
     private fun getYebExpGoldTaskTitle(
@@ -1188,8 +1189,8 @@ class AntOrchard : ModelTask() {
                     "未知任务"
                 }
 
-                val groupIdInBlacklist = TaskBlacklist.isTaskInBlacklist(groupId)
-                val titleInBlacklist = TaskBlacklist.isTaskInBlacklist(title)
+                val groupIdInBlacklist = TaskBlacklist.isTaskInBlacklist(MODULE_NAME, groupId)
+                val titleInBlacklist = TaskBlacklist.isTaskInBlacklist(MODULE_NAME, title)
                 if (groupIdInBlacklist || titleInBlacklist) {
                     Log.orchard(TAG, "跳过黑名单任务[$title] groupId=$groupId")
                     continue

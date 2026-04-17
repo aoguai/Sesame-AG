@@ -269,6 +269,7 @@ class AntFarm : ModelTask() {
     private var fenceCountDown: Int = 0
     // 雇佣NPC
     internal var npcAnimalType: ChoiceModelField? = null
+    val moduleName = getName()
     // NPC配置定义
     private enum class NpcConfig(val animalId: String, val source: String, val nickName: String) {
         NONE("", "", "关闭"),
@@ -1932,8 +1933,8 @@ class AntFarm : ModelTask() {
                 if (Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_LIMIT_PREFIX + bizKey)) continue
 
                 // 检查任务标题和业务键是否在黑名单中
-                val titleInBlacklist = TaskBlacklist.isTaskInBlacklist(title)
-                val bizKeyInBlacklist = TaskBlacklist.isTaskInBlacklist(bizKey)
+                val titleInBlacklist = TaskBlacklist.isTaskInBlacklist(moduleName, title)
+                val bizKeyInBlacklist = TaskBlacklist.isTaskInBlacklist(moduleName, bizKey)
 
                 if (titleInBlacklist || bizKeyInBlacklist) {
                     Log.farm(TAG, "跳过黑名单任务: $title ($bizKey)")
@@ -2119,8 +2120,8 @@ class AntFarm : ModelTask() {
                     val title = task.optString("title")
                     val bizKey = task.getString("bizKey")
 
-                    if (TaskBlacklist.isTaskInBlacklist(title) ||
-                        TaskBlacklist.isTaskInBlacklist(bizKey)) continue
+                    if (TaskBlacklist.isTaskInBlacklist(moduleName, title) ||
+                        TaskBlacklist.isTaskInBlacklist(moduleName, bizKey)) continue
 
                     multiStageTasks.add(task)
                     val status = task.getString("taskStatus")
@@ -2246,7 +2247,7 @@ class AntFarm : ModelTask() {
                 if (Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_LIMIT_PREFIX + bizKey)) {
                     continue
                 }
-                if (TaskBlacklist.isTaskInBlacklist(title) || TaskBlacklist.isTaskInBlacklist(bizKey)) {
+                if (TaskBlacklist.isTaskInBlacklist(moduleName, title) || TaskBlacklist.isTaskInBlacklist(moduleName, bizKey)) {
                     continue
                 }
                 if (taskStatus == TaskStatus.FINISHED.name || taskStatus == TaskStatus.RECEIVED.name) {
@@ -2302,7 +2303,7 @@ class AntFarm : ModelTask() {
                 Log.farm(TAG, "庄园任务[$title]已达上限")
             } else {
                 Log.error("庄园任务失败：$title code:$resultCode")
-                TaskBlacklist.autoAddToBlacklist(bizKey, title, resultCode)
+                TaskBlacklist.autoAddToBlacklist(moduleName, bizKey, title, resultCode)
             }
         }
     }

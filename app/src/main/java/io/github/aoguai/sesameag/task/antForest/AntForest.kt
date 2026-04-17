@@ -3718,6 +3718,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         awardCount: Int,
         bizInfo: JSONObject
     ): Boolean {
+        val moduleName = getName()
         val gameUrl = bizInfo.optString("taskJumpUrl")
         if (gameUrl.isNotBlank()) {
             Log.forest(TAG, "跳转到游戏: $gameUrl")
@@ -3732,7 +3733,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             Log.forest("游戏任务完成 🎮️[$taskTitle]# $awardCount 活力值")
             true
         } else {
-            TaskBlacklist.autoAddToBlacklist(taskType, taskTitle, finishTaskResponse.optString("code", ""))
+            TaskBlacklist.autoAddToBlacklist(moduleName, taskType, taskTitle, finishTaskResponse.optString("code", ""))
             false
         }
     }
@@ -3902,7 +3903,8 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             }
 
             taskStatus == TaskStatus.TODO.name -> {
-                if (TaskBlacklist.isTaskInBlacklist(taskType)) {
+                val moduleName = getName()
+                if (TaskBlacklist.isTaskInBlacklist(moduleName, taskType)) {
                     return false
                 }
                 val childTaskTypeList = taskInfo.optJSONArray("childTaskTypeList")
@@ -3932,9 +3934,9 @@ class AntForest : ModelTask(), EnergyCollectCallback {
 
                     else -> {
                         val errorCode = finishTaskResponse.optString("code", "")
-                        TaskBlacklist.autoAddToBlacklist(taskType, taskTitle, errorCode)
+                        TaskBlacklist.autoAddToBlacklist(moduleName, taskType, taskTitle, errorCode)
                         if (count > 1) {
-                            TaskBlacklist.addToBlacklist(taskType, taskTitle)
+                            TaskBlacklist.addToBlacklist(moduleName, taskType, taskTitle)
                         }
                         false
                     }

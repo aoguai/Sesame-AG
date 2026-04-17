@@ -104,6 +104,7 @@ class AntSports : ModelTask() {
     internal lateinit var neverlandTask: BooleanModelField
     internal lateinit var neverlandGrid: BooleanModelField
     private lateinit var neverlandGridStepCount: IntegerModelField
+    private val moduleName = getName()
 
 
     /**
@@ -684,9 +685,8 @@ class AntSports : ModelTask() {
                     if (taskType == "SETTLEMENT") continue
 
                     // 黑名单过滤
-                    // 黑名单任务仍允许领取已完成(WAIT_RECEIVE)的奖励，避免“手动完成但无法领奖励”
-                    val isBlacklisted = TaskBlacklist.isTaskInBlacklist(taskId) || TaskBlacklist.isTaskInBlacklist(taskName)
-                    if (isBlacklisted && taskStatus != "WAIT_RECEIVE") {
+                    val moduleName = getName()
+                    if (TaskBlacklist.isTaskInBlacklist(moduleName, taskId) || TaskBlacklist.isTaskInBlacklist(moduleName, taskName)) {
                         continue
                     }
 
@@ -823,7 +823,7 @@ class AntSports : ModelTask() {
                     val shouldKeepRpcErrorVisible =
                         errorCode == "CAMP_TRIGGER_ERROR" || errorCode == "RECEIVE_REWARD_REPEATED"
                     if (errorCode.isNotEmpty() && !shouldKeepRpcErrorVisible) {
-                        TaskBlacklist.autoAddToBlacklist(taskId, taskName, errorCode)
+                        TaskBlacklist.autoAddToBlacklist(moduleName, taskId, taskName, errorCode)
                     }
                     if (errorCode == "CAMP_TRIGGER_ERROR") {
                         Log.error(
@@ -1056,7 +1056,7 @@ class AntSports : ModelTask() {
                 }
 
                 val taskStatus = task.optString("taskStatus", "")
-                val isBlacklisted = TaskBlacklist.isTaskInBlacklist(taskId) || TaskBlacklist.isTaskInBlacklist(taskName)
+                val isBlacklisted = TaskBlacklist.isTaskInBlacklist(moduleName, taskId) || TaskBlacklist.isTaskInBlacklist(moduleName, taskName)
                 if (isBlacklisted && taskStatus != "WAIT_RECEIVE") {
                     Log.sports(TAG, "运动首页任务[黑名单跳过：$taskName，taskId=$taskId]")
                     continue
@@ -2609,12 +2609,12 @@ class AntSports : ModelTask() {
                         if ("NOT_SIGNUP" == status) {
                             Log.sports(TAG, "任务 [$title] 需要手动报名，已自动拉黑并跳过")
                             if (taskId.isNotEmpty()) {
-                                TaskBlacklist.addToBlacklist(taskId, title)
+                                TaskBlacklist.addToBlacklist(moduleName, taskId, title)
                             }
                             continue
                         }
 
-                        if (TaskBlacklist.isTaskInBlacklist(taskId)) continue
+                        if (TaskBlacklist.isTaskInBlacklist(moduleName, taskId)) continue
 
                         if (("PROMOKERNEL_TASK" == type || "LIGHT_TASK" == type) &&
                             "FINISHED" != status
