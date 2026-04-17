@@ -27,10 +27,11 @@ import java.util.Calendar
 class AntOrchard : ModelTask() {
     companion object {
         private val TAG = AntOrchard::class.java.simpleName
-        private const val MODULE_NAME = "农场"
         private const val ORCHARD_SOURCE = "ch_appcenter__chsub_9patch"
         private const val YEB_SOURCE = "yaoqianshu_qiehuan"
         private const val XLIGHT_PAGE_FROM = "ch_url-https://render.alipay.com/p/yuyan/180020010001263018/game.html"
+        private const val ORCHARD_TASK_BLACKLIST_MODULE = "芭芭农场"
+        private const val YEB_TASK_BLACKLIST_MODULE = "余额宝"
     }
 
     internal var userId: String? = UserMap.currentUid
@@ -544,7 +545,7 @@ class AntOrchard : ModelTask() {
             ?.toString()
             .orEmpty()
         val title = if (amount.isBlank()) "余额宝体验金签到" else "余额宝体验金签到(${amount}元)"
-        if (TaskBlacklist.isTaskInBlacklist(MODULE_NAME, title)) {
+        if (TaskBlacklist.isTaskInBlacklist(YEB_TASK_BLACKLIST_MODULE, title)) {
             Log.orchard(TAG, "跳过黑名单任务[$title]")
             Status.setFlagToday(StatusFlags.FLAG_ANTORCHARD_YEB_EXP_GOLD_SIGN_DONE)
             return false
@@ -984,8 +985,8 @@ class AntOrchard : ModelTask() {
         title: String,
         taskId: String
     ): Boolean {
-        return TaskBlacklist.isTaskInBlacklist(MODULE_NAME, title) ||
-            (taskId.isNotBlank() && TaskBlacklist.isTaskInBlacklist(MODULE_NAME, taskId))
+        return TaskBlacklist.isTaskInBlacklist(YEB_TASK_BLACKLIST_MODULE, title) ||
+            (taskId.isNotBlank() && TaskBlacklist.isTaskInBlacklist(YEB_TASK_BLACKLIST_MODULE, taskId))
     }
 
     private fun getYebExpGoldTaskTitle(
@@ -1189,8 +1190,8 @@ class AntOrchard : ModelTask() {
                     "未知任务"
                 }
 
-                val groupIdInBlacklist = TaskBlacklist.isTaskInBlacklist(MODULE_NAME, groupId)
-                val titleInBlacklist = TaskBlacklist.isTaskInBlacklist(MODULE_NAME, title)
+                val groupIdInBlacklist = TaskBlacklist.isTaskInBlacklist(ORCHARD_TASK_BLACKLIST_MODULE, groupId)
+                val titleInBlacklist = TaskBlacklist.isTaskInBlacklist(ORCHARD_TASK_BLACKLIST_MODULE, title)
                 if (groupIdInBlacklist || titleInBlacklist) {
                     Log.orchard(TAG, "跳过黑名单任务[$title] groupId=$groupId")
                     continue
@@ -1204,7 +1205,9 @@ class AntOrchard : ModelTask() {
                         if (isXLightTask(task)) {
                             executeXLightTask(task, title)
                         } else {
-                            Log.orchard(TAG, "农场任务⏭️[$title] action=VISIT 暂无稳定RPC，跳过")
+                            if (!executeDirectVisitTask(sceneCode, taskId, groupId, title)) {
+                                logUnsupportedVisitTask(task, title)
+                            }
                         }
                     }
                     "TRIGGER", "ADD_HOME", "PUSH_SUBSCRIBE" -> {
@@ -1348,6 +1351,45 @@ class AntOrchard : ModelTask() {
         }
     }
 
+    private fun executeDirectVisitTask(
+        sceneCode: String,
+        taskId: String,
+        groupId: String,
+        title: String
+    ): Boolean {
+        val currentUserId = userId
+        if (currentUserId.isNullOrBlank() || sceneCode.isBlank() || taskId.isBlank()) {
+            return false
+        }
+        val finishResponse = JSONObject(
+            AntOrchardRpcCall.finishTask(currentUserId, sceneCode, taskId, ORCHARD_SOURCE)
+        )
+        if (ResChecker.checkRes(TAG, finishResponse)) {
+            Log.orchard("农场任务🧾[$title]")
+            return true
+        }
+        val errorCode = finishResponse.optString("resultCode")
+            .ifBlank { finishResponse.optString("errorCode") }
+            .ifBlank { finishResponse.optString("code") }
+        if (errorCode.isNotBlank()) {
+            TaskBlacklist.autoAddToBlacklist(
+                ORCHARD_TASK_BLACKLIST_MODULE,
+                groupId.ifBlank { taskId },
+                title,
+                errorCode
+            )
+        }
+        val errorMsg = finishResponse.optString("memo")
+            .ifBlank { finishResponse.optString("desc") }
+            .ifBlank { finishResponse.optString("resultDesc") }
+            .ifBlank { finishResponse.optString("errorMsg") }
+        Log.orchard(
+            TAG,
+            "农场任务⏭️[$title] action=VISIT 直提RPC失败 code=${errorCode.ifBlank { "UNKNOWN" }} msg=$errorMsg raw=$finishResponse"
+        )
+        return false
+    }
+
     private fun executeOrchardBrowseRound(
         config: OrchardBrowseTaskConfig,
         title: String,
@@ -1424,12 +1466,10 @@ class AntOrchard : ModelTask() {
             var advancedToNextPage = false
             for (browseEvent in browseEvents) {
                 val eventStep = browseEvent.optInt("eventStep", 15).coerceAtLeast(1)
-                val waitMillis = resolveOrchardBrowseWaitMillis(eventStep)
                 Log.orchard(
                     TAG,
-                    "农场浏览任务⏳[$title] 第${round}/${config.rounds}轮 order=${browseEvent.optInt("order", 0)} 需等待${waitMillis}ms(${eventStep}s)"
+                    "农场浏览任务▶[$title] 第${round}/${config.rounds}轮 order=${browseEvent.optInt("order", 0)} 直接提交完成RPC(eventStep=${eventStep}s)"
                 )
-                CoroutineUtils.sleepCompat(waitMillis)
 
                 val finishResponse = XLightRpcCall.finishTask(
                     playBizId = playingBizId,
@@ -1551,10 +1591,6 @@ class AntOrchard : ModelTask() {
         return "$playBizId#${playEventInfo.optInt("order", -1)}#${playEventInfo.optInt("rewardId", -1)}#${playEventInfo.optInt("eventStep", 0)}"
     }
 
-    private fun resolveOrchardBrowseWaitMillis(eventStepSeconds: Int): Long {
-        return eventStepSeconds.coerceAtLeast(1) * 1000L + 1200L
-    }
-
     private fun buildOrchardBrowseSearchInfo(pageNo: Int): JSONObject? {
         if (pageNo <= 1) {
             return null
@@ -1568,19 +1604,87 @@ class AntOrchard : ModelTask() {
     private fun isXLightTask(task: JSONObject): Boolean {
         val taskDisplayConfig = task.optJSONObject("taskDisplayConfig") ?: return false
         val targetUrl = taskDisplayConfig.optString("targetUrl")
-        if (!targetUrl.contains("spaceCodeFeeds=")) {
+        if (targetUrl.isBlank()) {
             return false
         }
         val pageUrl = UrlUtil.getFullNestedUrl(targetUrl, "url")
             ?: UrlUtil.getParamValue(targetUrl, "url")
             ?: targetUrl
-        if (targetUrl.contains("tokenFeeds=")) {
+        val hasSpaceCode = pageUrl.contains("spaceCodeFeeds=") || targetUrl.contains("spaceCodeFeeds=")
+        if (!hasSpaceCode) {
+            return false
+        }
+        if (pageUrl.contains("tokenFeeds=") || targetUrl.contains("tokenFeeds=")) {
             return true
         }
-        return pageUrl.contains("multi-stage-task.html") &&
-                targetUrl.contains("iepTaskSceneCode=") &&
-                targetUrl.contains("iepTaskType=") &&
-                targetUrl.contains("canDoTaskTimesLimit=")
+        if (!pageUrl.contains("multi-stage-task.html")) {
+            return false
+        }
+        val actionType = task.optString("actionType")
+        val hasSceneCode = !UrlUtil.getParamValue(targetUrl, "iepTaskSceneCode").isNullOrBlank() ||
+            (actionType == "VISIT" && task.optString("sceneCode").isNotBlank())
+        val hasTaskType = !UrlUtil.getParamValue(targetUrl, "iepTaskType").isNullOrBlank() ||
+            (actionType == "VISIT" && task.optString("taskId").isNotBlank())
+        val hasTaskLimit = !UrlUtil.getParamValue(targetUrl, "canDoTaskTimesLimit").isNullOrBlank() ||
+            task.optInt("rightsTimesLimit", 0) > 0
+        return hasSceneCode && hasTaskType && hasTaskLimit
+    }
+
+    private fun logUnsupportedVisitTask(task: JSONObject, title: String) {
+        val taskDisplayConfig = task.optJSONObject("taskDisplayConfig")
+        val targetUrl = taskDisplayConfig?.optString("targetUrl").orEmpty()
+        val pageUrl = UrlUtil.getFullNestedUrl(targetUrl, "url")
+            ?: UrlUtil.getParamValue(targetUrl, "url")
+            ?: targetUrl.takeIf { it.startsWith("http") }
+        val appId = UrlUtil.getParamValue(targetUrl, "appId")
+        val route = when {
+            pageUrl?.contains("multi-stage-task.html") == true -> "multi-stage-task"
+            targetUrl.startsWith("alipays://platformapi/startapp") && targetUrl.contains("jumpAction=userGrowth") -> "startapp-userGrowth"
+            targetUrl.startsWith("alipays://platformapi/startapp") -> "startapp"
+            targetUrl.startsWith("http") -> "direct-h5"
+            targetUrl.isBlank() -> "missing-targetUrl"
+            else -> "unknown"
+        }
+        val detailParts = mutableListOf(
+            "taskId=${task.optString("taskId")}",
+            "groupId=${task.optString("groupId")}",
+            "sceneCode=${task.optString("sceneCode")}",
+            "taskStatus=${task.optString("taskStatus")}",
+            "taskPlantType=${task.optString("taskPlantType")}",
+            "rightsTimes=${task.optInt("rightsTimes", 0)}",
+            "rightsTimesLimit=${task.optInt("rightsTimesLimit", 0)}",
+            "route=$route"
+        )
+        taskDisplayConfig?.optString("type")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { detailParts.add("type=$it") }
+        appId?.takeIf { it.isNotBlank() }?.let { detailParts.add("appId=$it") }
+        UrlUtil.extractParamFromUrl(pageUrl.orEmpty(), "spaceCodeFeeds")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { detailParts.add("spaceCodeFeeds=$it") }
+        UrlUtil.extractParamFromUrl(pageUrl.orEmpty(), "tokenFeeds")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { detailParts.add("tokenFeeds=$it") }
+        UrlUtil.getParamValue(targetUrl, "iepTaskSceneCode")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { detailParts.add("iepTaskSceneCode=$it") }
+        UrlUtil.getParamValue(targetUrl, "iepTaskType")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { detailParts.add("iepTaskType=$it") }
+        UrlUtil.getParamValue(targetUrl, "canDoTaskTimesLimit")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { detailParts.add("canDoTaskTimesLimit=$it") }
+        UrlUtil.getParamValue(targetUrl, "sceneCode")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { detailParts.add("targetSceneCode=$it") }
+        pageUrl?.takeIf { it.isNotBlank() }?.let { detailParts.add("pageUrl=$it") }
+        if (targetUrl.isNotBlank()) {
+            detailParts.add("targetUrl=$targetUrl")
+        }
+        Log.orchard(
+            TAG,
+            "农场任务⏭️[$title] action=VISIT 未发现已验证完成RPC，未自动处理 | ${detailParts.joinToString(" | ")}"
+        )
     }
 
     private data class OrchardBrowseTaskConfig(
