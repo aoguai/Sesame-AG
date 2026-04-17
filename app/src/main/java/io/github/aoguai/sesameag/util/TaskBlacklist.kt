@@ -89,13 +89,11 @@ object TaskBlacklist {
             }
         }
 
-        // 3. 兼容旧格式（IDTitle）
         val itemHasChinese = blacklistItem.any { it in '\u4e00'..'\u9fa5' }
         val inputHasChinese = input.any { it in '\u4e00'..'\u9fa5' }
 
         return if (itemHasChinese) {
             if (!inputHasChinese) {
-                // 如果 input 是 ID（无中文），尝试更精确的匹配：ID 必须是黑名单项的前缀，且后面紧跟中文
                 if (blacklistItem.startsWith(input)) {
                     val nextIdx = input.length
                     if (nextIdx < blacklistItem.length && blacklistItem[nextIdx] in '\u4e00'..'\u9fa5') {
@@ -104,11 +102,9 @@ object TaskBlacklist {
                 }
                 false
             } else {
-                // 如果 input 也是标题（含中文），则维持包含匹配
                 blacklistItem.contains(input) || input.contains(blacklistItem)
             }
         } else {
-            // 黑名单项无中文（可能是纯 ID），则要求 input 包含黑名单项（常规关键词匹配）
             input.contains(blacklistItem)
         }
     }

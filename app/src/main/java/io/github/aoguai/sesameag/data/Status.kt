@@ -80,7 +80,6 @@ class Status {
 
     // ======================= other
     var memberSignInList: MutableSet<String> = HashSet()
-    val flagList: MutableSet<String> = HashSet()
 
     /** 模块化标记与计数存储 (Key: 模块名, Value: Map<标记名, 次数>) */
     var moduleFlags: MutableMap<String, MutableMap<String, Int>> = HashMap()
@@ -748,7 +747,6 @@ class Status {
                 // 创建新状态实例并确保清空所有每日标记
                 val newStatus = Status()
                 // 确保清空所有标记和计数
-                INSTANCE.flagList.clear()
                 INSTANCE.moduleFlags.clear()
                 JsonUtil.copyMapper().updateValue(INSTANCE, newStatus)
                 // 清除缓存标记，强制下次加载重新读取
@@ -916,7 +914,7 @@ class Status {
 
         /**
          * 清除今日标记
-         * 支持 "Module::Task" 格式，兼容 flagList 和 moduleFlags
+         * 支持 "Module::Task" 格式
          */
         @JvmStatic
         fun removeFlag(flag: String) {
@@ -934,11 +932,6 @@ class Status {
                     keysToRemove.forEach { k -> it.remove(k) }
                     changed = true
                 }
-            }
-
-            // 2. 从旧的 flagList 中移除
-            if (INSTANCE.flagList.remove(flag)) {
-                changed = true
             }
 
             if (changed) {
