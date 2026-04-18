@@ -120,14 +120,22 @@ class CoroutineTaskRunner(allModels: List<Model>) {
      */
     private suspend fun executeRound(round: Int, totalRounds: Int, status: CustomSettings.OnceDailyStatus) = coroutineScope {
         val roundStartTime = System.currentTimeMillis()
+        TaskCommon.update()
+        val energyOnlyMode = TaskCommon.IS_ENERGY_TIME
 
         // 1. 筛选任务
         val tasksToRun = taskList.filter { task ->
-            task.isEnable() && !CustomSettings.isOnceDailyBlackListed(task.getName(), status)
+            task.isEnable() &&
+                !CustomSettings.isOnceDailyBlackListed(task.getName(), status) &&
+                (!energyOnlyMode || task is AntForest)
         }
 
         val excludedCount = taskList.count { it.isEnable() } - tasksToRun.size
         if (excludedCount > 0) skippedCount.addAndGet(excludedCount)
+
+        if (energyOnlyMode) {
+            Log.record(TAG, "⏸ 当前为只收能量时间【${BaseModel.energyTime.value}】，本轮仅保留蚂蚁森林任务")
+        }
 
         val taskBatches = buildExecutionBatches(tasksToRun)
         Log.record(TAG, "🔄 [第 $round/$totalRounds 轮] 开始，共 ${tasksToRun.size} 个任务，分 ${taskBatches.size} 个批次")
