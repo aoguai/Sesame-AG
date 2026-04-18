@@ -4287,6 +4287,12 @@ class AntFarm : ModelTask() {
                 }
 
                 jo = JSONObject(AntFarmRpcCall.hireAnimal(farmId, animalId))
+                val resultCode = jo.optString("resultCode", "")
+                val memo = jo.optString("memo", "")
+                if (resultCode == "I05" || memo.contains("篱笆卡")) {
+                    Log.farm(TAG, "雇佣小鸡👷[${UserMap.getMaskName(userId)}] 跳过：好友使用了篱笆卡")
+                    return false
+                }
                 if (ResChecker.checkRes(TAG, jo)) {
                     Log.farm("雇佣小鸡👷[" + UserMap.getMaskName(userId) + "] 成功")
                     val newAnimals = jo.getJSONArray("animals")
@@ -4314,8 +4320,6 @@ class AntFarm : ModelTask() {
                     }
                     return true
                 } else {
-                    val resultCode = jo.optString("resultCode", "")
-                    val memo = jo.optString("memo", "")
                     if (resultCode == "I07" || memo.contains("庄园的小鸡太多了")) {
                         isFarmFull = true
                         Log.farm(TAG, "庄园小鸡已满，停止雇佣")
