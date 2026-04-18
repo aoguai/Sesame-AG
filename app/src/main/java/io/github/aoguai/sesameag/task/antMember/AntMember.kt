@@ -376,6 +376,7 @@ class AntMember : ModelTask() {
         if (needMerchantSign) {
             if (doMerchantSign()) {
                 setFlagToday(StatusFlags.FLAG_ANTMEMBER_MERCHANT_SIGN_DONE)
+                collectMerchantPointBalls()
             }
         }
         if (needMerchantMoreTask) {
@@ -1177,8 +1178,7 @@ class AntMember : ModelTask() {
             }
 
             if (processedCount == 0) {
-                setFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_TASK_EMPTY_TODAY)
-                Log.member(TAG, "会员任务[amic]#当前列表无可安全执行任务，今日停止继续刷新")
+                Log.member(TAG, "会员任务[amic]#当前列表无可安全执行任务，本轮结束，后续轮次继续查询")
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "doAllMemberAvailableTaskCompat err:", t)
@@ -1295,8 +1295,7 @@ class AntMember : ModelTask() {
             }
             val taskList = legacyTaskObject.optJSONArray("availableTaskList") ?: JSONArray()
             if (taskList.length() <= 0) {
-                setFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_TASK_EMPTY_TODAY)
-                Log.member(TAG, "会员任务🎖️[legacy]#任务列表数量为0，今日停止继续刷新")
+                Log.member(TAG, "会员任务🎖️[legacy]#任务列表数量为0，本轮结束，后续轮次继续查询")
                 return@run
             }
 
@@ -1320,13 +1319,12 @@ class AntMember : ModelTask() {
             }
 
             if (processedCount == 0) {
-                setFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_TASK_EMPTY_TODAY)
                 Log.member(
                     TAG,
                     if (safeCandidateCount > 0) {
-                        "会员任务🎖️[legacy]#当前列表无可安全执行任务，今日停止继续刷新"
+                        "会员任务🎖️[legacy]#当前列表无可安全执行任务，本轮结束，后续轮次继续查询"
                     } else {
-                        "会员任务🎖️[legacy]#列表仅含不兼容任务，今日停止继续刷新"
+                        "会员任务🎖️[legacy]#列表仅含不兼容任务，本轮结束，后续轮次继续查询"
                     }
                 )
             }
@@ -5032,50 +5030,95 @@ class AntMember : ModelTask() {
         /**
          * 完成商家积分任务
          * @param taskCode 任务代码
-         * @param actionCode 行为代码
+         * @param actionCodes 行为代码候选
          * @param title 标题
          */
-        private suspend fun taskReceive(
-            taskCode: String,
-            actionCode: String,
-            title: String,
-            targetCount: Int = 1
-        ): Boolean = CoroutineUtils.run {
+        private fun receiveMerchantTask(taskCode: String): Boolean = CoroutineUtils.run {
             try {
                 val s = AntMemberRpcCall.taskReceive(taskCode)
-                var jo = JSONObject(s)
+                val jo = JSONObject(s)
                 if (!ResChecker.checkRes(TAG, jo)) {
                     Log.member(TAG, "taskReceive $s")
                     return@run false
                 }
+                return@run true
+            } catch (t: Throwable) {
+                Log.printStackTrace(TAG, "receiveMerchantTask err:", t)
+            }
+            false
+        }
 
-                ActionDelayUtil.humanActionDelay(500L)
-                jo = JSONObject(AntMemberRpcCall.actioncode(actionCode))
-                if (!ResChecker.checkRes(TAG, jo)) {
-                    Log.member(TAG, "taskQueryByActionCode $jo")
+        private suspend fun executeMerchantBrowseTask(
+            taskCode: String,
+            actionCodes: List<String>,
+            title: String,
+            taskStatus: String,
+            targetCount: Int = 1
+        ): Boolean = CoroutineUtils.run {
+            try {
+                if ("UNRECEIVED" == taskStatus && !receiveMerchantTask(taskCode)) {
                     return@run false
                 }
 
-                var produceSuccess = false
-                for (index in 0 until max(1, targetCount)) {
-                    if (index > 0) {
-                        delay(5000)
-                    }
-                    jo = JSONObject(AntMemberRpcCall.produce(actionCode))
+                ActionDelayUtil.humanActionDelay(500L)
+                for (actionCode in actionCodes) {
+                    var jo = JSONObject(AntMemberRpcCall.actioncode(actionCode))
                     if (!ResChecker.checkRes(TAG, jo)) {
-                        Log.member(TAG, "taskProduce $jo")
-                        break
+                        Log.member(TAG, "taskQueryByActionCode $jo")
+                        continue
                     }
-                    produceSuccess = true
+
+                    var produceSuccess = false
+                    var remainingCount = max(1, targetCount)
+                    for (index in 0 until max(1, targetCount)) {
+                        if (index > 0) {
+                            delay(5000)
+                        }
+                        jo = JSONObject(AntMemberRpcCall.produce(actionCode))
+                        if (!ResChecker.checkRes(TAG, jo)) {
+                            Log.member(TAG, "taskProduce $jo")
+                            break
+                        }
+                        produceSuccess = true
+
+                        val refreshedTask = queryMerchantTaskByCode(taskCode) ?: break
+                        val refreshedStatus = refreshedTask.optString("status")
+                        if ("NEED_RECEIVE" == refreshedStatus || ("PROCESSING" != refreshedStatus && "UNRECEIVED" != refreshedStatus)) {
+                            break
+                        }
+
+                        val refreshedRemainingCount = resolveMerchantTaskRemainingCount(refreshedTask) ?: break
+                        if (refreshedRemainingCount <= 0 || refreshedRemainingCount >= remainingCount) {
+                            break
+                        }
+                        remainingCount = refreshedRemainingCount
+                    }
+
+                    if (produceSuccess) {
+                        Log.member("商家服务🏬[完成任务$title]")
+                        return@run true
+                    }
                 }
-                if (produceSuccess) {
-                    Log.member("商家服务🏬[完成任务$title]")
-                }
-                return@run produceSuccess
             } catch (t: Throwable) {
-                Log.printStackTrace(TAG, "taskReceive err:", t)
+                Log.printStackTrace(TAG, "executeMerchantBrowseTask err:", t)
             }
             false
+        }
+
+        private fun queryMerchantTaskByCode(taskCode: String): JSONObject? {
+            if (taskCode.isEmpty()) {
+                return null
+            }
+            val taskGroups = queryMerchantTaskGroups()
+            for (taskList in taskGroups) {
+                for (i in 0..<taskList.length()) {
+                    val task = taskList.optJSONObject(i) ?: continue
+                    if (taskCode == task.optString("taskCode")) {
+                        return task
+                    }
+                }
+            }
+            return null
         }
 
         private fun canRunMerchantService(): Boolean = CoroutineUtils.run {
@@ -5191,14 +5234,8 @@ class AntMember : ModelTask() {
                 return@run false
             }
 
-            if (task.has("extendLog")) {
-                val bizId = task.optJSONObject("extendLog")
-                    ?.optJSONObject("bizExtMap")
-                    ?.optString("bizId")
-                    .orEmpty()
-                if (bizId.isEmpty()) {
-                    return@run false
-                }
+            val bizId = resolveMerchantBizId(task)
+            if ("PROCESSING" == taskStatus && bizId.isNotEmpty()) {
                 val jo = JSONObject(AntMemberRpcCall.taskFinish(bizId))
                 if (ResChecker.checkRes(TAG, jo)) {
                     Log.member("商家服务🏬[$title]#领取积分$reward")
@@ -5208,61 +5245,90 @@ class AntMember : ModelTask() {
             }
 
             val taskCode = task.optString("taskCode")
-            val actionCode = resolveMerchantActionCode(task)
-            if (taskCode.isEmpty() || actionCode.isNullOrEmpty()) {
+            val actionCodes = resolveMerchantActionCodes(task)
+            if (taskCode.isEmpty() || actionCodes.isEmpty()) {
                 return@run false
             }
 
-            return@run taskReceive(taskCode, actionCode, title, resolveMerchantTaskTargetCount(task))
+            return@run executeMerchantBrowseTask(taskCode, actionCodes, title, taskStatus, resolveMerchantTaskTargetCount(task))
         }
 
-        private fun resolveMerchantActionCode(task: JSONObject): String? {
+        private fun resolveMerchantBizId(task: JSONObject): String {
+            return task.optJSONObject("extendLog")
+                ?.optJSONObject("bizExtMap")
+                ?.optString("bizId")
+                .orEmpty()
+        }
+
+        private fun resolveMerchantActionCodes(task: JSONObject): List<String> {
+            val candidates = LinkedHashSet<String>()
             val buttonActionCode = task.optJSONObject("button")
                 ?.optJSONObject("extInfo")
                 ?.optString("actionCode")
                 .orEmpty()
-            if (buttonActionCode.isNotEmpty()) {
-                return if (buttonActionCode.endsWith("_VIEWED")) buttonActionCode else "${buttonActionCode}_VIEWED"
-            }
+            addMerchantActionCodeCandidates(candidates, buttonActionCode)
 
             val taskActionCode = task.optString("actionCode")
-            if (taskActionCode.isNotEmpty()) {
-                return if (taskActionCode.endsWith("_VIEWED")) taskActionCode else "${taskActionCode}_VIEWED"
-            }
+            addMerchantActionCodeCandidates(candidates, taskActionCode)
 
             val taskCode = task.optString("taskCode")
             if (task.has("sendPointImmediately") && taskCode.isNotEmpty()) {
-                return "${taskCode}_VIEWED"
+                addMerchantActionCodeCandidate(candidates, "${taskCode}_VIEWED")
             }
-            return when (taskCode) {
+            addMerchantActionCodeCandidate(candidates, when (taskCode) {
                 "SYH_CPC_DYNAMIC" -> "SYH_CPC_DYNAMIC_VIEWED"
                 "JFLLRW_TASK" -> "JFLL_VIEWED"
                 "ZFBHYLLRW_TASK" -> "ZFBHYLL_VIEWED"
                 "QQKLLRW_TASK" -> "QQKLL_VIEWED"
+                "RCR_RWZX_LLRW_TASK" -> "rcr_llrw_VIEWED"
                 "SSLLRW_TASK" -> "SSLL_VIEWED"
+                "CYLLRW_TASK" -> "CYLLRW_VIEWED"
                 "ELMGYLLRW2_TASK" -> "ELMGYLL_VIEWED"
                 "ZMXYLLRW_TASK" -> "ZMXYLL_VIEWED"
                 "GXYKPDDYH_TASK" -> "xykhkzd_VIEWED"
                 "HHKLLRW_TASK" -> "HHKLLX_VIEWED"
                 "TBNCLLRW_TASK" -> "TBNCLLRW_TASK_VIEWED"
                 else -> null
+            })
+            return candidates.toList()
+        }
+
+        private fun addMerchantActionCodeCandidates(candidates: LinkedHashSet<String>, actionCode: String?) {
+            val normalizedActionCode = actionCode.orEmpty().trim()
+            if (normalizedActionCode.isEmpty()) {
+                return
+            }
+            candidates.add(normalizedActionCode)
+            if (!normalizedActionCode.endsWith("_VIEWED")) {
+                candidates.add("${normalizedActionCode}_VIEWED")
+            }
+        }
+
+        private fun addMerchantActionCodeCandidate(candidates: LinkedHashSet<String>, actionCode: String?) {
+            val normalizedActionCode = actionCode.orEmpty().trim()
+            if (normalizedActionCode.isNotEmpty()) {
+                candidates.add(normalizedActionCode)
             }
         }
 
         private fun resolveMerchantTaskTargetCount(task: JSONObject): Int {
+            return max(1, resolveMerchantTaskRemainingCount(task) ?: 1)
+        }
+
+        private fun resolveMerchantTaskRemainingCount(task: JSONObject): Int? {
             val target = task.optInt("target", Int.MIN_VALUE)
             val current = task.optInt("current", 0)
             if (target != Int.MIN_VALUE) {
-                return max(1, target - current)
+                return (target - current).coerceAtLeast(0)
             }
 
             val targetCount = task.optInt("targetCount", Int.MIN_VALUE)
             val currentCount = task.optInt("currentCount", 0)
             if (targetCount != Int.MIN_VALUE) {
-                return max(1, targetCount - currentCount)
+                return (targetCount - currentCount).coerceAtLeast(0)
             }
 
-            return 1
+            return null
         }
 
         private suspend fun collectMerchantPointBalls(): Boolean = CoroutineUtils.run {
