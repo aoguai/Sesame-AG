@@ -4,9 +4,6 @@ package io.github.aoguai.sesameag.util
  * 默认黑名单列表（包含常见无法完成、暂无稳定 RPC 或长期仅支持手动完成的任务）
  */
 
-private fun mergeDefaultBlacklist(vararg groups: Set<String>): Set<String> =
-    LinkedHashSet<String>().apply { groups.forEach { addAll(it) } }
-
 private val sesameCreditDefaultBlacklist = setOf(
     // 芝麻信用 / 芝麻粒
     "每日施肥领水果",         // 需要淘宝操作
@@ -72,7 +69,6 @@ private val orchardDefaultBlacklist = setOf(
     "ZHUFANG3IN1",                      // 添加农场小组件并访问
     "12172",                            // 逛助农好货得肥料
     "12173",                            // 买好货
-    "70000",                            // 逛好物最高得1500肥料（XLIGHT）
     "TOUTIAO",                          // 逛一逛今日头条
     "ORCHARD_NORMAL_ZADAN10_3000",      // 砸蛋10次得3000肥料
     "TAOBAO2",                          // 历史闲鱼短链任务键
@@ -86,18 +82,6 @@ private val orchardDefaultBlacklist = setOf(
     "ORCHARD_NORMAL_XIANYU_DUAN",       // 逛一逛闲鱼
     "ORCHARD_NORMAL_WAIMAIMIANDAN",     // 逛一逛闪购外卖
     "ORCHARD_NORMAL_BAIDU_DUO",         // 去百度浏览资讯
-    "新春限时试玩福利",
-    "逛好物最高得1500肥料",
-    "砸蛋10次得3000肥料",
-    "逛一逛快手",
-    "钓鱼1次",
-    "逛助农好货得肥料",
-    "下载蚂蚁阿福看健康攻略",
-    "逛一逛新浪微博",
-    "逛一逛闲鱼",
-    "逛一逛闪购外卖",
-    "逛一逛美团领福利",
-    "去百度浏览资讯",
     "去淘宝农场得肥料",
     "试玩农场乐园火爆新游",
     "分享给好友",
@@ -196,7 +180,8 @@ private val yuebaoDefaultBlacklist = setOf(
     "余额宝体验金签到(10元)",
     "添加余额宝小组件",
     "让余额宝自动赚更多",
-    "去余额宝攒一笔钱"
+    "去余额宝攒一笔钱",
+    "去天天秒杀下1单"
 )
 
 private val goldTicketDefaultBlacklist = emptySet<String>()
@@ -246,17 +231,4 @@ val DEFAULT_BLACKLIST: Map<String, Set<String>> = mapOf(
     "黄金票" to goldTicketDefaultBlacklist,
     "支付宝会员" to memberDefaultBlacklist,
     "运动" to sportsDefaultBlacklist
-)
-
-val defaultBlacklist: Set<String> = mergeDefaultBlacklist(
-    sesameCreditDefaultBlacklist,
-    sesameAlchemyDefaultBlacklist,
-    orchardDefaultBlacklist,
-    farmDefaultBlacklist,
-    oceanDefaultBlacklist,
-    forestDefaultBlacklist,
-    yuebaoDefaultBlacklist,
-    goldTicketDefaultBlacklist,
-    memberDefaultBlacklist,
-    sportsDefaultBlacklist
 )
