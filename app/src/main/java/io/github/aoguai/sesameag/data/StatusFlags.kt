@@ -173,6 +173,9 @@ object StatusFlags {
     /** 运动首页气泡任务：按 taskId 维度的当日冷却前缀 */
     const val FLAG_ANTSPORTS_HOME_BUBBLE_COOLDOWN_PREFIX = "AntSports::homeBubbleCooldown::"
 
+    /** 走路挑战赛：服务端当日不可用，停止重复报名 */
+    const val FLAG_ANTSPORTS_WALK_CHALLENGE_UNAVAILABLE_TODAY = "AntSports::walkChallengeUnavailableToday"
+
     // ============================================================
     // 合种 / 海洋
     // ============================================================
