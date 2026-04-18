@@ -1248,6 +1248,7 @@ class AntOcean : ModelTask() {
     private suspend fun receiveTaskAward() {
         try {
             val moduleName = TASK_BLACKLIST_MODULE
+            val rewardNotReadyTaskKeys = HashSet<String>()
             while (currentCoroutineContext().isActive) {
                 var done = false
                 val s = AntOceanRpcCall.queryTaskList()
@@ -1279,10 +1280,18 @@ class AntOcean : ModelTask() {
                     if (isRewardReceivedStatus(taskStatus)) {
                         continue
                     }
-                    if (shouldReceiveOceanTaskReward(task, taskStatus, bizInfo)) {
+                    if (shouldReceiveOceanTaskReward(taskStatus) &&
+                        !rewardNotReadyTaskKeys.contains(bizKey)
+                    ) {
                         val awardResponse = AntOceanRpcCall.receiveTaskAward(sceneCode, taskType)
                         val joAward = JsonUtil.parseJSONObjectOrNull(awardResponse) ?: continue
-                        if (ResChecker.checkRes(TAG, joAward)) {
+                        if (isOceanTaskRewardNotReady(joAward)) {
+                            rewardNotReadyTaskKeys.add(bizKey)
+                            val msg = "海洋任务🌊[$taskTitle]奖励未就绪，等待服务端刷新后再领取"
+                            if (loggedMessages.add(msg)) {
+                                Log.ocean(TAG, msg)
+                            }
+                        } else if (ResChecker.checkRes(TAG, joAward)) {
                             Log.ocean("海洋奖励🌊[" + taskTitle + "]# " + awardCount + "拼图")
                             markOceanHomeRefreshNeeded()
                             done = true
@@ -1400,32 +1409,18 @@ class AntOcean : ModelTask() {
         return taskStatus == TaskStatus.RECEIVED.name
     }
 
-    private fun isTruthy(value: Any?): Boolean {
-        return when (value) {
-            is Boolean -> value
-            is Number -> value.toInt() != 0
-            is String -> value.equals("true", ignoreCase = true) || value == "1"
-            else -> false
+    private fun isOceanTaskRewardNotReady(jo: JSONObject): Boolean {
+        val code = jo.optString("code").ifBlank {
+            jo.optString("errorCode").ifBlank { jo.optString("resultCode") }
         }
+        val desc = jo.optString("desc").ifBlank {
+            jo.optString("errorMsg").ifBlank { jo.optString("resultDesc") }
+        }
+        return code == "400000004" || desc.contains("任务未完成,无法领取")
     }
 
-    private fun hasReceiveButton(task: JSONObject, bizInfo: JSONObject): Boolean {
-        val labels = listOf(
-            bizInfo.optString("finishJumpBtn"),
-            bizInfo.optString("receiveTips"),
-            task.optString("finishJumpBtn"),
-            task.optString("receiveTips")
-        )
-        return labels.any { label -> label.contains("领取") }
-    }
-
-    private fun shouldReceiveOceanTaskReward(task: JSONObject, taskStatus: String, bizInfo: JSONObject): Boolean {
-        if (isRewardReadyStatus(taskStatus)) {
-            return true
-        }
-        return taskStatus == TaskStatus.TODO.name &&
-            isTruthy(task.opt("curCycleFinished")) &&
-            hasReceiveButton(task, bizInfo)
+    private fun shouldReceiveOceanTaskReward(taskStatus: String): Boolean {
+        return isRewardReadyStatus(taskStatus)
     }
 
     private fun parseJSONObject(value: Any?): JSONObject? {
