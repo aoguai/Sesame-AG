@@ -3366,54 +3366,8 @@ class AntMember : ModelTask() {
         try {
             Log.sesame(TAG, "开始执行芝麻炼金⚗️")
 
-            // ================= Step 1: 自动炼金 (消耗芝麻粒升级) =================
-            val homeRes = AntMemberRpcCall.Zmxy.Alchemy.alchemyQueryHome()
-            val homeJo = JSONObject(homeRes)
-            if (ResChecker.checkRes(TAG, homeJo)) {
-                val data = homeJo.optJSONObject("data")
-                if (data != null) {
-                    var zmlBalance = data.optInt("zmlBalance", 0) // 当前芝麻粒
-                    val cost = data.optInt("alchemyCostZml", 5) // 单次消耗
-                    var capReached = data.optBoolean("capReached", false) // 是否达到上限
-                    var currentLevel = data.optInt("currentLevel", 0)
-
-                    // 循环炼金逻辑
-                    while (zmlBalance >= cost && !capReached) {
-                        delay(1500)
-                        val alchemyRes = AntMemberRpcCall.Zmxy.Alchemy.alchemyExecute()
-                        val alchemyJo = JSONObject(alchemyRes)
-
-                        if (isSesameAlchemyCapReached(alchemyJo)) {
-                            Log.sesame(TAG, "芝麻炼金⚗️[已达盖帽值，停止自动炼金]")
-                            break
-                        }
-                        if (ResChecker.checkRes(TAG, alchemyJo)) {
-                            val alData = alchemyJo.optJSONObject("data")
-                            if (alData != null) {
-                                val levelUp = alData.optBoolean("levelUp", false)
-                                val levelFull = alData.optBoolean("levelFull", false)
-                                val goldNum = alData.optInt("goldNum", 0)
-
-
-                                if (levelUp) currentLevel++
-                                if (levelFull) capReached = true
-
-                                Log.sesame(
-                                    ("芝麻炼金⚗️[炼金成功]" + "#消耗" + cost + "粒" + " | 获得" + goldNum + "金" + " | 当前等级Lv." + currentLevel + (if (levelUp) "（升级🎉）" else "") + (if (levelFull) "（满级🏆）" else ""))
-                                )
-                                zmlBalance -= cost
-                            } else {
-                                break
-                            }
-                        } else {
-                            Log.error(TAG, "芝麻炼金失败: " + alchemyJo.optString("resultView"))
-                            break
-                        }
-                    }
-                }
-            } else {
-                Log.error(TAG, "芝麻炼金首页查询失败")
-            }
+            // ================= Step 1: 自动炼金 (消耗芝麻粒升级 / 消耗免费炼金次数) =================
+            runSesameAlchemyCycles()
 
             // ================= Step 2: 自动签到 & 时段奖励 =================
             val checkInRes = AntMemberRpcCall.Zmxy.Alchemy.alchemyQueryCheckIn("alchemy")
@@ -3556,8 +3510,72 @@ class AntMember : ModelTask() {
                     Log.sesame("芝麻炼金⚗️[收取完成]#本次处理" + collectedCount + "项")
                 }
             }
+
+            // 新增浏览任务可能奖励炼金次数（LJCS），任务后仅补跑免费炼金，避免额外消耗新到账芝麻粒。
+            runSesameAlchemyCycles(allowPaidAlchemy = false)
         } catch (t: Throwable) {
             Log.printStackTrace("$TAG.doSesameAlchemy", t)
+        }
+    }
+
+    private suspend fun runSesameAlchemyCycles(allowPaidAlchemy: Boolean = true) {
+        val homeRes = AntMemberRpcCall.Zmxy.Alchemy.alchemyQueryHome()
+        val homeJo = JSONObject(homeRes)
+        if (!ResChecker.checkRes(TAG, homeJo)) {
+            Log.error(TAG, "芝麻炼金首页查询失败")
+            return
+        }
+        val data = homeJo.optJSONObject("data") ?: return
+        var zmlBalance = data.optInt("zmlBalance", 0)
+        val cost = data.optInt("alchemyCostZml", 5).coerceAtLeast(1)
+        var capReached = data.optBoolean("capReached", false)
+        var currentLevel = data.optInt("currentLevel", 0)
+        var freeAlchemyNum = data.optInt("freeAlchemyNum", 0)
+
+        while (freeAlchemyNum > 0 || (allowPaidAlchemy && zmlBalance >= cost && !capReached)) {
+            delay(1500)
+            val alchemyRes = AntMemberRpcCall.Zmxy.Alchemy.alchemyExecute()
+            val alchemyJo = JSONObject(alchemyRes)
+
+            if (isSesameAlchemyCapReached(alchemyJo) && freeAlchemyNum <= 0) {
+                Log.sesame(TAG, "芝麻炼金⚗️[已达盖帽值，停止自动炼金]")
+                break
+            }
+            if (!ResChecker.checkRes(TAG, alchemyJo)) {
+                Log.error(TAG, "芝麻炼金失败: " + alchemyJo.optString("resultView", alchemyRes))
+                break
+            }
+
+            val alData = alchemyJo.optJSONObject("data") ?: break
+            val levelUp = alData.optBoolean("levelUp", false)
+            val levelFull = alData.optBoolean("levelFull", false)
+            val goldNum = alData.optInt("goldNum", 0)
+            val usedFreeAlchemy =
+                alData.optBoolean("free", false) || (freeAlchemyNum > 0 && (!allowPaidAlchemy || capReached))
+
+            if (levelUp) {
+                currentLevel++
+            }
+            if (levelFull) {
+                capReached = true
+            }
+
+            val consumeText = if (usedFreeAlchemy) {
+                if (freeAlchemyNum > 0) {
+                    freeAlchemyNum--
+                }
+                "消耗免费次数1次"
+            } else {
+                zmlBalance -= cost
+                "消耗${cost}粒"
+            }
+
+            Log.sesame(
+                "芝麻炼金⚗️[炼金成功]#$consumeText | 获得" + goldNum + "金" +
+                    " | 当前等级Lv." + currentLevel +
+                    (if (levelUp) "（升级🎉）" else "") +
+                    (if (levelFull) "（满级🏆）" else "")
+            )
         }
     }
 
@@ -3660,8 +3678,7 @@ class AntMember : ModelTask() {
                 val finishRes = AntMemberRpcCall.finishSesameTask(recordId)
                 val finishJo = JSONObject(finishRes)
                 if (ResChecker.checkRes(TAG, finishJo)) {
-                    val reward = task.optInt("rewardAmount", 0)
-                    Log.sesame("芝麻炼金⚗️[任务完成: " + title + "]#获得" + reward + "粒")
+                    Log.sesame("芝麻炼金⚗️[任务完成: " + title + "]#获得" + formatSesameAlchemyReward(task))
                 } else {
                     val errorCode = finishJo.optString("resultCode", "")
                     val resultView = finishJo.optString("resultView", finishRes)
@@ -4514,6 +4531,22 @@ class AntMember : ModelTask() {
             return resultCode == "CAP_REACHED" || resultView.contains("盖帽值拦截")
         }
 
+        private fun formatSesameAlchemyReward(task: JSONObject): String {
+            val rewardAmount = task.optInt("rewardAmount", 0)
+            return when (task.optString("rewardType", "ZML")) {
+                "LJCS" -> rewardAmount.toString() + "次炼金次数"
+                "ZML" -> rewardAmount.toString() + "粒"
+                else -> {
+                    val rewardType = task.optString("rewardType")
+                    if (rewardType.isEmpty()) {
+                        rewardAmount.toString() + "粒"
+                    } else {
+                        rewardAmount.toString() + rewardType
+                    }
+                }
+            }
+        }
+
         private fun autoBlacklistSesameTaskIfNeeded(
             moduleName: String,
             taskTitle: String,
@@ -4618,41 +4651,52 @@ class AntMember : ModelTask() {
             return false
         }
 
-        private suspend fun handleSesameAdTask(
-            task: JSONObject,
-            taskTitle: String,
-            logPrefix: String,
-            moduleName: String
-        ): Boolean {
-            val logExtMap = task.optJSONObject("logExtMap")
-            if (logExtMap == null) {
-                Log.sesame(TAG, "$logPrefix[广告任务缺少logExtMap]#$taskTitle")
-                return false
-            }
-            val bizId = logExtMap.optString("bizId")
-            if (bizId.isEmpty()) {
-                Log.sesame(TAG, "$logPrefix[广告任务缺少bizId]#$taskTitle")
-                return false
-            }
-            Log.sesame(TAG, "$logPrefix[广告任务准备]#$taskTitle")
-            val adFinishRes = AntMemberRpcCall.taskFinish(bizId)
-            val adFinishJo = JSONObject(adFinishRes)
-            if (ResChecker.checkRes(TAG, adFinishJo) || "0" == adFinishJo.optString("errCode")) {
-                val reward = task.optInt("rewardAmount", 0)
-                Log.sesame("$logPrefix[广告任务完成: " + taskTitle + "]#获得" + reward + "粒")
-                return true
-            }
-            val errorCode = adFinishJo.optString(
-                "errorCode",
-                adFinishJo.optString("resultCode", adFinishJo.optString("errCode", ""))
-            )
-            val resultView = adFinishJo.optString("resultView").ifEmpty {
-                adFinishJo.optString("errorMessage", adFinishRes)
-            }
-            Log.error(TAG, "$logPrefix[广告任务上报失败]#$taskTitle - $resultView")
-            autoBlacklistSesameTaskIfNeeded(moduleName, taskTitle, errorCode, resultView)
+    private suspend fun handleSesameAdTask(
+        task: JSONObject,
+        taskTitle: String,
+        logPrefix: String,
+        moduleName: String
+    ): Boolean {
+        val logExtMap = task.optJSONObject("logExtMap")
+        if (logExtMap == null) {
+            Log.sesame(TAG, "$logPrefix[广告任务缺少logExtMap]#$taskTitle")
             return false
         }
+        val bizId = logExtMap.optString("bizId")
+        if (bizId.isEmpty()) {
+            Log.sesame(TAG, "$logPrefix[广告任务缺少bizId]#$taskTitle")
+            return false
+        }
+        Log.sesame(TAG, "$logPrefix[广告任务准备]#$taskTitle")
+        if ("LJCS" == task.optString("rewardType")) {
+            val adTaskBizId = task.optString("adTaskBizId").ifEmpty { bizId }
+            val rewardRes = AntMemberRpcCall.adRewardLjcs(adTaskBizId)
+            val rewardJo = JSONObject(rewardRes)
+            if (!ResChecker.checkRes(TAG, rewardJo)) {
+                val rewardMsg = rewardJo.optString("resultView").ifEmpty {
+                    rewardJo.optString("errorMessage", rewardRes)
+                }
+                Log.error(TAG, "$logPrefix[炼金次数登记失败]#$taskTitle - $rewardMsg")
+                return false
+            }
+        }
+        val adFinishRes = AntMemberRpcCall.taskFinish(bizId)
+        val adFinishJo = JSONObject(adFinishRes)
+        if (ResChecker.checkRes(TAG, adFinishJo) || "0" == adFinishJo.optString("errCode")) {
+            Log.sesame("$logPrefix[广告任务完成: " + taskTitle + "]#获得" + formatSesameAlchemyReward(task))
+            return true
+        }
+        val errorCode = adFinishJo.optString(
+            "errorCode",
+            adFinishJo.optString("resultCode", adFinishJo.optString("errCode", ""))
+        )
+        val resultView = adFinishJo.optString("resultView").ifEmpty {
+            adFinishJo.optString("errorMessage", adFinishRes)
+        }
+        Log.error(TAG, "$logPrefix[广告任务上报失败]#$taskTitle - $resultView")
+        autoBlacklistSesameTaskIfNeeded(moduleName, taskTitle, errorCode, resultView)
+        return false
+    }
 
         /**
          * 芝麻信用-领取并完成任务（带结果统计）

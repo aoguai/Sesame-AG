@@ -559,6 +559,14 @@ object AntMemberRpcCall {
         )
     }
 
+    @JvmStatic
+    fun adRewardLjcs(adTaskBizId: String): String {
+        return RequestManager.requestString(
+            "com.antgroup.zmxy.zmmemberop.biz.rpc.promise.PromiseRpcManager.adRewardLjcs",
+            """[{"adTaskBizId":"$adTaskBizId"}]"""
+        )
+    }
+
     /**
      * 查询可收取的芝麻粒
      */
