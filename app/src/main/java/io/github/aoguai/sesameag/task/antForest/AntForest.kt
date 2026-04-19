@@ -1083,7 +1083,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     }
 
     internal fun hasPendingRobMultiplierEnergy(): Boolean {
-        return robMultiplierCardEndTime > 0L
+        return robMultiplierCardEndTime > System.currentTimeMillis()
     }
 
     internal fun logForestEnergyInfo() {
@@ -3492,6 +3492,141 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         val code = response.optString("code")
         val desc = response.optString("desc")
         return code == "1400000001" || desc.contains("重复签到")
+    }
+
+    private fun isAntiepSuccess(response: JSONObject): Boolean {
+        return response.optBoolean("success") ||
+            response.optString("code") == "100000000" ||
+            response.optString("resultCode").equals("SUCCESS", true)
+    }
+
+    private fun unwrapGift7thResponse(response: JSONObject): JSONObject {
+        return response.optJSONObject("resData") ?: response
+    }
+
+    private fun extractGift7thAwardName(signResponse: JSONObject, signRecord: JSONObject?): String {
+        val signAwardName = signResponse.optJSONObject("signModel")
+            ?.optJSONObject("signAward")
+            ?.optJSONObject("bizInfo")
+            ?.optString("awardName")
+            .orEmpty()
+        if (signAwardName.isNotBlank()) {
+            return signAwardName
+        }
+        return signRecord?.optJSONObject("extInfo")
+            ?.optString("awardName")
+            .orEmpty()
+    }
+
+    private fun hasGift7thActivity(homePage: JSONObject?): Boolean {
+        val ext = homePage?.optJSONObject("properties")
+            ?.optString("ext")
+            .orEmpty()
+        if (ext.isBlank()) {
+            return false
+        }
+        val extObject = runCatching { JSONObject(ext) }.getOrNull() ?: return false
+        return extObject.optString("sigh7thBizType").isNotBlank()
+    }
+
+    internal fun handleGift7thSign(
+        homePage: JSONObject?,
+        source: String = GIFT7TH_SIGN_SOURCE
+    ) {
+        try {
+            if (!hasGift7thActivity(homePage)) {
+                return
+            }
+
+            val currentUid = UserMap.currentUid
+            if (currentUid.isNullOrBlank()) {
+                Log.forest(TAG, "森林七日礼包缺少用户ID，跳过自动领取")
+                return
+            }
+
+            val entranceResponse = unwrapGift7thResponse(
+                JSONObject(
+                    AntForestRpcCall.signEntranceAccess(
+                        GIFT7TH_SIGN_SCENE_CODE,
+                        source,
+                        source
+                    )
+                )
+            )
+            if (!isAntiepSuccess(entranceResponse)) {
+                Log.forest(TAG, "森林七日礼包入口查询失败：${entranceResponse.optString("desc")}")
+                return
+            }
+            if (!entranceResponse.optBoolean("showEntrance", false)) {
+                return
+            }
+
+            val commonSignResponse = unwrapGift7thResponse(
+                JSONObject(
+                    AntForestRpcCall.queryCommonSign(
+                        GIFT7TH_SIGN_SCENE_CODE,
+                        source,
+                        true
+                    )
+                )
+            )
+            if (!ResChecker.checkRes(TAG + "森林七日礼包查询失败:", commonSignResponse)) {
+                return
+            }
+
+            val forestSignVO = commonSignResponse.optJSONObject("forestSignVO") ?: return
+            val currentSignKey = forestSignVO.optString("currentSignKey")
+            val signRecords = forestSignVO.optJSONArray("signRecords") ?: return
+            if (currentSignKey.isBlank()) {
+                Log.forest(TAG, "森林七日礼包缺少当前签到标识，跳过自动领取")
+                return
+            }
+
+            var currentSignRecord: JSONObject? = null
+            for (i in 0..<signRecords.length()) {
+                val signRecord = signRecords.optJSONObject(i) ?: continue
+                if (signRecord.optString("signKey") == currentSignKey) {
+                    currentSignRecord = signRecord
+                    break
+                }
+            }
+
+            val todaySignRecord = currentSignRecord ?: run {
+                Log.forest(TAG, "森林七日礼包未找到今日签到记录，跳过自动领取")
+                return
+            }
+
+            if (todaySignRecord.optBoolean("signed", false)) {
+                return
+            }
+
+            val signResponse = unwrapGift7thResponse(
+                JSONObject(
+                    AntForestRpcCall.signCommon(
+                        forestSignVO.optString("sceneCode", GIFT7TH_SIGN_SCENE_CODE),
+                        currentUid
+                    )
+                )
+            )
+            GlobalThreadPools.sleepCompat(300)
+
+            if (isForestSignAlreadyHandled(signResponse)) {
+                Log.forest(TAG, "森林七日礼包已完成，跳过重复领取")
+                return
+            }
+            if (!isAntiepSuccess(signResponse)) {
+                Log.forest(TAG, "森林七日礼包领取失败：${signResponse.optString("desc")}")
+                return
+            }
+
+            val awardName = extractGift7thAwardName(signResponse, todaySignRecord)
+            val awardSuffix = if (awardName.isNotBlank()) "[$awardName]" else ""
+            val continuousCount = signResponse.optInt("continuousCount", 0)
+            val continuousSuffix = if (continuousCount > 0) "#连签${continuousCount}天" else ""
+            Log.forest("森林七日礼包🎁$awardSuffix$continuousSuffix")
+        } catch (t: Throwable) {
+            handleException("handleGift7thSign", t)
+        }
     }
 
     private fun isForestTaskAlreadyHandled(response: JSONObject): Boolean {
@@ -6155,6 +6290,8 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         // 访问好友主页过快容易触发风控；这里在并发和最小间隔上做保守兜底（仍可通过配置调大查询间隔）。
         private const val FRIEND_PROCESS_CONCURRENCY = 8
         private const val FRIEND_HOME_MIN_INTERVAL_MS = 2000
+        private const val GIFT7TH_SIGN_SCENE_CODE = "ANTFOREST_GIFT7TH_SIGN_202506"
+        private const val GIFT7TH_SIGN_SOURCE = "chInfo_ch_appcenter__chsub_9patch"
 
         @JvmField
         var instance: AntForest? = null
@@ -6486,9 +6623,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     }
                     if (hasPendingRobMultiplierEnergy()) {
                         updateSelfHomePage(
-                            collectRobMultiplierEnergy = true,
-                            robMultiplierEnergySource = AntForestRpcCall.BACK_FROM_ENERGY_RAIN_SOURCE,
-                            homePageSource = AntForestRpcCall.BACK_FROM_ENERGY_RAIN_SOURCE
+                            collectRobMultiplierEnergy = true
                         )
                     }
                 }

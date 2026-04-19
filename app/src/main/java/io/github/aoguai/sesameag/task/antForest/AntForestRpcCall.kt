@@ -630,6 +630,53 @@ object AntForestRpcCall {
 
     @JvmStatic
     @Throws(JSONException::class)
+    fun signEntranceAccess(
+        sceneCode: String,
+        source: String = DEFAULT_SOURCE,
+        externalSource: String = source
+    ): String {
+        val jo = JSONObject().apply {
+            put("externalSource", externalSource)
+            put("requestType", "RPC")
+            put("sceneCode", sceneCode)
+            put("source", source)
+        }
+        return RequestManager.requestString("com.alipay.antiep.signEntranceAccess", "[$jo]")
+    }
+
+    @JvmStatic
+    @Throws(JSONException::class)
+    fun queryCommonSign(
+        bizType: String,
+        source: String = DEFAULT_SOURCE,
+        withEntity: Boolean = true
+    ): String {
+        val jo = JSONObject().apply {
+            put("bizType", bizType)
+            put("source", source)
+            put("withEntity", withEntity)
+        }
+        return RequestManager.requestString("alipay.antforest.forest.h5.queryCommonSign", "[$jo]")
+    }
+
+    @JvmStatic
+    @Throws(JSONException::class)
+    fun signCommon(
+        sceneCode: String,
+        userId: String,
+        source: String = "ANTFOREST"
+    ): String {
+        val jo = JSONObject().apply {
+            put("requestType", "rpc")
+            put("sceneCode", sceneCode)
+            put("source", source)
+            put("userId", userId)
+        }
+        return RequestManager.requestString("com.alipay.antiep.sign", "[$jo]")
+    }
+
+    @JvmStatic
+    @Throws(JSONException::class)
     fun queryPropList(onlyGive: Boolean): String {
         val jo = JSONObject().apply {
             put("onlyGive", if (onlyGive) "Y" else "")

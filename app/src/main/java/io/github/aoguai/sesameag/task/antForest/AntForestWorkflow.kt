@@ -94,6 +94,8 @@ internal suspend fun AntForest.runForestHomeFollowUpWorkflow(selfHomeObj: JSONOb
     if (receiveForestTaskAward?.value == true) {
         receiveTaskAward()
         tc.countDebug("森林任务")
+        handleGift7thSign(selfHomeObj)
+        tc.countDebug("森林七日礼包")
     }
     if (ecoLife?.value == true) {
         if (ecoLifeTime?.isReachedToday() == true) {
@@ -171,17 +173,7 @@ internal suspend fun AntForest.runForestHomeFollowUpWorkflow(selfHomeObj: JSONOb
 
     if (hasPendingRobMultiplierEnergy()) {
         updateSelfHomePage(
-            collectRobMultiplierEnergy = true,
-            robMultiplierEnergySource = if (shouldRefreshForestHomeAfterEnergyRain) {
-                AntForestRpcCall.BACK_FROM_ENERGY_RAIN_SOURCE
-            } else {
-                null
-            },
-            homePageSource = if (shouldRefreshForestHomeAfterEnergyRain) {
-                AntForestRpcCall.BACK_FROM_ENERGY_RAIN_SOURCE
-            } else {
-                null
-            }
+            collectRobMultiplierEnergy = true
         )
         tc.countDebug("领取N倍卡能量")
     }

@@ -11,14 +11,14 @@ object XLightRpcCall {
 
     // 固定 SDK 信息
     private const val AD_COMPONENT_TYPE = "FEEDS"
-    private const val AD_COMPONENT_VERSION = "4.29.46"
+    private const val AD_COMPONENT_VERSION = "4.30.21"
     private const val ENABLE_FUSION = true
     private const val NETWORK_TYPE = "WWAN"
     private const val PAGE_NO = 2
     private const val UNION_APP_ID = "2060090000304921"
-    private const val XLIGHT_RUNTIME_SDK_VERSION = "4.29.46"
+    private const val XLIGHT_RUNTIME_SDK_VERSION = "4.30.21"
     private const val XLIGHT_SDK_TYPE = "h5"
-    private const val XLIGHT_SDK_VERSION = "4.29.46"
+    private const val XLIGHT_SDK_VERSION = "4.30.21"
 
     /**
      * 调用 xlightPlugin
@@ -214,8 +214,16 @@ object UrlUtil {
             if (remaining.startsWith("http://") || remaining.startsWith("https://")) {
                 // 查找下一个顶层&符号(在URL外部的&)
                 // 策略: 检测到&后,判断其后是否跟着已知的顶层参数名
-                val topLevelParams = listOf("canPullDown=", "showOptionMenu=", "iepTaskType=",
-                    "iepTaskSceneCode=", "canDoTask=", "awardCount=", "doneTimes=")
+                val topLevelParams = listOf(
+                    "canPullDown=",
+                    "showOptionMenu=",
+                    "iepTaskType=",
+                    "iepTaskSceneCode=",
+                    "canDoTask=",
+                    "awardCount=",
+                    "doneTimes=",
+                    "xlightFrom="
+                )
 
                 for (i in remaining.indices) {
                     if (remaining[i] == '&') {
