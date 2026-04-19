@@ -2745,7 +2745,7 @@ class AntFarm : ModelTask() {
         // 2) 同步最新状态，确保消耗速度、已吃量、食槽上限为最新
         syncAnimalStatus(ownerFarmId)
         if (AnimalBuff.ACCELERATING.name == ownerAnimal.animalBuff) {
-            Log.farm(TAG, "加速卡效果仍在生效，跳过本轮继续使用")
+            Log.farm(TAG, "加速卡效果在本轮开始前已生效，跳过本轮继续使用")
             return false
         }
 
@@ -2815,10 +2815,6 @@ class AntFarm : ModelTask() {
             }
             if (accelerateToolCount <= 0) {
                 exitReason = "NO_TOOL_LEFT"
-                break
-            }
-            if (AnimalBuff.ACCELERATING.name == ownerAnimal.animalBuff) {
-                exitReason = "BUFF_STILL_ACTIVE"
                 break
             }
             if (useFarmTool(ownerFarmId, ToolType.ACCELERATETOOL)) {
@@ -2900,7 +2896,6 @@ class AntFarm : ModelTask() {
             "USER_LIMIT" -> Log.farm("今日加速卡已达到设定上限，本轮不再继续使用")
             "FLAGGED_LIMIT" -> Log.farm("今日加速卡已达设定/系统上限，本轮不再继续使用")
             "NO_TOOL_LEFT" -> Log.farm("背包中已无可用加速卡，本轮停止继续使用")
-            "BUFF_STILL_ACTIVE" -> Log.farm("加速卡效果仍在生效，本轮不继续叠加使用加速卡")
         }
         Log.farm(TAG, "加速卡内部⏩最终 isUseAccelerateTool=$isUseAccelerateTool")
         return isUseAccelerateTool
@@ -2917,14 +2912,6 @@ class AntFarm : ModelTask() {
             Log.farm(TAG, "道具🎭[${toolType.nickName()}]返回“道具使用无效”，开始刷新状态复核")
             syncAnimalStatus(targetFarmId)
             listFarmTool()
-            if (toolType == ToolType.ACCELERATETOOL &&
-                wasAcceleratingActive &&
-                AnimalBuff.ACCELERATING.name == ownerAnimal.animalBuff
-            ) {
-                invalidToolTypesThisRound.add(toolType)
-                Log.farm(TAG, "道具🎭[${toolType.nickName()}]加速效果仍在生效，本轮停止继续尝试")
-                return false
-            }
             val toolCountAfter = getFarmToolCount(toolType, forceRefresh = false)
             if (toolCountAfter in 0 until toolCountBefore) {
                 Log.farm(
@@ -2932,6 +2919,14 @@ class AntFarm : ModelTask() {
                     "道具🎭[${toolType.nickName()}]复核后确认已生效/已消耗（${toolCountBefore}→${toolCountAfter}），按成功处理"
                 )
                 return true
+            }
+            if (toolType == ToolType.ACCELERATETOOL &&
+                wasAcceleratingActive &&
+                AnimalBuff.ACCELERATING.name == ownerAnimal.animalBuff
+            ) {
+                invalidToolTypesThisRound.add(toolType)
+                Log.farm(TAG, "道具🎭[${toolType.nickName()}]加速效果仍在生效，本轮停止继续尝试")
+                return false
             }
             if (toolType == ToolType.BIG_EATER_TOOL && !wasBigEaterActive && serverUseBigEaterTool) {
                 Log.farm(TAG, "道具🎭[${toolType.nickName()}]复核后确认已处于生效状态，按成功处理")

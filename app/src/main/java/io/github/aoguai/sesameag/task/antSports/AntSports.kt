@@ -63,6 +63,9 @@ class AntSports : ModelTask() {
 
         /** @brief 训练好友目标变更重试上限 */
         private const val MAX_TRAIN_MEMBER_CHANGED_RETRIES = 5
+
+        /** @brief 运动首页任务最大补拉轮次 */
+        private const val MAX_SPORTS_HOME_BUBBLE_ROUNDS = 10
     }
 
     private data class SportsHomeRewardCandidate(
@@ -1215,35 +1218,54 @@ class AntSports : ModelTask() {
         clubHomeData: JSONObject,
         skippedOriginBossIds: Set<String> = emptySet()
     ): SportsTrainTarget? {
+        val mainRoomTarget = findTrainTargetInRoom(
+            clubHomeData.optJSONObject("mainRoom"),
+            skippedOriginBossIds
+        )
+        if (mainRoomTarget != null) {
+            return mainRoomTarget
+        }
+
         val roomList = clubHomeData.optJSONArray("roomList") ?: return null
         for (i in 0 until roomList.length()) {
             val room = roomList.optJSONObject(i) ?: continue
-            val memberList = room.optJSONArray("memberList") ?: continue
-            for (j in 0 until memberList.length()) {
-                val member = memberList.optJSONObject(j) ?: continue
-                val trainInfo = member.optJSONObject("trainInfo") ?: continue
-                if (trainInfo.optBoolean("training", false)) {
-                    continue
-                }
-
-                val memberId = member.optString("memberId", "")
-                val originBossId = member.optString("originBossId", "")
-                if (memberId.isBlank() || originBossId.isBlank()) {
-                    continue
-                }
-                if (originBossId in skippedOriginBossIds) {
-                    continue
-                }
-                if (FriendGuard.shouldSkipFriend(originBossId, TAG, "训练好友")) {
-                    continue
-                }
-                val userName = UserMap.getMaskName(originBossId) ?: originBossId
-                return SportsTrainTarget(
-                    memberId = memberId,
-                    originBossId = originBossId,
-                    userName = userName
-                )
+            val target = findTrainTargetInRoom(room, skippedOriginBossIds)
+            if (target != null) {
+                return target
             }
+        }
+        return null
+    }
+
+    private fun findTrainTargetInRoom(
+        room: JSONObject?,
+        skippedOriginBossIds: Set<String>
+    ): SportsTrainTarget? {
+        val memberList = room?.optJSONArray("memberList") ?: return null
+        for (j in 0 until memberList.length()) {
+            val member = memberList.optJSONObject(j) ?: continue
+            val trainInfo = member.optJSONObject("trainInfo") ?: continue
+            if (trainInfo.optBoolean("training", false)) {
+                continue
+            }
+
+            val memberId = member.optString("memberId", "")
+            val originBossId = member.optString("originBossId", "")
+            if (memberId.isBlank() || originBossId.isBlank()) {
+                continue
+            }
+            if (originBossId in skippedOriginBossIds) {
+                continue
+            }
+            if (FriendGuard.shouldSkipFriend(originBossId, TAG, "训练好友")) {
+                continue
+            }
+            val userName = UserMap.getMaskName(originBossId) ?: originBossId
+            return SportsTrainTarget(
+                memberId = memberId,
+                originBossId = originBossId,
+                userName = userName
+            )
         }
         return null
     }
@@ -1299,154 +1321,168 @@ class AntSports : ModelTask() {
 
     private fun sportsEnergyBubbleTask() {
         try {
-            val jo = JSONObject(AntSportsRpcCall.queryEnergyBubbleModule())
-            if (!ResChecker.checkRes(TAG, jo)) {
-                Log.error(TAG, "queryEnergyBubbleModule fail: $jo")
-                return
-            }
+            var round = 1
+            while (round <= MAX_SPORTS_HOME_BUBBLE_ROUNDS) {
+                val jo = JSONObject(AntSportsRpcCall.queryEnergyBubbleModule())
+                if (!ResChecker.checkRes(TAG, jo)) {
+                    Log.error(TAG, "queryEnergyBubbleModule fail: $jo")
+                    return
+                }
 
-            val data = jo.optJSONObject("data") ?: return
-            if (!data.has("recBubbleList")) return
+                val data = jo.optJSONObject("data") ?: return
+                if (!data.has("recBubbleList")) return
 
-            val recBubbleList = data.optJSONArray("recBubbleList") ?: return
-            if (recBubbleList.length() == 0) return
+                val recBubbleList = data.optJSONArray("recBubbleList") ?: return
+                if (recBubbleList.length() == 0) return
 
-            var hasCompletedTask = false
-            var hasPendingRewardBubble = false
-            var rewardScanResult = collectSportsHomeRewardScanResult(recBubbleList)
+                var hasCompletedTask = false
+                var hasPendingRewardBubble = false
+                var receivedRewardThisRound = false
+                var rewardScanResult = collectSportsHomeRewardScanResult(recBubbleList)
 
-            for (i in 0 until recBubbleList.length()) {
-                val bubble = recBubbleList.optJSONObject(i) ?: continue
+                for (i in 0 until recBubbleList.length()) {
+                    val bubble = recBubbleList.optJSONObject(i) ?: continue
 
-                val bubbleType = bubble.optString("bubbleType", "")
-                val sourceName = bubble.optString("simpleSourceName", "运动首页")
+                    val bubbleType = bubble.optString("bubbleType", "")
+                    val sourceName = bubble.optString("simpleSourceName", "运动首页")
 
-                if (bubbleType == "receive_coin_bubble" || bubble.optString("assetId", "").isNotBlank()) {
-                    hasPendingRewardBubble = true
-                    val pendingTaskId = bubble.optString("channel", "")
-                    val pendingRecordId = bubble.optString("assetId", "")
-                    val coinAmount = bubble.optInt("coinAmount", 0)
+                    if (bubbleType == "receive_coin_bubble" || bubble.optString("assetId", "").isNotBlank()) {
+                        hasPendingRewardBubble = true
+                        val pendingTaskId = bubble.optString("channel", "")
+                        val pendingRecordId = bubble.optString("assetId", "")
+                        val coinAmount = bubble.optInt("coinAmount", 0)
+                        Log.sports(
+                            TAG,
+                            "运动首页任务[待领取气泡：$sourceName，taskId=$pendingTaskId，recordId=${pendingRecordId.ifBlank { "unknown" }}，coin=$coinAmount]"
+                        )
+                        continue
+                    }
+
+                    if (bubbleType != "task_bubble") {
+                        continue
+                    }
+
+                    val task = bubble.optJSONObject("task")
+                    if (task == null) {
+                        Log.sports(TAG, "运动首页任务[跳过：$sourceName，无task载荷]")
+                        continue
+                    }
+
+                    val taskId = task.optString("taskId", "")
+                    val taskName = task.optString("taskName", sourceName.ifBlank { taskId })
+                    if (taskId.isBlank()) {
+                        Log.sports(TAG, "运动首页任务[跳过：$taskName，taskId为空]")
+                        continue
+                    }
+
+                    val taskStatus = task.optString("taskStatus", "")
+                    val isBlacklisted =
+                        TaskBlacklist.isTaskInBlacklist(SPORTS_TASK_BLACKLIST_MODULE, taskId) ||
+                            TaskBlacklist.isTaskInBlacklist(SPORTS_TASK_BLACKLIST_MODULE, taskName)
+                    if (isBlacklisted && taskStatus != "WAIT_RECEIVE") {
+                        Log.sports(TAG, "运动首页任务[黑名单跳过：$taskName，taskId=$taskId]")
+                        continue
+                    }
+
+                    val cooldownFlag = buildSportsHomeBubbleCooldownFlag(taskId)
+                    if (Status.hasFlagToday(cooldownFlag) && taskStatus != "WAIT_RECEIVE") {
+                        Log.sports(TAG, "运动首页任务[今日冷却跳过：$taskName，taskId=$taskId]")
+                        continue
+                    }
+
+                    if (taskStatus == "WAIT_RECEIVE") {
+                        hasPendingRewardBubble = true
+                        val rewardRecordId = task.optString("assetId", "")
+                        Log.sports(
+                            TAG,
+                            "运动首页任务[待领取奖励：$taskName，taskId=$taskId，recordId=${rewardRecordId.ifBlank { "unknown" }}]"
+                        )
+                        continue
+                    }
+                    if (taskStatus != "WAIT_COMPLETE") {
+                        Log.sports(TAG, "运动首页任务[状态跳过：$taskName，taskId=$taskId，status=$taskStatus]")
+                        continue
+                    }
+
                     Log.sports(
                         TAG,
-                        "运动首页任务[待领取气泡：$sourceName，taskId=$pendingTaskId，recordId=${pendingRecordId.ifBlank { "unknown" }}，coin=$coinAmount]"
+                        "运动首页任务[直完成开始：$taskName，taskId=$taskId，taskType=${task.optString("taskType", "")}]"
                     )
-                    continue
-                }
+                    val completeRes = JSONObject(AntSportsRpcCall.completeHomeBubbleTask(taskId))
 
-                if (bubbleType != "task_bubble") {
-                    continue
-                }
+                    if (ResChecker.checkRes(TAG, completeRes)) {
+                        hasCompletedTask = true
+                        hasPendingRewardBubble = true
+                        val dataObj = completeRes.optJSONObject("data")
+                        val assetCoinAmount =
+                            dataObj?.optInt("assetCoinAmount", task.optInt("prizeAmount", 0)) ?: 0
+                        Log.sports("运动球任务✅[$taskName]#奖励$assetCoinAmount💰")
+                        ActionDelayUtil.humanActionSleep()
+                        continue
+                    }
 
-                val task = bubble.optJSONObject("task")
-                if (task == null) {
-                    Log.sports(TAG, "运动首页任务[跳过：$sourceName，无task载荷]")
-                    continue
-                }
-
-                val taskId = task.optString("taskId", "")
-                val taskName = task.optString("taskName", sourceName.ifBlank { taskId })
-                if (taskId.isBlank()) {
-                    Log.sports(TAG, "运动首页任务[跳过：$taskName，taskId为空]")
-                    continue
-                }
-
-                val taskStatus = task.optString("taskStatus", "")
-                val isBlacklisted =
-                    TaskBlacklist.isTaskInBlacklist(SPORTS_TASK_BLACKLIST_MODULE, taskId) ||
-                        TaskBlacklist.isTaskInBlacklist(SPORTS_TASK_BLACKLIST_MODULE, taskName)
-                if (isBlacklisted && taskStatus != "WAIT_RECEIVE") {
-                    Log.sports(TAG, "运动首页任务[黑名单跳过：$taskName，taskId=$taskId]")
-                    continue
-                }
-
-                val cooldownFlag = buildSportsHomeBubbleCooldownFlag(taskId)
-                if (Status.hasFlagToday(cooldownFlag) && taskStatus != "WAIT_RECEIVE") {
-                    Log.sports(TAG, "运动首页任务[今日冷却跳过：$taskName，taskId=$taskId]")
-                    continue
-                }
-
-                if (taskStatus == "WAIT_RECEIVE") {
-                    hasPendingRewardBubble = true
-                    val rewardRecordId = task.optString("assetId", "")
-                    Log.sports(
-                        TAG,
-                        "运动首页任务[待领取奖励：$taskName，taskId=$taskId，recordId=${rewardRecordId.ifBlank { "unknown" }}]"
-                    )
-                    continue
-                }
-                if (taskStatus != "WAIT_COMPLETE") {
-                    Log.sports(TAG, "运动首页任务[状态跳过：$taskName，taskId=$taskId，status=$taskStatus]")
-                    continue
-                }
-
-                Log.sports(
-                    TAG,
-                    "运动首页任务[直完成开始：$taskName，taskId=$taskId，taskType=${task.optString("taskType", "")}]"
-                )
-                val completeRes = JSONObject(AntSportsRpcCall.completeHomeBubbleTask(taskId))
-
-                if (ResChecker.checkRes(TAG, completeRes)) {
-                    hasCompletedTask = true
-                    hasPendingRewardBubble = true
-                    val dataObj = completeRes.optJSONObject("data")
-                    val assetCoinAmount = dataObj?.optInt("assetCoinAmount", task.optInt("prizeAmount", 0)) ?: 0
-                    Log.sports("运动球任务✅[$taskName]#奖励$assetCoinAmount💰")
+                    val errorCode = extractSportsHomeBubbleErrorCode(completeRes)
+                    val errorMsg = extractSportsHomeBubbleErrorMessage(completeRes)
+                    if (shouldCooldownSportsHomeBubbleTask(completeRes)) {
+                        Status.setFlagToday(cooldownFlag)
+                        Log.error(
+                            TAG,
+                            "运动首页任务业务RPC失败[进入冷却：$taskName，taskId=$taskId，code=$errorCode，msg=$errorMsg] 响应：$completeRes"
+                        )
+                    } else {
+                        if (errorCode.isNotBlank()) {
+                            TaskBlacklist.autoAddToBlacklist(SPORTS_TASK_BLACKLIST_MODULE, taskId, taskName, errorCode)
+                        }
+                        Log.error(
+                            TAG,
+                            "运动首页任务❌[$taskName][taskId=$taskId][code=$errorCode][msg=$errorMsg] 响应：$completeRes"
+                        )
+                    }
                     ActionDelayUtil.humanActionSleep()
-                    continue
                 }
 
-                val errorCode = extractSportsHomeBubbleErrorCode(completeRes)
-                val errorMsg = extractSportsHomeBubbleErrorMessage(completeRes)
-                if (shouldCooldownSportsHomeBubbleTask(completeRes)) {
-                    Status.setFlagToday(cooldownFlag)
-                    Log.error(
-                        TAG,
-                        "运动首页任务业务RPC失败[进入冷却：$taskName，taskId=$taskId，code=$errorCode，msg=$errorMsg] 响应：$completeRes"
-                    )
-                } else {
-                    if (errorCode.isNotBlank()) {
-                        TaskBlacklist.autoAddToBlacklist(SPORTS_TASK_BLACKLIST_MODULE, taskId, taskName, errorCode)
+                if (hasCompletedTask || hasPendingRewardBubble) {
+                    if (hasCompletedTask) {
+                        val refreshedRewardScanResult = querySportsHomeRewardScanResult()
+                        if (refreshedRewardScanResult != null) {
+                            rewardScanResult = mergeSportsHomeRewardScanResults(rewardScanResult, refreshedRewardScanResult)
+                        } else {
+                            rewardScanResult.missingRecordIdCount++
+                        }
                     }
-                    Log.error(
-                        TAG,
-                        "运动首页任务❌[$taskName][taskId=$taskId][code=$errorCode][msg=$errorMsg] 响应：$completeRes"
-                    )
-                }
-                ActionDelayUtil.humanActionSleep()
-            }
 
-            if (hasCompletedTask || hasPendingRewardBubble) {
-                if (hasCompletedTask) {
-                    val refreshedRewardScanResult = querySportsHomeRewardScanResult()
-                    if (refreshedRewardScanResult != null) {
-                        rewardScanResult = mergeSportsHomeRewardScanResults(rewardScanResult, refreshedRewardScanResult)
-                    } else {
-                        rewardScanResult.missingRecordIdCount++
+                    val receivedByRecordId = receiveSportsHomeRewardCandidates(rewardScanResult)
+                    if (receivedByRecordId) {
+                        receivedRewardThisRound = true
                     }
+                    val shouldFallbackPickAll =
+                        rewardScanResult.missingRecordIdCount > 0 ||
+                            (hasCompletedTask && rewardScanResult.candidates.isEmpty())
+                    if (shouldFallbackPickAll) {
+                        Log.sports(
+                            TAG,
+                            "运动首页任务[奖励兜底领取：pickAll，knownRecordIds=${rewardScanResult.candidates.size}，missingRecordIds=${rewardScanResult.missingRecordIdCount}]"
+                        )
+                        val resultJson = JSONObject(AntSportsRpcCall.pickBubbleTaskEnergy())
+                        if (ResChecker.checkRes(TAG, resultJson)) {
+                            val dataObj = resultJson.optJSONObject("data")
+                            val balance = dataObj?.optString("balance", "0") ?: "0"
+                            receivedRewardThisRound = true
+                            Log.sports("拾取能量球成功  当前余额: $balance💰")
+                        } else {
+                            Log.error(TAG, "领取能量球任务失败: ${extractSportsRpcErrorMessage(resultJson)} raw=$resultJson")
+                        }
+                    } else if (!receivedByRecordId) {
+                        Log.sports(TAG, "运动首页任务[无可领取奖励记录，跳过pickAll兜底]")
+                    }
+                } else if (round == 1) {
+                    Log.sports(TAG, "未完成任何任务，跳过领取能量球")
                 }
 
-                val receivedByRecordId = receiveSportsHomeRewardCandidates(rewardScanResult)
-                val shouldFallbackPickAll =
-                    rewardScanResult.missingRecordIdCount > 0 ||
-                        (hasCompletedTask && rewardScanResult.candidates.isEmpty())
-                if (shouldFallbackPickAll) {
-                    Log.sports(
-                        TAG,
-                        "运动首页任务[奖励兜底领取：pickAll，knownRecordIds=${rewardScanResult.candidates.size}，missingRecordIds=${rewardScanResult.missingRecordIdCount}]"
-                    )
-                    val resultJson = JSONObject(AntSportsRpcCall.pickBubbleTaskEnergy())
-                    if (ResChecker.checkRes(TAG, resultJson)) {
-                        val dataObj = resultJson.optJSONObject("data")
-                        val balance = dataObj?.optString("balance", "0") ?: "0"
-                        Log.sports("拾取能量球成功  当前余额: $balance💰")
-                    } else {
-                        Log.error(TAG, "领取能量球任务失败: ${extractSportsRpcErrorMessage(resultJson)} raw=$resultJson")
-                    }
-                } else if (!receivedByRecordId) {
-                    Log.sports(TAG, "运动首页任务[无可领取奖励记录，跳过pickAll兜底]")
+                if (!hasCompletedTask && !receivedRewardThisRound) {
+                    break
                 }
-            } else {
-                Log.sports(TAG, "未完成任何任务，跳过领取能量球")
+                round++
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "sportsEnergyBubbleTask err:", t)
