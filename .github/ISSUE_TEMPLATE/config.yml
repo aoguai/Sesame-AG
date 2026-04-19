@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: 一般讨论 / Discussions
+    url: https://github.com/aoguai/Sesame-AG/discussions
+    about: 一般讨论、使用交流、提问、想法碰撞请优先发到 Discussions，而不是 Issue。
   - name: 使用说明 / README
     url: https://github.com/aoguai/Sesame-AG/blob/dev/README.md
     about: 提交 Issue 前先阅读项目定位、兼容性、安装与构建说明。

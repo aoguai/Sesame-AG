@@ -376,28 +376,22 @@ jobs:
             range_args=("${prev_tag}..${GITHUB_SHA}")
           fi
 
-          declare -A author_first_sha=()
-          while IFS=$'\t' read -r author_email author_name author_sha; do
-            [[ -n "${author_sha}" ]] || continue
-            author_key="${author_name}|${author_email,,}"
-            if [[ -z "${author_first_sha[$author_key]+x}" ]]; then
-              author_first_sha[$author_key]="${author_sha}"
-            fi
-          done < <(git log --reverse --format='%ae%x09%an%x09%H' --all)
-
-          declare -A release_author_first_sha=()
-          declare -A release_author_name=()
-          declare -A release_author_email=()
+          contributors_path="${tmp_dir}/contributors.tsv"
+          : > "${contributors_path}"
+          declare -A seen_release_author=()
           relevant_commit_count=0
 
           while IFS=$'\t' read -r commit_sha commit_subject author_name author_email; do
             [[ -n "${commit_sha}" ]] || continue
 
             author_key="${author_name}|${author_email,,}"
-            if [[ -z "${release_author_first_sha[$author_key]+x}" ]]; then
-              release_author_first_sha[$author_key]="${commit_sha}"
-              release_author_name[$author_key]="${author_name}"
-              release_author_email[$author_key]="${author_email}"
+            if [[ -z "${seen_release_author[$author_key]+x}" ]]; then
+              seen_release_author[$author_key]=1
+              printf '%s\t%s\t%s\n' \
+                "${commit_sha}" \
+                "${author_name}" \
+                "${author_email}" \
+                >> "${contributors_path}"
             fi
 
             if [[ "${commit_subject}" =~ ${excluded_type_regex} ]]; then
@@ -427,25 +421,9 @@ jobs:
               >> "${tmp_dir}/${category}.md"
           done < <(git log --reverse --format='%H%x09%s%x09%an%x09%ae' "${range_args[@]}")
 
-          first_contributor_path="${tmp_dir}/first-contributors.tsv"
-          : > "${first_contributor_path}"
-          for author_key in "${!release_author_first_sha[@]}"; do
-            if [[ "${author_first_sha[$author_key]:-}" == "${release_author_first_sha[$author_key]}" ]]; then
-              printf '%s\t%s\t%s\n' \
-                "${release_author_first_sha[$author_key]}" \
-                "${release_author_name[$author_key]}" \
-                "${release_author_email[$author_key]}" \
-                >> "${first_contributor_path}"
-            fi
-          done
-
-          if [[ -s "${first_contributor_path}" ]]; then
-            sort -u "${first_contributor_path}" -o "${first_contributor_path}"
-          fi
-
-          first_contributor_html=""
-          first_contributor_names=()
-          declare -A seen_first_contributor=()
+          contributor_html=""
+          contributor_names=()
+          declare -A seen_contributor=()
 
           while IFS=$'\t' read -r contributor_sha contributor_name contributor_email; do
             [[ -n "${contributor_sha}" ]] || continue
@@ -465,20 +443,20 @@ jobs:
             fi
 
             dedupe_key="${contributor_login:-${contributor_name}|${contributor_email}}"
-            if [[ -n "${seen_first_contributor[$dedupe_key]+x}" ]]; then
+            if [[ -n "${seen_contributor[$dedupe_key]+x}" ]]; then
               continue
             fi
-            seen_first_contributor[$dedupe_key]=1
+            seen_contributor[$dedupe_key]=1
 
             contributor_label="${contributor_name}"
             if [[ -n "${contributor_login}" ]]; then
               contributor_label="@${contributor_login}"
             fi
 
-            first_contributor_names+=("${contributor_label}")
+            contributor_names+=("${contributor_label}")
 
             if [[ -n "${contributor_login}" && -n "${contributor_avatar_url}" ]]; then
-              first_contributor_html+="$(
+              contributor_html+="$(
                 printf '<a href="https://github.com/%s" title="%s"><img src="%s" width="40" height="40" alt="%s" style="border-radius:50%%;margin:0 6px 6px 0;" /></a>' \
                   "${contributor_login}" \
                   "${contributor_label}" \
@@ -486,7 +464,7 @@ jobs:
                   "${contributor_label}"
               )"
             fi
-          done < "${first_contributor_path}"
+          done < "${contributors_path}"
 
           {
             echo "内容同步自源仓库 [${repo_name}](https://github.com/${REPOSITORY})"
@@ -516,17 +494,17 @@ jobs:
               done
             fi
 
-            if [[ ${#first_contributor_names[@]} -gt 0 ]]; then
-              echo "## 首次贡献者"
+            if [[ ${#contributor_names[@]} -gt 0 ]]; then
+              echo "## 本轮贡献者"
               echo
 
-              if [[ -n "${first_contributor_html}" ]]; then
-                echo "<p>${first_contributor_html}</p>"
+              if [[ -n "${contributor_html}" ]]; then
+                echo "<p>${contributor_html}</p>"
                 echo
               fi
 
-              joined_contributors="$(printf '%s\n' "${first_contributor_names[@]}" | paste -sd '、' -)"
-              echo "感谢以下首次为本仓库贡献代码的开发者：${joined_contributors}"
+              joined_contributors="$(printf '%s\n' "${contributor_names[@]}" | paste -sd '、' -)"
+              echo "感谢以下参与本轮更新提交的开发者：${joined_contributors}"
               echo
             fi
 

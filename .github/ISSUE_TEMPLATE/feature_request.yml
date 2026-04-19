@@ -9,6 +9,8 @@ body:
       value: |
         感谢你愿意提出建议。
 
+        如果你要发的是一般讨论、使用交流、提问，或只是还不够明确的想法，请优先前往 [Discussions](https://github.com/aoguai/Sesame-AG/discussions)。
+
         提交前请先阅读：
         - [README](https://github.com/aoguai/Sesame-AG/blob/dev/README.md)
         - [LEGAL](https://github.com/aoguai/Sesame-AG/blob/dev/LEGAL.md)
@@ -24,6 +26,8 @@ body:
         - label: 我已经确认这不是与当前项目定位冲突的边界需求
           required: true
         - label: 我已经搜索过现有 Issues / Pull Requests，没有找到相同或高度相似的建议
+          required: true
+        - label: 我已经确认这不是一般讨论 / 提问 / 使用交流；这类内容应发到 Discussions
           required: true
         - label: 我已经阅读 README / LEGAL / CONTRIBUTING，并理解当前仓库的协作边界
           required: true
