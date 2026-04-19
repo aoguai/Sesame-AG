@@ -2,6 +2,8 @@ package io.github.aoguai.sesameag.task.antOrchard
 
 import io.github.aoguai.sesameag.hook.RequestManager
 import io.github.aoguai.sesameag.util.maps.UserMap
+import org.json.JSONArray
+import org.json.JSONObject
 
 object AntOrchardRpcCall {
     private const val VERSION = "20260204.01"
@@ -151,6 +153,16 @@ object AntOrchardRpcCall {
         )
     }
 
+    fun orchardLazyIndex(
+        currentPlantScene: String = "main",
+        source: String = DEFAULT_SOURCE
+    ): String {
+        return RequestManager.requestString(
+            "com.alipay.antorchard.orchardLazyIndex",
+            "[{\"appMode\":\"normal\",\"currentPlantScene\":\"$currentPlantScene\",\"hasWaitExchange\":false,\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"$source\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
     //砸蛋
     fun smashedGoldenEgg(count: Int): String {
         val jsonArgs = """
@@ -195,22 +207,28 @@ object AntOrchardRpcCall {
         )
     }
 
-    fun orchardSyncIndex(Wua: String): String {
-        val jsonArgs = """
-         [{
-             "requestType": "NORMAL",
-             "sceneCode": "ORCHARD",
-             "source": "ch_appcenter__chsub_9patch",
-             "syncIndexTypes": "LIMITED_TIME_CHALLENGE",
-             "useWua": true,
-             "version": "$VERSION",
-             "wua": "$Wua"
-         }]
-    """.trimIndent()
+    fun orchardSyncIndex(
+        wua: String,
+        syncIndexTypes: String = "LIMITED_TIME_CHALLENGE",
+        balloonScene: String? = null
+    ): String {
+        val requestData = JSONObject().apply {
+            put("requestType", "NORMAL")
+            put("sceneCode", "ORCHARD")
+            put("source", "ch_appcenter__chsub_9patch")
+            put("syncIndexTypes", syncIndexTypes)
+            put("useWua", true)
+            put("version", VERSION)
+            put("wua", wua)
+            if (!balloonScene.isNullOrBlank()) {
+                put("appMode", "normal")
+                put("balloonScene", balloonScene)
+            }
+        }
 
         return RequestManager.requestString(
             "com.alipay.antorchard.orchardSyncIndex",
-            jsonArgs
+            JSONArray().put(requestData).toString()
         )
     }
 
