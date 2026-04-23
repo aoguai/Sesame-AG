@@ -7,6 +7,7 @@ import org.json.JSONObject
 
 object AntOrchardRpcCall {
     private const val VERSION = "20260204.01"
+    private const val CHARITY_GAME_CENTER_VERSION = "10.8.20"
     private const val DEFAULT_SOURCE = "ch_appcenter__chsub_9patch"
     private const val YEB_SOURCE = "yaoqianshu_qiehuan"
     private const val YEB_EXP_GOLD_SIGN_IN_PLAY_ID = "PLAY102253251"
@@ -103,6 +104,51 @@ object AntOrchardRpcCall {
         )
     }
 
+    fun queryOptionalPlay(): String {
+        val requestData = JSONObject().apply {
+            put("bizType", "ANTORCHARD")
+            put(
+                "commonDegradeFilterRequest",
+                JSONObject().apply {
+                    put("appMode", "normal")
+                    put("deviceLevel", "high")
+                    put("h5Version", VERSION)
+                    put("unityDeviceLevel", "high")
+                }
+            )
+            put("playTypeList", JSONArray().put("TOP_UP_COUPON").put("TASK_TRIGGER"))
+            put("requestType", "RPC")
+            put("sceneCode", "ORCHARD")
+            put("source", "H5")
+            put("version", CHARITY_GAME_CENTER_VERSION)
+        }
+        return RequestManager.requestString(
+            "com.alipay.charitygamecenter.queryOptionalPlay",
+            JSONArray().put(requestData).toString()
+        )
+    }
+
+    fun receiveTaskAwardAntOrchard(
+        sceneCode: String,
+        taskType: String,
+        awardCountForReceive: Int,
+        source: String = "antorchard"
+    ): String {
+        val requestData = JSONObject().apply {
+            put("awardCountForReceive", awardCountForReceive)
+            put("ignoreLimit", true)
+            put("requestType", "NORMAL")
+            put("sceneCode", sceneCode)
+            put("source", source)
+            put("taskType", taskType)
+            put("version", VERSION)
+        }
+        return RequestManager.requestString(
+            "com.alipay.antieptask.receiveTaskAwardantorchard",
+            JSONArray().put(requestData).toString()
+        )
+    }
+
     fun orchardListTask(source: String = DEFAULT_SOURCE): String {
         return RequestManager.requestString(
             "com.alipay.antfarm.orchardListTask",
@@ -160,6 +206,19 @@ object AntOrchardRpcCall {
         return RequestManager.requestString(
             "com.alipay.antorchard.orchardLazyIndex",
             "[{\"appMode\":\"normal\",\"currentPlantScene\":\"$currentPlantScene\",\"hasWaitExchange\":false,\"requestType\":\"NORMAL\",\"sceneCode\":\"ORCHARD\",\"source\":\"$source\",\"version\":\"$VERSION\"}]"
+        )
+    }
+
+    fun orchardSimple(source: String, version: String = VERSION): String {
+        val requestData = JSONObject().apply {
+            put("requestType", "NORMAL")
+            put("sceneCode", "ORCHARD")
+            put("source", source)
+            put("version", version)
+        }
+        return RequestManager.requestString(
+            "com.alipay.antorchard.orchardSimple",
+            JSONArray().put(requestData).toString()
         )
     }
 

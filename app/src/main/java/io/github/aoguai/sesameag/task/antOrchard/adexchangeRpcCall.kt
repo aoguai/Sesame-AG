@@ -145,6 +145,18 @@ object XLightRpcCall {
 
 object UrlUtil {
     private const val TAG = "UrlUtil"
+    private val QUERY_PARAM_BOUNDARY = listOf(
+        "canPullDown=",
+        "showOptionMenu=",
+        "iepTaskType=",
+        "iepTaskSceneCode=",
+        "canDoTask=",
+        "awardCount=",
+        "doneTimes=",
+        "taskDoneTimes=",
+        "xlightFrom="
+    )
+
     /**
      * 从原始URL中提取指定参数的完整值(支持多层嵌套)
      * @param url 原始URL
@@ -155,22 +167,16 @@ object UrlUtil {
         if (url.isEmpty()) return null
 
         try {
-            // 先多次解码展开
-            var decoded = url
-            repeat(5) {
-                val temp = decode(decoded)
-                if (temp == decoded) return@repeat
-                decoded = temp
-            }
+            val carrier = findQueryCarrier(url, key) ?: return null
 
             // 找到查询字符串部分
-            val queryStart = decoded.indexOf("?")
+            val queryStart = carrier.indexOf("?")
             if (queryStart == -1) return null
 
-            val query = decoded.substring(queryStart + 1)
+            val query = carrier.substring(queryStart + 1)
 
             // 使用正则表达式精确匹配参数,避免截断
-            val pattern = Regex("(?:^|&)$key=([^&]*)")
+            val pattern = Regex("(?:^|&)" + Regex.escape(key) + "=([^&]*)")
             val match = pattern.find(query)
 
             return match?.groupValues?.get(1)?.let { decode(it) }
@@ -190,46 +196,29 @@ object UrlUtil {
         if (url.isEmpty()) return null
 
         try {
-            // 先解码原始URL
-            var decoded = url
-            repeat(5) {
-                val temp = decode(decoded)
-                if (temp == decoded) return@repeat
-                decoded = temp
-            }
+            val carrier = findTextContaining(url, "$key=") ?: return null
 
             // 查找key=的位置
             val searchKey = "$key="
-            val keyIndex = decoded.indexOf(searchKey)
+            val keyIndex = carrier.indexOf(searchKey)
             if (keyIndex == -1) return null
 
             // 从key=之后开始提取
             val startIndex = keyIndex + searchKey.length
-            val remaining = decoded.substring(startIndex)
+            val remaining = carrier.substring(startIndex)
 
             // 找到参数值的结束位置
             var endIndex = remaining.length
 
             // 如果是URL类型,需要找到完整URL的边界
-            if (remaining.startsWith("http://") || remaining.startsWith("https://")) {
+            if (remaining.startsWith("http://") || remaining.startsWith("https://") || remaining.startsWith("alipays://")) {
                 // 查找下一个顶层&符号(在URL外部的&)
                 // 策略: 检测到&后,判断其后是否跟着已知的顶层参数名
-                val topLevelParams = listOf(
-                    "canPullDown=",
-                    "showOptionMenu=",
-                    "iepTaskType=",
-                    "iepTaskSceneCode=",
-                    "canDoTask=",
-                    "awardCount=",
-                    "doneTimes=",
-                    "xlightFrom="
-                )
-
                 for (i in remaining.indices) {
                     if (remaining[i] == '&') {
                         // 检查&后面是否是顶层参数
                         val afterAmp = remaining.substring(i + 1)
-                        if (topLevelParams.any { afterAmp.startsWith(it) }) {
+                        if (QUERY_PARAM_BOUNDARY.any { afterAmp.startsWith(it) }) {
                             endIndex = i
                             break
                         }
@@ -245,14 +234,17 @@ object UrlUtil {
 
             val value = remaining.substring(0, endIndex)
 
-            // 再次解码确保完全展开
             var result = value
             repeat(5) {
+                if (result.startsWith("http://") || result.startsWith("https://") || result.startsWith("alipays://")) {
+                    return result
+                }
                 val temp = decode(result)
-                if (temp == result) return@repeat // 替代break，终止当前repeat迭代
+                if (temp == result) {
+                    return result
+                }
                 result = temp
             }
-
 
             return result
         } catch (e: Exception) {
@@ -271,13 +263,14 @@ object UrlUtil {
         if (fullUrl.isEmpty()) return null
 
         try {
-            val queryStart = fullUrl.indexOf("?")
+            val carrier = findQueryCarrier(fullUrl, key) ?: return null
+            val queryStart = carrier.indexOf("?")
             if (queryStart == -1) return null
 
-            val query = fullUrl.substring(queryStart + 1)
+            val query = carrier.substring(queryStart + 1)
 
             // 使用正则精确匹配
-            val pattern = Regex("(?:^|&)$key=([^&]*)")
+            val pattern = Regex("(?:^|&)" + Regex.escape(key) + "=([^&]*)")
             val match = pattern.find(query)
 
             return match?.groupValues?.get(1)?.let { decode(it) }
@@ -311,6 +304,43 @@ object UrlUtil {
             count++
         } while (current != last && count < 10)
         return current
+    }
+
+    private fun findQueryCarrier(url: String, key: String): String? {
+        var current = url
+        repeat(5) {
+            if (hasQueryParam(current, key)) {
+                return current
+            }
+            val temp = decode(current)
+            if (temp == current) {
+                return null
+            }
+            current = temp
+        }
+        return if (hasQueryParam(current, key)) current else null
+    }
+
+    private fun hasQueryParam(url: String, key: String): Boolean {
+        val queryStart = url.indexOf("?")
+        if (queryStart == -1) return false
+        val query = url.substring(queryStart + 1)
+        return Regex("(?:^|&)" + Regex.escape(key) + "=").containsMatchIn(query)
+    }
+
+    private fun findTextContaining(text: String, target: String): String? {
+        var current = text
+        repeat(5) {
+            if (current.contains(target)) {
+                return current
+            }
+            val temp = decode(current)
+            if (temp == current) {
+                return null
+            }
+            current = temp
+        }
+        return if (current.contains(target)) current else null
     }
 }
 
