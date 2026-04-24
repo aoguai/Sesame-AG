@@ -55,9 +55,11 @@ private val sesameAlchemyDefaultBlacklist = setOf(
     "休闲小游戏",
     "AQApp",
     "订阅炼金",
+    "逛一逛蚂蚁阿福",
     "租游戏账号",
     "芝麻大表鸽",
     "坚持签到",
+    "玩游戏完成10个订单",
     "坚持去玩休闲小游戏",   // 参数错误：ILLEGAL_ARGUMENT
     "租游戏账号得芝麻粒"    // 参数错误：ILLEGAL_ARGUMENT
 )
@@ -78,10 +80,17 @@ private val orchardDefaultBlacklist = setOf(
     "ORCHARD_NORMAL_TAB3_ZHIFA",        // 看视频领肥料
     "ORCHARD_NORMAL_AQ_XIAZAI",         // 下载蚂蚁阿福看健康攻略
     "ORCHARD_NORMAL_NCLY_GLY",          // 新春限时试玩福利
+    "ORCHARD_NCLY_GAME_TASK",           // 试玩农场乐园火爆新游
     "LINGHUOTIAOKONG",                  // 逛一逛新浪微博
     "ORCHARD_NORMAL_XIANYU_DUAN",       // 逛一逛闲鱼
     "ORCHARD_NORMAL_WAIMAIMIANDAN",     // 逛一逛闪购外卖
     "ORCHARD_NORMAL_BAIDU_DUO",         // 去百度浏览资讯
+    "ORCHARD_NORMAL_QUTOUTIAOXCX",      // 逛趣头条小程序
+    "ORCHARD_NORMAL_XIANXIAZHIFU100",   // 到店支付1笔得100肥
+    "ANTFARM_ORCHARD_P2P_SHARER",       // 分享给好友
+    "ORCHARD_TEAM_SPREAD_PERSON",       // 合种/帮帮种多人施肥
+    "ORCHARD_HELP_TEAM_MEMBER_COUNT",   // 帮帮种组队
+    "NTFARM_ORCHARD_NORMAL_FQHB_NEW1",  // 去天猫攒福气兑红包
     "去淘宝农场得肥料",
     "试玩农场乐园火爆新游",
     "分享给好友",
@@ -172,7 +181,8 @@ private val forestDefaultBlacklist = setOf(
     "TEST_LEAF_TASK",      // 逛农场得落叶肥料
     "YUSHU_202511",        // 单种榆树，年年有榆
     "KTKZ_YS202511",       // 一起组团种榆树
-    "mokuai_senlin_hlz"    // 去玩一玩得活力值
+    "mokuai_senlin_hlz",   // 去玩一玩得活力值
+    "去会员抢演唱会门票"     // 活动已完结
 )
 
 private val yuebaoDefaultBlacklist = setOf(
@@ -185,6 +195,8 @@ private val yuebaoDefaultBlacklist = setOf(
 )
 
 private val goldTicketDefaultBlacklist = emptySet<String>()
+
+private val dodoDefaultBlacklist = emptySet<String>()
 
 private val memberDefaultBlacklist = setOf(
     // 会员
@@ -230,5 +242,6 @@ val DEFAULT_BLACKLIST: Map<String, Set<String>> = mapOf(
     "余额宝" to yuebaoDefaultBlacklist,
     "黄金票" to goldTicketDefaultBlacklist,
     "支付宝会员" to memberDefaultBlacklist,
-    "运动" to sportsDefaultBlacklist
+    "运动" to sportsDefaultBlacklist,
+    "神奇物种" to dodoDefaultBlacklist
 )
