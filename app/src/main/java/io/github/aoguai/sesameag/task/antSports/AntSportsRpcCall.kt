@@ -5,6 +5,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import io.github.aoguai.sesameag.hook.ApplicationHook
 import io.github.aoguai.sesameag.hook.RequestManager
+import io.github.aoguai.sesameag.util.RpcCache
 import java.util.UUID
 
 /**
@@ -73,6 +74,9 @@ object AntSportsRpcCall {
      */
     private const val FEATURES = """["DAILY_STEPS_RANK_V2","STEP_BATTLE","CLUB_HOME_CARD","NEW_HOME_PAGE_STATIC","CLOUD_SDK_AUTH","STAY_ON_COMPLETE","EXTRA_TREASURE_BOX","NEW_HOME_PAGE_STATIC","SUPPORT_AI","SUPPORT_TAB3","SUPPORT_FLYRABBIT","SUPPORT_NEW_MATCH","EXTERNAL_ADVERTISEMENT_TASK","PROP","PROPV2","ASIAN_GAMES"]"""
 
+    private const val QUERY_COIN_TASK_PANEL_RPC =
+        "com.alipay.sportshealth.biz.rpc.SportsHealthCoinTaskRpc.queryCoinTaskPanel"
+
     //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 运动任务面板接口
     //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -87,8 +91,9 @@ object AntSportsRpcCall {
      * @remark 对应API：com.alipay.sportshealth.biz.rpc.SportsHealthCoinTaskRpc.queryCoinTaskPanel
      */
     fun queryCoinTaskPanel(): String {
+        RpcCache.invalidate(QUERY_COIN_TASK_PANEL_RPC)
         val args1 = """[{"apiVersion":"energy","canAddHome":false,"chInfo":"medical_health","clientAuthStatus":"not_support","clientOS":"android","features":$FEATURES,"topTaskId":""}]"""
-        return RequestManager.requestString("com.alipay.sportshealth.biz.rpc.SportsHealthCoinTaskRpc.queryCoinTaskPanel", args1)
+        return RequestManager.requestString(QUERY_COIN_TASK_PANEL_RPC, args1)
     }
 
     /**
@@ -151,6 +156,27 @@ object AntSportsRpcCall {
             })
         }
         return RequestManager.requestString("com.alipay.sportshealth.biz.rpc.SportsHealthCoinTaskRpc.completeTask", args.toString())
+    }
+
+    /**
+     * @brief 完成运动任务面板中的广告浏览任务
+     *
+     * @param bizId queryCoinTaskPanel.taskList[].bizExtMap.bizId
+     *
+     * @return RPC调用结果的 JSON 字符串
+     *
+     * @remark 对应抓包：com.alipay.adtask.biz.mobilegw.service.task.finish
+     */
+    fun finishAdTask(bizId: String): String {
+        val args = JSONArray().apply {
+            put(JSONObject().apply {
+                put("bizId", bizId)
+            })
+        }
+        return RequestManager.requestString(
+            "com.alipay.adtask.biz.mobilegw.service.task.finish",
+            args.toString()
+        )
     }
 
     private fun buildSportsTaskBizNo(): String {
@@ -247,7 +273,7 @@ object AntSportsRpcCall {
      * @remark 对应API：com.alipay.neverland.biz.rpc.pickBubbleTaskEnergy
      */
     fun pickBubbleTaskEnergy(medEnergyBallInfoRecordId: String, pickAllEnergyBall: Boolean): String {
-        val args1 = """[{"apiVersion":"energy","chInfo":"medical_health","medEnergyBallInfoRecordIds":["$medEnergyBallInfoRecordId"],"pickAllEnergyBall":$pickAllEnergyBall,"source":"SPORT"}]"""
+        val args1 = """[{"apiVersion":"energy","chInfo":"medical_health","clientOS":"android","features":$FEATURES,"medEnergyBallInfoRecordIds":["$medEnergyBallInfoRecordId"],"pickAllEnergyBall":$pickAllEnergyBall,"source":"SPORT"}]"""
         return RequestManager.requestString("com.alipay.neverland.biz.rpc.pickBubbleTaskEnergy", args1)
     }
 

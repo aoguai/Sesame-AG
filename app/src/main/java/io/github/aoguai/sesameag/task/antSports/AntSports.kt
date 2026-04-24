@@ -66,6 +66,7 @@ class AntSports : ModelTask() {
 
         /** @brief 运动首页任务最大补拉轮次 */
         private const val MAX_SPORTS_HOME_BUBBLE_ROUNDS = 10
+
     }
 
     private data class SportsHomeRewardCandidate(
@@ -696,29 +697,39 @@ class AntSports : ModelTask() {
     private fun sportsTasks() {
         try {
             sportsCheckIn()
-            val jo = JSONObject(AntSportsRpcCall.queryCoinTaskPanel())
+            val failedCompleteTaskIds = mutableSetOf<String>()
+            val failedReceiveTaskIds = mutableSetOf<String>()
+            var round = 1
+            var roundLimit = 1
 
-            if (ResChecker.checkRes(TAG, jo)) {
-                val data = jo.getJSONObject("data")
-                val taskList = data.getJSONArray("taskList")
+            while (round <= roundLimit) {
+                val jo = JSONObject(AntSportsRpcCall.queryCoinTaskPanel())
+                if (!ResChecker.checkRes(TAG, jo)) {
+                    return
+                }
+
+                val data = jo.optJSONObject("data") ?: return
+                val taskList = data.optJSONArray("taskList") ?: return
+                if (round == 1) {
+                    roundLimit = estimateSportsPanelTaskRoundLimit(taskList)
+                }
 
                 var totalTasks = 0
                 var completedTasks = 0
                 var availableTasks = 0
+                var progressed = false
                 var stopCurrentRound = false
+                var shouldRequeryImmediately = false
 
-                for (i in 0 until taskList.length()) {
-                    val taskDetail = taskList.getJSONObject(i)
-                    val taskId = taskDetail.getString("taskId")
-                    val taskName = taskDetail.getString("taskName")
-                    val taskStatus = taskDetail.getString("taskStatus")
+                taskLoop@ for (i in 0 until taskList.length()) {
+                    val taskDetail = taskList.optJSONObject(i) ?: continue
+                    val taskId = taskDetail.optString("taskId", "")
+                    val taskName = taskDetail.optString("taskName", taskId)
+                    val taskStatus = taskDetail.optString("taskStatus", "")
                     val taskType = taskDetail.optString("taskType", "")
 
-                    // 排除自动结算任务
                     if (taskType == "SETTLEMENT") continue
 
-                    // 黑名单过滤
-                    // 黑名单任务仍允许领取已完成(WAIT_RECEIVE)的奖励，避免“手动完成但无法领奖励”
                     val isBlacklisted =
                         TaskBlacklist.isTaskInBlacklist(SPORTS_TASK_BLACKLIST_MODULE, taskId) ||
                             TaskBlacklist.isTaskInBlacklist(SPORTS_TASK_BLACKLIST_MODULE, taskName)
@@ -728,35 +739,43 @@ class AntSports : ModelTask() {
 
                     totalTasks++
 
-                    if (stopCurrentRound && taskStatus == "WAIT_COMPLETE") {
-                        availableTasks++
-                        Log.sports(TAG, "运动任务面板[本轮止损后跳过浏览任务：$taskName]")
-                        continue
-                    }
-
                     when (taskStatus) {
                         "HAS_RECEIVED" -> {
                             completedTasks++
                         }
                         "WAIT_RECEIVE" -> {
+                            availableTasks++
+                            val receiveKey = buildSportsPanelReceiveKey(taskDetail, taskId)
+                            if (receiveKey in failedReceiveTaskIds) {
+                                Log.sports(TAG, "运动任务面板[本轮已跳过领取失败任务：$taskName]")
+                                continue@taskLoop
+                            }
                             if (receiveTaskReward(taskDetail, taskName)) {
-                                completedTasks++
+                                progressed = true
+                                shouldRequeryImmediately = true
                             } else {
-                                availableTasks++
+                                failedReceiveTaskIds.add(receiveKey)
                             }
                         }
                         "WAIT_COMPLETE" -> {
+                            availableTasks++
+                            val completeKey = buildSportsPanelCompleteKey(taskDetail, taskId)
+                            if (completeKey in failedCompleteTaskIds) {
+                                Log.sports(TAG, "运动任务面板[本轮已跳过完成失败任务：$taskName]")
+                                continue@taskLoop
+                            }
                             when (completeTask(taskDetail, taskName)) {
                                 SportsPanelTaskCompleteResult.SUCCESS -> {
-                                    completedTasks++
+                                    progressed = true
+                                    shouldRequeryImmediately = true
                                 }
 
                                 SportsPanelTaskCompleteResult.FAILED -> {
-                                    availableTasks++
+                                    failedCompleteTaskIds.add(completeKey)
                                 }
 
                                 SportsPanelTaskCompleteResult.STOP_CURRENT_ROUND -> {
-                                    availableTasks++
+                                    failedCompleteTaskIds.add(completeKey)
                                     if (!stopCurrentRound) {
                                         Log.sports(TAG, "运动任务面板[本轮止损：检测到离线/验证类错误，停止继续执行剩余浏览任务]")
                                     }
@@ -768,21 +787,66 @@ class AntSports : ModelTask() {
                             Log.error(TAG, "做任务得能量🎈[未知状态：$taskName，状态：$taskStatus]")
                         }
                     }
+
+                    if (shouldRequeryImmediately || stopCurrentRound) {
+                        break
+                    }
                 }
 
-                Log.sports(TAG, "运动任务完成情况：$completedTasks/$totalTasks，剩余待处理：$availableTasks")
+                Log.sports(TAG, "运动任务完成情况：$completedTasks/$totalTasks，剩余待处理：$availableTasks，轮次：$round")
 
-                // 所有任务完成后标记
                 if (totalTasks > 0 && completedTasks >= totalTasks && availableTasks == 0) {
                     val today = TimeUtil.getDateStr2()
                     DataStore.put(SPORTS_TASKS_COMPLETED_DATE, today)
                     Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_DAILY_TASKS_DONE)
                     Log.sports(TAG, "✅ 所有运动任务已完成，今日不再执行")
+                    return
                 }
+
+                if (stopCurrentRound || !progressed) {
+                    return
+                }
+
+                GlobalThreadPools.sleepCompat(1000)
+                round++
             }
+
+            Log.error(TAG, "运动任务面板[达到动态轮次上限$roundLimit，停止以避免重复循环]")
         } catch (e: Exception) {
             Log.printStackTrace(e)
         }
+    }
+
+    private fun estimateSportsPanelTaskRoundLimit(taskList: JSONArray): Int {
+        var visibleTaskCount = 0
+        var pendingTransitions = 0
+        for (i in 0 until taskList.length()) {
+            val taskDetail = taskList.optJSONObject(i) ?: continue
+            if (taskDetail.optString("taskType", "") == "SETTLEMENT") continue
+            visibleTaskCount++
+
+            when (taskDetail.optString("taskStatus", "")) {
+                "WAIT_RECEIVE" -> pendingTransitions += 1
+                "WAIT_COMPLETE" -> {
+                    val currentNum = taskDetail.optInt("currentNum", 0)
+                    val limitConfigNum = taskDetail.optInt("limitConfigNum", currentNum + 1)
+                    val remainingNum = max(1, limitConfigNum - currentNum)
+                    pendingTransitions += remainingNum * 2
+                }
+            }
+        }
+        return max(1, pendingTransitions + visibleTaskCount)
+    }
+
+    private fun buildSportsPanelReceiveKey(taskDetail: JSONObject, taskId: String): String {
+        val assetId = taskDetail.optString("assetId", "").trim()
+        return "$taskId:${assetId.ifBlank { "NO_ASSET" }}"
+    }
+
+    private fun buildSportsPanelCompleteKey(taskDetail: JSONObject, taskId: String): String {
+        val currentNum = taskDetail.optInt("currentNum", 0)
+        val bizId = resolveSportsPanelAdTaskBizId(taskDetail).ifBlank { taskDetail.optString("taskAction", "") }
+        return "$taskId:$currentNum:$bizId"
     }
 
     /**
@@ -836,7 +900,7 @@ class AntSports : ModelTask() {
     }
 
     /**
-     * @brief 执行任务（可能包含多次完成）
+     * @brief 推进一次任务完成状态
      */
     private fun completeTask(taskDetail: JSONObject, taskName: String): SportsPanelTaskCompleteResult {
         return try {
@@ -848,6 +912,7 @@ class AntSports : ModelTask() {
             val needSignUp = taskDetail.optBoolean("needSignUp", false)
             val taskAction = taskDetail.optString("taskAction", "JUMP").ifBlank { "JUMP" }
             val requestTaskType = resolveSportsPanelCompleteRequestTaskType(taskDetail, taskAction)
+            val adTaskBizId = resolveSportsPanelAdTaskBizId(taskDetail)
 
             if (remainingNum <= 0) {
                 return SportsPanelTaskCompleteResult.SUCCESS
@@ -861,82 +926,82 @@ class AntSports : ModelTask() {
                 GlobalThreadPools.sleepCompat(2000)
             }
 
-            for (i in 0 until remainingNum) {
-                val useVerifiedNewCompleteRpc =
-                    taskAction.equals("SHOW_AD", ignoreCase = true) &&
-                        !requestTaskType.isNullOrBlank()
-                val result = if (useVerifiedNewCompleteRpc) {
-                    JSONObject(
-                        AntSportsRpcCall.completeTask(
-                            taskId = taskId,
-                            taskAction = taskAction,
-                            taskType = requestTaskType
-                        )
+            val useVerifiedNewCompleteRpc =
+                taskAction.equals("SHOW_AD", ignoreCase = true) &&
+                    !requestTaskType.isNullOrBlank()
+            val useAdTaskFinishRpc =
+                taskAction.equals("JUMP", ignoreCase = true) &&
+                    taskDetail.optBoolean("adTask", false) &&
+                    adTaskBizId.isNotBlank()
+            val result = when {
+                useVerifiedNewCompleteRpc -> JSONObject(
+                    AntSportsRpcCall.completeTask(
+                        taskId = taskId,
+                        taskAction = taskAction,
+                        taskType = requestTaskType
                     )
-                } else {
-                    JSONObject(AntSportsRpcCall.completeExerciseTasks(taskId))
+                )
+                useAdTaskFinishRpc -> JSONObject(AntSportsRpcCall.finishAdTask(adTaskBizId))
+                else -> JSONObject(AntSportsRpcCall.completeExerciseTasks(taskId))
+            }
+
+            val progressText = "#(${min(currentNum + 1, limitConfigNum)}/$limitConfigNum)"
+            if (isSportsRpcSuccess(result)) {
+                val completeSource = when {
+                    useVerifiedNewCompleteRpc -> "completeTask"
+                    useAdTaskFinishRpc -> "adtask.finish"
+                    else -> "completeTask(JUMP)"
                 }
-                if (isSportsRpcSuccess(result)) {
-                    Log.sports(
-                        TAG,
-                        "做任务得能量🎈[完成任务：$taskName，得$prizeAmount💰]#(${i + 1}/$remainingNum)"
-                    )
-
-                    if (i == remainingNum - 1) {
-                        GlobalThreadPools.sleepCompat(2000)
-                        receiveCoinAsset()
-                    }
-                } else {
-                    val errorCode = extractSportsRpcErrorCode(result)
-                    val errorMsg = extractSportsRpcErrorMessage(result)
-                    if (shouldTemporarilyStopSportsTask(errorCode, errorMsg)) {
-                        Log.error(
-                            TAG,
-                            "做任务得能量🎈[任务失败-本轮止损：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]#(${i + 1}/$remainingNum)"
-                        )
-                        return SportsPanelTaskCompleteResult.STOP_CURRENT_ROUND
-                    }
-
-                    val shouldAutoBlacklist =
-                        errorCode.isNotEmpty() &&
-                            errorCode != "CAMP_TRIGGER_ERROR" &&
-                            errorCode != "RECEIVE_REWARD_REPEATED"
-                    if (shouldAutoBlacklist) {
-                        TaskBlacklist.autoAddToBlacklist(SPORTS_TASK_BLACKLIST_MODULE, taskId, taskName, errorCode)
-                    }
-                    if (errorCode == "CAMP_TRIGGER_ERROR") {
-                        Log.error(
-                            TAG,
-                            "做任务得能量🎈[任务失败-业务RPC受限：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]#(${i + 1}/$remainingNum)"
-                        )
-                        return SportsPanelTaskCompleteResult.FAILED
-                    }
-                    if (!result.optBoolean("retryable", true)) {
-                        Log.error(
-                            TAG,
-                            "做任务得能量🎈[任务失败-非重试RPC：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]#(${i + 1}/$remainingNum)"
-                        )
-                        return SportsPanelTaskCompleteResult.FAILED
-                    }
-                    if (errorCode == "RECEIVE_REWARD_REPEATED") {
-                        Log.error(
-                            TAG,
-                            "做任务得能量🎈[任务失败-状态异常：$taskName，completeTask 返回重复领奖错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]#(${i + 1}/$remainingNum)"
-                        )
-                        return SportsPanelTaskCompleteResult.FAILED
-                    }
+                Log.sports(
+                    TAG,
+                    "做任务得能量🎈[完成任务：$taskName，得$prizeAmount💰，方式：$completeSource]$progressText"
+                )
+                SportsPanelTaskCompleteResult.SUCCESS
+            } else {
+                val errorCode = extractSportsRpcErrorCode(result)
+                val errorMsg = extractSportsRpcErrorMessage(result)
+                if (shouldTemporarilyStopSportsTask(errorCode, errorMsg)) {
                     Log.error(
                         TAG,
-                        "做任务得能量🎈[任务失败：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]#(${i + 1}/$remainingNum)"
+                        "做任务得能量🎈[任务失败-本轮止损：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]$progressText"
+                    )
+                    return SportsPanelTaskCompleteResult.STOP_CURRENT_ROUND
+                }
+
+                val shouldAutoBlacklist =
+                    errorCode.isNotEmpty() &&
+                        errorCode != "CAMP_TRIGGER_ERROR" &&
+                        errorCode != "RECEIVE_REWARD_REPEATED"
+                if (shouldAutoBlacklist) {
+                    TaskBlacklist.autoAddToBlacklist(SPORTS_TASK_BLACKLIST_MODULE, taskId, taskName, errorCode)
+                }
+                if (errorCode == "CAMP_TRIGGER_ERROR") {
+                    Log.error(
+                        TAG,
+                        "做任务得能量🎈[任务失败-业务RPC受限：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]$progressText"
                     )
                     return SportsPanelTaskCompleteResult.FAILED
                 }
-
-                if (remainingNum > 1 && i < remainingNum - 1) {
-                    GlobalThreadPools.sleepCompat(10000)
+                if (!result.optBoolean("retryable", true)) {
+                    Log.error(
+                        TAG,
+                        "做任务得能量🎈[任务失败-非重试RPC：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]$progressText"
+                    )
+                    return SportsPanelTaskCompleteResult.FAILED
                 }
+                if (errorCode == "RECEIVE_REWARD_REPEATED") {
+                    Log.error(
+                        TAG,
+                        "做任务得能量🎈[任务失败-状态异常：$taskName，completeTask 返回重复领奖错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]$progressText"
+                    )
+                    return SportsPanelTaskCompleteResult.FAILED
+                }
+                Log.error(
+                    TAG,
+                    "做任务得能量🎈[任务失败：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]$progressText"
+                )
+                SportsPanelTaskCompleteResult.FAILED
             }
-            SportsPanelTaskCompleteResult.SUCCESS
         } catch (e: Exception) {
             Log.error(TAG, "做任务得能量🎈[执行异常：$taskName，错误：${e.message}]")
             SportsPanelTaskCompleteResult.FAILED
@@ -948,6 +1013,13 @@ class AntSports : ModelTask() {
             return "AD_TASK"
         }
         return null
+    }
+
+    private fun resolveSportsPanelAdTaskBizId(taskDetail: JSONObject): String {
+        return taskDetail.optJSONObject("bizExtMap")
+            ?.optString("bizId", "")
+            ?.trim()
+            .orEmpty()
     }
 
     /**
@@ -1051,7 +1123,7 @@ class AntSports : ModelTask() {
     }
 
     private fun shouldTemporarilyStopSportsTask(errorCode: String, errorMsg: String): Boolean {
-        if (errorCode == "1009" || errorCode == "I07") {
+        if (errorCode == "1009" || errorCode == "I07" || errorCode == "USER_FREQUENTLY_LOCK") {
             return true
         }
 
@@ -1061,7 +1133,10 @@ class AntSports : ModelTask() {
             errorText.contains("需要验证") ||
             errorText.contains("需要驗證") ||
             errorText.contains("访问被拒绝") ||
-            errorText.contains("訪問被拒絕")
+            errorText.contains("訪問被拒絕") ||
+            errorText.contains("手速太快") ||
+            errorText.contains("频繁") ||
+            errorText.contains("頻繁")
     }
 
     private fun shouldCooldownSportsHomeBubbleTask(result: JSONObject): Boolean {
