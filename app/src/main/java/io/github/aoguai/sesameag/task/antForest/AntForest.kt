@@ -3207,7 +3207,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                             val overLimitToday = extInfoObj.optBoolean("overLimitToday", false) ||
                                 extInfoObj.optString("overLimitToday", "false").equals("true", true)
                             val robMultiplierLimit = (robMultiplierCollectLimit?.value ?: 0).coerceAtLeast(1).toDouble()
-                            val shouldCollectRobMultiplierEnergy = collectableEnergy >= 1 ||
+                            val shouldCollectRobMultiplierEnergy = collectableEnergy.toDouble() >= robMultiplierLimit ||
                                 leftEnergy >= robMultiplierLimit
                             if (!collectRobMultiplierEnergy) {
                                 continue
@@ -3250,7 +3250,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                                     )
                                 }
                             } else if (leftEnergy > 0.0 || overLimitToday) {
-                                Log.forest(TAG, "$propName 剩余${leftEnergy}g，整数部分不足1g，跳过N倍卡能量领取")
+                                Log.forest(TAG, "$propName 剩余${leftEnergy}g，未达到领取阈值${robMultiplierLimit.toInt()}g，跳过N倍卡能量领取")
                             }
                         }
                     }
