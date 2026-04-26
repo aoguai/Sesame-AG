@@ -42,6 +42,7 @@ import io.github.aoguai.sesameag.util.JsonUtil
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.RandomUtil
 import io.github.aoguai.sesameag.util.ResChecker
+import io.github.aoguai.sesameag.util.RpcCache
 import io.github.aoguai.sesameag.util.TaskBlacklist
 import io.github.aoguai.sesameag.util.TimeCounter
 import io.github.aoguai.sesameag.util.TimeTriggerEvaluator
@@ -2645,6 +2646,22 @@ class AntFarm : ModelTask() {
         return findFarmTool(toolType, forceRefresh)?.toolCount ?: 0
     }
 
+    private fun applyFarmToolUseResult(tool: FarmTool, response: JSONObject): Int {
+        val fallbackCount = (tool.toolCount - 1).coerceAtLeast(0)
+        val toolCountAfter = if (response.has("toolCount")) {
+            response.optInt("toolCount", fallbackCount).coerceAtLeast(0)
+        } else {
+            fallbackCount
+        }
+        tool.toolCount = toolCountAfter
+
+        val nextToolId = response.optString("lastToolId", "")
+        if (nextToolId.isNotBlank()) {
+            tool.toolId = nextToolId
+        }
+        return toolCountAfter
+    }
+
     private enum class AccelerateToolLimitReason {
         FLAGGED,
         SYSTEM_LIMIT,
@@ -2744,9 +2761,10 @@ class AntFarm : ModelTask() {
         }
         // 2) 同步最新状态，确保消耗速度、已吃量、食槽上限为最新
         syncAnimalStatus(ownerFarmId)
+        RpcCache.invalidate(RPC_LIST_FARM_TOOL)
+        listFarmTool()
         if (AnimalBuff.ACCELERATING.name == ownerAnimal.animalBuff) {
-            Log.farm(TAG, "加速卡效果在本轮开始前已生效，跳过本轮继续使用")
-            return false
+            Log.farm(TAG, "加速卡效果在本轮开始前已生效，继续按剩余时间和上限判断是否追加使用")
         }
 
         // 当前小鸡剩余多长时间吃完饲料
@@ -2911,6 +2929,7 @@ class AntFarm : ModelTask() {
         try {
             Log.farm(TAG, "道具🎭[${toolType.nickName()}]返回“道具使用无效”，开始刷新状态复核")
             syncAnimalStatus(targetFarmId)
+            RpcCache.invalidate(RPC_LIST_FARM_TOOL)
             listFarmTool()
             val toolCountAfter = getFarmToolCount(toolType, forceRefresh = false)
             if (toolCountAfter in 0 until toolCountBefore) {
@@ -2952,7 +2971,7 @@ class AntFarm : ModelTask() {
                 Log.farm(TAG, "道具🎭[${toolType.nickName()}]本轮已被判定为无效，跳过继续尝试")
                 return false
             }
-            val tool = findFarmTool(toolType, forceRefresh = true)
+            val tool = findFarmTool(toolType, forceRefresh = toolType != ToolType.ACCELERATETOOL)
             if (tool == null) {
                 Log.farm(TAG, "背包中未找到道具🎭[${toolType.nickName()}]，跳过使用")
                 return false
@@ -2984,12 +3003,17 @@ class AntFarm : ModelTask() {
                 )
             }
             if (ResChecker.checkRes(TAG, jo)) {
-                Log.farm("使用了道具🎭[" + toolType.nickName() + "]#剩余" + (tool.toolCount - 1) + "张")
+                val hasNextToolId = jo.optString("lastToolId", "").isNotBlank()
+                val remainingToolCount = applyFarmToolUseResult(tool, jo)
+                Log.farm("使用了道具🎭[" + toolType.nickName() + "]#剩余" + remainingToolCount + "张")
                 if (toolType == ToolType.FENCETOOL) {
                     hasFence = true
                     fenceCountDown = 86400
                 }
-                listFarmTool()
+                RpcCache.invalidate(RPC_LIST_FARM_TOOL)
+                if (toolType != ToolType.ACCELERATETOOL || !hasNextToolId) {
+                    listFarmTool()
+                }
                 return true
             } else {
                 // 针对加速卡：当日达到上限(resultCode=3D16)后，设置当日标记，避免后续重复尝试
@@ -5389,6 +5413,8 @@ class AntFarm : ModelTask() {
         init {
             objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
         }
+
+        private const val RPC_LIST_FARM_TOOL = "com.alipay.antfarm.listFarmTool"
 
         private const val FARM_ANSWER_CACHE_KEY = "farmAnswerQuestionCache"
     }
