@@ -503,7 +503,13 @@ jobs:
                 echo
               fi
 
-              joined_contributors="$(printf '%s\n' "${contributor_names[@]}" | paste -sd '、' -)"
+              joined_contributors=""
+              for contributor_name in "${contributor_names[@]}"; do
+                if [[ -n "${joined_contributors}" ]]; then
+                  joined_contributors+="、"
+                fi
+                joined_contributors+="${contributor_name}"
+              done
               echo "感谢以下参与本轮更新提交的开发者：${joined_contributors}"
               echo
             fi
