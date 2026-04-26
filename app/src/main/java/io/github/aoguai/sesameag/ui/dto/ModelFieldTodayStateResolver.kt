@@ -135,13 +135,13 @@ object ModelFieldTodayStateResolver {
                     ModelFieldTodayState()
                 }
 
+            "AntSports.walkReviveSteps",
+            "AntSports.walkReviveTask" ->
+                flag(StatusFlags.FLAG_ANTSPORTS_ROUTE_REVIVE_TRIED, "今日行走路线复活已尝试且不可继续")
+
             "AntSports.neverlandGrid",
             "AntSports.neverlandGridStepCount" ->
-                limitReached(
-                    current = Status.getIntFlagToday(StatusFlags.FLAG_NEVERLAND_STEP_COUNT),
-                    limit = intValue(modelFields["neverlandGridStepCount"]),
-                    reason = "今日健康岛走路次数已达上限"
-                )
+                neverlandGridState(modelFields)
 
             "AntCooperate.teamCooperateWaterNum" ->
                 limitReached(
@@ -235,6 +235,17 @@ object ModelFieldTodayStateResolver {
         } else {
             ModelFieldTodayState()
         }
+    }
+
+    private fun neverlandGridState(modelFields: ModelFields): ModelFieldTodayState {
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_NEVERLAND_ENERGY_LIMIT)) {
+            return inactive("今日健康岛能量不足以建造")
+        }
+        return limitReached(
+            current = Status.getIntFlagToday(StatusFlags.FLAG_NEVERLAND_STEP_COUNT),
+            limit = intValue(modelFields["neverlandGridStepCount"]),
+            reason = "今日健康岛走路次数已达上限"
+        )
     }
 
     private fun specialFoodLimitState(modelFields: ModelFields): ModelFieldTodayState {

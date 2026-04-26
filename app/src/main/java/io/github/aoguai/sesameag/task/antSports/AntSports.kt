@@ -24,6 +24,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
+import java.net.URLDecoder
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -67,6 +68,24 @@ class AntSports : ModelTask() {
         /** @brief 运动首页任务最大补拉轮次 */
         private const val MAX_SPORTS_HOME_BUBBLE_ROUNDS = 10
 
+        /** @brief 新版路线单次运行最大推进轮次，避免路线切换/复活异常造成长循环 */
+        private const val MAX_ROUTE_WALK_ROUNDS = 8
+
+        private const val RPC_WALK_QUERY_PATH = "com.alipay.sportsplay.biz.rpc.walk.queryPath"
+        private const val RPC_WALK_QUERY_USER = "com.alipay.sportsplay.biz.rpc.walk.queryUser"
+        private const val RPC_WALK_QUERY_WORLD_MAP = "com.alipay.sportsplay.biz.rpc.walk.queryWorldMap"
+        private const val RPC_WALK_QUERY_CITY_PATH = "com.alipay.sportsplay.biz.rpc.walk.queryCityPath"
+        private const val RPC_WALK_QUERY_CITY_KNOWLEDGE_SUMMARY =
+            "com.alipay.sportsplay.biz.rpc.walk.queryCityKnowledgeSummary"
+        private const val RPC_WALK_QUERY_RECOMMEND_PATH_LIST =
+            "com.alipay.sportsplay.biz.rpc.walk.queryRecommendPathList"
+        private const val RPC_WALK_REVIVE_QUERY_DETAIL =
+            "com.alipay.sportsplay.biz.rpc.walk.steprevive.queryUserReviveStepT2"
+        private const val RPC_WALK_REVIVE_QUERY_TASK_LIST =
+            "com.alipay.sportsplay.biz.rpc.walk.steprevive.queryTaskList"
+        private const val RPC_WALK_REVIVE_QUERY_TASK_FINISH_STATUS =
+            "com.alipay.sportsplay.biz.rpc.walk.steprevive.queryTaskFinishStatus"
+
     }
 
     private data class SportsHomeRewardCandidate(
@@ -93,6 +112,54 @@ class AntSports : ModelTask() {
         val itemName: String
     )
 
+    private data class ClubMemberCandidate(
+        val currentBossId: String,
+        val memberId: String,
+        val originBossId: String,
+        val price: Int
+    )
+
+    private data class NeverlandRewardCandidate(
+        val rewardId: String,
+        val name: String,
+        val status: String,
+        val prizeStatus: String
+    )
+
+    private data class RouteConfig(
+        val themeIds: List<String>,
+        val pathIds: List<String>,
+        val themeLoop: Boolean,
+        val routeLoop: Boolean,
+        val reviveSteps: Boolean,
+        val reviveTask: Boolean
+    )
+
+    private data class RouteCandidate(
+        val pathId: String,
+        val name: String = "",
+        val themeId: String? = null,
+        val cityId: String? = null,
+        val status: String = ""
+    )
+
+    private data class RouteDecision(
+        val candidate: RouteCandidate,
+        val reason: String
+    )
+
+    private data class ReviveCandidate(
+        val date: String,
+        val count: Int
+    )
+
+    private enum class RouteWalkOutcome {
+        MOVED,
+        COMPLETED,
+        NO_STEPS,
+        STOP
+    }
+
     private enum class SportsPanelTaskCompleteResult {
         SUCCESS,
         FAILED,
@@ -111,6 +178,12 @@ class AntSports : ModelTask() {
     private var walkPathThemeId: String? = null
     private lateinit var walkCustomPath: BooleanModelField
     private lateinit var walkCustomPathId: StringModelField
+    private lateinit var walkThemeIds: StringModelField
+    private lateinit var walkPathIds: StringModelField
+    private lateinit var walkThemeLoop: BooleanModelField
+    private lateinit var walkRouteLoop: BooleanModelField
+    private lateinit var walkReviveSteps: BooleanModelField
+    private lateinit var walkReviveTask: BooleanModelField
     internal lateinit var openTreasureBox: BooleanModelField
     private lateinit var receiveCoinAssetField: BooleanModelField
     internal lateinit var donateCharityCoin: BooleanModelField
@@ -122,6 +195,7 @@ class AntSports : ModelTask() {
     private lateinit var syncStepCount: IntegerModelField
     internal lateinit var tiyubiz: BooleanModelField
     internal lateinit var battleForFriends: BooleanModelField
+    private lateinit var battleAutoUnlockRoom: BooleanModelField
     private lateinit var battleForFriendType: ChoiceModelField
     private lateinit var originBossIdList: SelectModelField
     private lateinit var sportsTasksField: BooleanModelField
@@ -133,10 +207,13 @@ class AntSports : ModelTask() {
 
     /** @brief 记录训练好友连续获得 0 金币的次数 */
     private var zeroTrainCoinCount: Int = 0
+    private val skippedTrainBubbleRecordIds = mutableSetOf<String>()
 
     // 健康岛任务
     internal lateinit var neverlandTask: BooleanModelField
     internal lateinit var neverlandGrid: BooleanModelField
+    private lateinit var neverlandAutoReward: BooleanModelField
+    private lateinit var neverlandPreferMedal: BooleanModelField
     private lateinit var neverlandGridStepCount: IntegerModelField
 
 
@@ -184,6 +261,40 @@ class AntSports : ModelTask() {
                 "行走路线 | 自定义路线代码(debug)",
                 "p0002023122214520001"
             ).withDesc("自定义路线调试代码，仅在开启行走路线且启用自定义路线时生效。").also { walkCustomPathId = it }
+        )
+        modelFields.addField(
+            StringModelField(
+                "walkThemeIds",
+                "行走路线 | 自定义主题ID列表",
+                ""
+            ).withDesc("新版路线主题 ID 列表，支持逗号、空格或换行分隔；为空时兼容使用旧主题下拉配置。").also { walkThemeIds = it }
+        )
+        modelFields.addField(
+            StringModelField(
+                "walkPathIds",
+                "行走路线 | 自定义路线ID列表",
+                ""
+            ).withDesc("新版路线 ID 列表，支持逗号、空格或换行分隔；非空时优先按路线列表选择。").also { walkPathIds = it }
+        )
+        modelFields.addField(
+            BooleanModelField("walkThemeLoop", "行走路线 | 主题循环", false).withDesc(
+                "开启后固定在当前主题或配置首个主题内循环所有路线；路线循环开启时优先路线循环。"
+            ).also { walkThemeLoop = it }
+        )
+        modelFields.addField(
+            BooleanModelField("walkRouteLoop", "行走路线 | 路线循环", false).withDesc(
+                "开启后只循环当前路线；没有当前路线时使用自定义路线或主题中的第一条路线。"
+            ).also { walkRouteLoop = it }
+        )
+        modelFields.addField(
+            BooleanModelField("walkReviveSteps", "行走路线 | 复活步数", true).withDesc(
+                "路线当日无可用步数时，尝试复活历史步数；耗尽后当天不再重复尝试。"
+            ).also { walkReviveSteps = it }
+        )
+        modelFields.addField(
+            BooleanModelField("walkReviveTask", "行走路线 | 复活任务", true).withDesc(
+                "复活次数不足时尝试完成复活任务。"
+            ).also { walkReviveTask = it }
         )
 
         // 旧版路线相关
@@ -245,6 +356,16 @@ class AntSports : ModelTask() {
             ).also { neverlandGrid = it }
         )
         modelFields.addField(
+            BooleanModelField("neverlandAutoReward", "健康岛 | 自动领奖", true).withDesc(
+                "新游戏模式岛屿完成后自动选择奖励；明确非重试错误会记录并尝试下一个奖励。"
+            ).also { neverlandAutoReward = it }
+        )
+        modelFields.addField(
+            BooleanModelField("neverlandPreferMedal", "健康岛 | 优先奖牌", true).withDesc(
+                "健康岛自动领奖时优先选择名称包含“奖牌”的奖励，否则选择服务端返回的首个奖励。"
+            ).also { neverlandPreferMedal = it }
+        )
+        modelFields.addField(
             IntegerModelField("neverlandGridStepCount", "健康岛 | 今日走路最大次数", 20).withDesc(
                 "健康岛当天最多执行的走路建造次数，仅在开启自动走路建造时生效。"
             )
@@ -256,6 +377,11 @@ class AntSports : ModelTask() {
             BooleanModelField("battleForFriends", "抢好友 | 开启", false).withDesc(
                 "执行抢好友大战主页收益收取与抢购好友逻辑。"
             ).also { battleForFriends = it }
+        )
+        modelFields.addField(
+            BooleanModelField("battleAutoUnlockRoom", "抢好友 | 自动解锁场地", true).withDesc(
+                "抢购好友前，若可购买新训练室且能量足够，则自动解锁并刷新主页状态。"
+            ).also { battleAutoUnlockRoom = it }
         )
         modelFields.addField(
             ChoiceModelField(
@@ -882,7 +1008,7 @@ class AntSports : ModelTask() {
                         "做任务得能量🎈[领取失败-业务RPC受限：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]"
                     )
                     false
-                } else if (!resultData.optBoolean("retryable", true)) {
+                } else if (!isSportsRpcRetryable(resultData)) {
                     Log.error(
                         TAG,
                         "做任务得能量🎈[领取失败-非重试RPC：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg]"
@@ -913,6 +1039,8 @@ class AntSports : ModelTask() {
             val taskAction = taskDetail.optString("taskAction", "JUMP").ifBlank { "JUMP" }
             val requestTaskType = resolveSportsPanelCompleteRequestTaskType(taskDetail, taskAction)
             val adTaskBizId = resolveSportsPanelAdTaskBizId(taskDetail)
+            val adTaskFinishPayload = resolveSportsPanelAdTaskFinishPayload(taskDetail, adTaskBizId)
+            val adTaskPayloadBizId = adTaskFinishPayload.optString("bizId", "").trim()
 
             if (remainingNum <= 0) {
                 return SportsPanelTaskCompleteResult.SUCCESS
@@ -932,7 +1060,7 @@ class AntSports : ModelTask() {
             val useAdTaskFinishRpc =
                 taskAction.equals("JUMP", ignoreCase = true) &&
                     taskDetail.optBoolean("adTask", false) &&
-                    adTaskBizId.isNotBlank()
+                    adTaskPayloadBizId.isNotBlank()
             val result = when {
                 useVerifiedNewCompleteRpc -> JSONObject(
                     AntSportsRpcCall.completeTask(
@@ -941,7 +1069,7 @@ class AntSports : ModelTask() {
                         taskType = requestTaskType
                     )
                 )
-                useAdTaskFinishRpc -> JSONObject(AntSportsRpcCall.finishAdTask(adTaskBizId))
+                useAdTaskFinishRpc -> JSONObject(AntSportsRpcCall.finishAdTask(adTaskFinishPayload))
                 else -> JSONObject(AntSportsRpcCall.completeExerciseTasks(taskId))
             }
 
@@ -982,7 +1110,7 @@ class AntSports : ModelTask() {
                     )
                     return SportsPanelTaskCompleteResult.FAILED
                 }
-                if (!result.optBoolean("retryable", true)) {
+                if (!isSportsRpcRetryable(result)) {
                     Log.error(
                         TAG,
                         "做任务得能量🎈[任务失败-非重试RPC：$taskName，错误：${errorCode.ifEmpty { "UNKNOWN" }} - $errorMsg}]$progressText"
@@ -1022,6 +1150,52 @@ class AntSports : ModelTask() {
             .orEmpty()
     }
 
+    private fun resolveSportsPanelAdTaskFinishPayload(taskDetail: JSONObject, adTaskBizId: String): JSONObject {
+        val payloadFromUrl = extractSportsPanelAdTaskOpParam(taskDetail.optString("taskUrl", ""))
+        if (payloadFromUrl != null) {
+            if (payloadFromUrl.optString("bizId", "").isBlank() && adTaskBizId.isNotBlank()) {
+                payloadFromUrl.put("bizId", adTaskBizId)
+            }
+            return payloadFromUrl
+        }
+
+        return JSONObject().apply {
+            put("bizId", adTaskBizId)
+        }
+    }
+
+    private fun extractSportsPanelAdTaskOpParam(taskUrl: String): JSONObject? {
+        if (taskUrl.isBlank()) return null
+        val opType = extractDecodedUrlParam(taskUrl, "opType")
+        if (opType != "com.alipay.adtask.biz.mobilegw.service.task.finish") {
+            return null
+        }
+        val opParam = extractDecodedUrlParam(taskUrl, "opParam")
+        if (opParam.isBlank()) return null
+        return runCatching { JSONObject(opParam) }.getOrNull()
+    }
+
+    private fun extractDecodedUrlParam(rawUrl: String, paramName: String): String {
+        for (candidate in listOf(rawUrl, decodeUrlComponentRepeated(rawUrl))) {
+            val pattern = Regex("""(?:[?&])${Regex.escape(paramName)}=([^&#]*)""")
+            val match = pattern.find(candidate) ?: continue
+            return decodeUrlComponentRepeated(match.groupValues[1])
+        }
+        return ""
+    }
+
+    private fun decodeUrlComponentRepeated(value: String, maxRounds: Int = 3): String {
+        var current = value
+        repeat(maxRounds) {
+            val decoded = runCatching { URLDecoder.decode(current, "UTF-8") }.getOrDefault(current)
+            if (decoded == current) {
+                return current
+            }
+            current = decoded
+        }
+        return current
+    }
+
     /**
      * @brief 为任务执行报名
      */
@@ -1059,17 +1233,66 @@ class AntSports : ModelTask() {
     }
 
     private fun isSportsRpcSuccess(result: JSONObject): Boolean {
-        if (result.optBoolean("success") || result.optBoolean("isSuccess")) {
-            return true
+        if (result.has("success")) {
+            return result.optBoolean("success", false)
+        }
+        if (result.has("isSuccess")) {
+            return result.optBoolean("isSuccess", false)
         }
 
         val resultCode = result.opt("resultCode")
         when (resultCode) {
-            is Number -> if (resultCode.toInt() == 200) return true
-            is String -> if (resultCode.equals("SUCCESS", ignoreCase = true) || resultCode == "100") return true
+            is Number -> {
+                val code = resultCode.toInt()
+                if (code == 200 || code == 100) {
+                    return true
+                }
+                return false
+            }
+
+            is String -> {
+                if (
+                    resultCode.equals("SUCCESS", ignoreCase = true) ||
+                    resultCode == "100" ||
+                    resultCode == "200"
+                ) {
+                    return true
+                }
+                if (resultCode.isNotBlank()) {
+                    return false
+                }
+            }
+        }
+
+        val directErrorCode = result.optString("errorCode", "").trim()
+        if (directErrorCode.isNotEmpty()) {
+            return false
+        }
+        val errorValue = result.opt("error")?.toString()?.trim().orEmpty()
+        if (errorValue.isNotEmpty() && errorValue != "0") {
+            return false
+        }
+
+        val resultDesc = result.optString("resultDesc", "").trim()
+        if (resultDesc == "成功" || resultDesc == "处理成功") {
+            return true
+        }
+        val resultView = result.optString("resultView", "").trim()
+        if (resultView == "成功" || resultView == "处理成功") {
+            return true
         }
 
         return result.optString("memo", "").equals("SUCCESS", ignoreCase = true)
+    }
+
+    private fun isSportsRpcRetryable(result: JSONObject): Boolean {
+        if (result.has("retryable")) {
+            return result.optBoolean("retryable", true)
+        }
+        if (result.has("retriable")) {
+            return result.optBoolean("retriable", true)
+        }
+        return true
     }
 
     private fun extractSportsRpcErrorCode(result: JSONObject): String {
@@ -1233,12 +1456,23 @@ class AntSports : ModelTask() {
         return collectSportsHomeRewardScanResult(recBubbleList)
     }
 
-    private fun receiveSportsHomeRewardCandidates(scanResult: SportsHomeRewardScanResult): Boolean {
+    private fun receiveSportsHomeRewardCandidates(
+        scanResult: SportsHomeRewardScanResult,
+        handledRecordIds: MutableSet<String>
+    ): Boolean {
         var receivedAny = false
         for (candidate in scanResult.candidates.values) {
+            if (candidate.recordId in handledRecordIds) {
+                Log.sports(
+                    TAG,
+                    "运动首页任务[跳过本轮已处理奖励：${candidate.sourceName}，taskId=${candidate.taskId}，recordId=${candidate.recordId}]"
+                )
+                continue
+            }
             val response = JSONObject(AntSportsRpcCall.pickBubbleTaskEnergy(candidate.recordId, false))
             if (isSportsRpcSuccess(response)) {
                 receivedAny = true
+                handledRecordIds.add(candidate.recordId)
                 val dataObj = response.optJSONObject("data")
                 val changeAmount =
                     dataObj?.optString("changeAmount", candidate.coinAmount.toString()) ?: candidate.coinAmount.toString()
@@ -1254,6 +1488,9 @@ class AntSports : ModelTask() {
                     TAG,
                     "运动首页任务[领取奖励失败：${candidate.sourceName}，taskId=${candidate.taskId}，recordId=${candidate.recordId}，code=${errorCode.ifEmpty { "UNKNOWN" }}，msg=$errorMsg] raw=$response"
                 )
+                if (!isSportsRpcRetryable(response)) {
+                    handledRecordIds.add(candidate.recordId)
+                }
             }
             ActionDelayUtil.humanActionSleep()
         }
@@ -1397,6 +1634,7 @@ class AntSports : ModelTask() {
     private fun sportsEnergyBubbleTask() {
         try {
             var round = 1
+            val handledSportsHomeRewardRecordIds = mutableSetOf<String>()
             while (round <= MAX_SPORTS_HOME_BUBBLE_ROUNDS) {
                 val jo = JSONObject(AntSportsRpcCall.queryEnergyBubbleModule())
                 if (!ResChecker.checkRes(TAG, jo)) {
@@ -1526,7 +1764,10 @@ class AntSports : ModelTask() {
                         }
                     }
 
-                    val receivedByRecordId = receiveSportsHomeRewardCandidates(rewardScanResult)
+                    val receivedByRecordId = receiveSportsHomeRewardCandidates(
+                        rewardScanResult,
+                        handledSportsHomeRewardRecordIds
+                    )
                     if (receivedByRecordId) {
                         receivedRewardThisRound = true
                     }
@@ -1659,56 +1900,92 @@ class AntSports : ModelTask() {
      */
     internal fun walk() {
         try {
-            val user = JSONObject(AntSportsRpcCall.queryUser())
-            if (!ResChecker.checkRes(TAG, user)) {
-                Log.error(TAG, "查询用户失败: $user")
-                return
-            }
+            val config = buildRouteConfig()
+            var lastTerminalJoinRouteKey: String? = null
+            var repeatedTerminalJoinCount = 0
 
-            val data = user.optJSONObject("data")
-            val joinedPathId = data?.optString("joinedPathId") ?: ""
-            if(joinedPathId.isEmpty()) {
+            for (round in 1..MAX_ROUTE_WALK_ROUNDS) {
+                val userData = queryRouteUserData() ?: return
+                val joinedPathId = resolveCurrentJoinedPathId(userData)
+                val currentPathData = joinedPathId.takeIf { it.isNotBlank() }?.let { queryPath(it) }
+                val currentStep = currentPathData?.optJSONObject("userPathStep")
+                val currentStatus = currentStep?.optString("pathCompleteStatus", "").orEmpty()
+                val currentCandidate = buildRouteCandidateFromPathData(currentPathData)
+                    ?: joinedPathId.takeIf { it.isNotBlank() }?.let { RouteCandidate(pathId = it) }
+                val currentRouteTerminal = isRouteTerminal(currentPathData, currentStatus)
 
-                Log.error(TAG, "未找到有效线路: $user")
-            }
-            val path = queryPath(joinedPathId)
+                if (currentPathData != null && isActiveRouteStatus(currentStatus)) {
+                    when (executeCurrentRouteWalk(currentPathData)) {
+                        RouteWalkOutcome.MOVED,
+                        RouteWalkOutcome.COMPLETED -> {
+                            GlobalThreadPools.sleepCompat(500)
+                            continue
+                        }
 
-            if (path == null) {
-                Log.error(TAG, "无法获取路线详情(PathId: $joinedPathId)")
-                return
-            }
-            val userPathStep = path.getJSONObject("userPathStep")
+                        RouteWalkOutcome.NO_STEPS -> {
+                            if (tryReviveRouteSteps(config)) {
+                                GlobalThreadPools.sleepCompat(500)
+                                continue
+                            }
+                            Log.sports(TAG, "行走路线🚶🏻‍♂️今日无可用步数，结束本轮路线流程")
+                            return
+                        }
 
-            //如果是 JOIN 则还没走完
-            if ("COMPLETED" == userPathStep.getString("pathCompleteStatus")) {
-                Log.sports(TAG, "行走路线🚶🏻‍♂️路线[${userPathStep.getString("pathName")}]已完成")
-                // 获取新路线 ID
-                val newPathId = queryJoinPath(walkPathThemeId)    //walkPathThemeId 在进入walk()之前已经获取了
-                if (!newPathId.isNullOrEmpty()) {
-                    Log.sports(TAG, "发现新路线，准备加入: $newPathId")
-                    joinPath(newPathId)
-                } else {
-                    Log.error(TAG, "未发现可加入的新路线，可能当前地图已全部走完")
+                        RouteWalkOutcome.STOP -> return
+                    }
                 }
-                return
-            }
 
-            val pathObj = path.getJSONObject("path")
-            val minGoStepCount = pathObj.getInt("minGoStepCount")
-            val pathStepCount = pathObj.getInt("pathStepCount")
-            val forwardStepCount = userPathStep.getInt("forwardStepCount")
-            val remainStepCount = userPathStep.getInt("remainStepCount")
-            if (pathStepCount <= 0) {
-                Log.error(TAG, "路线[pathId:${userPathStep.optString("pathId")}] pathStepCount 异常: $pathStepCount")
-                return
-            }
-            val needStepCount = pathStepCount - (forwardStepCount % pathStepCount)
+                val decision = chooseNextRoute(config, currentPathData, joinedPathId)
+                if (decision == null) {
+                    Log.error(TAG, "行走路线🚶🏻‍♂️未找到可加入路线")
+                    return
+                }
 
-            if (remainStepCount >= minGoStepCount) {
-                val targetStepCount = max(needStepCount, minGoStepCount)
-                val useStepCount = min(remainStepCount, targetStepCount)
-                walkGo(userPathStep.getString("pathId"), useStepCount, userPathStep.getString("pathName"))
+                Log.sports(
+                    TAG,
+                    "行走路线🚶🏻‍♂️选择路线[${decision.candidate.name.ifBlank { decision.candidate.pathId }}]#${decision.reason}"
+                )
+                val shouldGuardTerminalLoop =
+                    !config.routeLoop &&
+                        !config.themeLoop &&
+                        (currentRouteTerminal || !isActiveRouteStatus(currentStatus))
+                if (shouldGuardTerminalLoop) {
+                    val currentRouteKey = decision.candidate.name.trim()
+                        .takeIf { it.isNotEmpty() }
+                        ?: decision.candidate.pathId.trim().takeIf { it.isNotEmpty() }
+                        ?: currentCandidate?.name?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: currentCandidate?.pathId?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: joinedPathId.trim().takeIf { it.isNotEmpty() }
+                        ?: decision.candidate.pathId
+                    repeatedTerminalJoinCount = if (lastTerminalJoinRouteKey == currentRouteKey) {
+                        repeatedTerminalJoinCount + 1
+                    } else {
+                        lastTerminalJoinRouteKey = currentRouteKey
+                        1
+                    }
+                    if (repeatedTerminalJoinCount >= 2) {
+                        val shouldTryReviveAfterRepeat =
+                            isRouteStepUnavailable(currentPathData, currentStep)
+                        if (shouldTryReviveAfterRepeat && tryReviveRouteSteps(config)) {
+                            repeatedTerminalJoinCount = 0
+                            lastTerminalJoinRouteKey = null
+                            GlobalThreadPools.sleepCompat(500)
+                            continue
+                        }
+                        Log.sports(
+                            TAG,
+                            "行走路线🚶🏻‍♂️终态路线重复加入仍未切换[${decision.candidate.name.ifBlank { decision.candidate.pathId }}]，结束本轮以避免无效循环"
+                        )
+                        return
+                    }
+                } else {
+                    repeatedTerminalJoinCount = 0
+                    lastTerminalJoinRouteKey = null
+                }
+                joinPath(decision.candidate.pathId)
+                GlobalThreadPools.sleepCompat(500)
             }
+            Log.sports(TAG, "行走路线🚶🏻‍♂️达到单次运行轮次上限$MAX_ROUTE_WALK_ROUNDS，停止以避免循环异常")
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "walk err:", t)
         }
@@ -1717,20 +1994,589 @@ class AntSports : ModelTask() {
     /**
      * @brief 新版路线行走一步
      */
-    private fun walkGo(pathId: String, useStepCount: Int, pathName: String) {
-        try {
+    private fun walkGo(pathId: String, useStepCount: Int, pathName: String): RouteWalkOutcome {
+        return try {
             val date = Date()
             @SuppressLint("SimpleDateFormat") val sdf = SimpleDateFormat("yyyy-MM-dd")
             val jo = JSONObject(AntSportsRpcCall.walkGo(sdf.format(date), pathId, useStepCount))
-            if (ResChecker.checkRes(TAG, jo)) {
+            if (isSportsRpcSuccess(jo)) {
+                invalidateRouteStateCache()
                 Log.sports(TAG, "行走路线🚶🏻‍♂️路线[$pathName]#前进了${useStepCount}步")
-                queryPath(pathId)
+                processRouteEvents(jo.optJSONObject("data"))
+                val latestPath = queryPath(pathId)
+                if (latestPath?.optJSONObject("userPathStep")?.optString("pathCompleteStatus", "") == "COMPLETED") {
+                    RouteWalkOutcome.COMPLETED
+                } else {
+                    RouteWalkOutcome.MOVED
+                }
             } else {
-                Log.error(TAG, "walkGo失败： [pathId: $pathId]: $jo")
+                val errorCode = extractSportsRpcErrorCode(jo)
+                val errorMsg = extractSportsRpcErrorMessage(jo)
+                invalidateRouteStateCache()
+                Log.error(
+                    TAG,
+                    "walkGo失败[pathId=$pathId][useStepCount=$useStepCount][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$jo"
+                )
+                if (isRouteStepLimit(errorCode, errorMsg)) RouteWalkOutcome.NO_STEPS else RouteWalkOutcome.STOP
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "walkGo err:", t)
+            RouteWalkOutcome.STOP
         }
+    }
+
+    private fun buildRouteConfig(): RouteConfig {
+        val configuredThemeIds = parseRouteIds(if (::walkThemeIds.isInitialized) walkThemeIds.value else null)
+        val fallbackThemeId = walkPathThemeId?.takeIf { it.isNotBlank() }
+            ?: WalkPathTheme.themeIds[WalkPathTheme.DA_MEI_ZHONG_GUO]
+        val themeIds = configuredThemeIds.ifEmpty { listOf(fallbackThemeId) }
+
+        val configuredPathIds = parseRouteIds(if (::walkPathIds.isInitialized) walkPathIds.value else null)
+        val legacyPathIds = if (::walkCustomPath.isInitialized && walkCustomPath.value == true) {
+            parseRouteIds(walkCustomPathId.value)
+        } else {
+            emptyList()
+        }
+
+        return RouteConfig(
+            themeIds = themeIds,
+            pathIds = configuredPathIds.ifEmpty { legacyPathIds },
+            themeLoop = ::walkThemeLoop.isInitialized && walkThemeLoop.value == true,
+            routeLoop = ::walkRouteLoop.isInitialized && walkRouteLoop.value == true,
+            reviveSteps = !::walkReviveSteps.isInitialized || walkReviveSteps.value == true,
+            reviveTask = !::walkReviveTask.isInitialized || walkReviveTask.value == true
+        )
+    }
+
+    private fun parseRouteIds(rawValue: String?): List<String> {
+        return rawValue.orEmpty()
+            .split(Regex("[,，;；\\s]+"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+    }
+
+    private fun invalidateRouteStateCache(includeRevive: Boolean = false) {
+        RpcCache.invalidate(RPC_WALK_QUERY_PATH)
+        RpcCache.invalidate(RPC_WALK_QUERY_USER)
+        RpcCache.invalidate(RPC_WALK_QUERY_WORLD_MAP)
+        RpcCache.invalidate(RPC_WALK_QUERY_CITY_PATH)
+        RpcCache.invalidate(RPC_WALK_QUERY_CITY_KNOWLEDGE_SUMMARY)
+        RpcCache.invalidate(RPC_WALK_QUERY_RECOMMEND_PATH_LIST)
+        if (includeRevive) {
+            RpcCache.invalidate(RPC_WALK_REVIVE_QUERY_DETAIL)
+            RpcCache.invalidate(RPC_WALK_REVIVE_QUERY_TASK_LIST)
+            RpcCache.invalidate(RPC_WALK_REVIVE_QUERY_TASK_FINISH_STATUS)
+        }
+    }
+
+    private fun queryRouteUserData(): JSONObject? {
+        val user = JSONObject(AntSportsRpcCall.queryUser())
+        if (!ResChecker.checkRes(TAG, user)) {
+            Log.error(TAG, "查询路线用户失败: $user")
+            return null
+        }
+        return user.optJSONObject("data") ?: run {
+            Log.error(TAG, "查询路线用户成功但 data 为空: $user")
+            null
+        }
+    }
+
+    private fun resolveCurrentJoinedPathId(userData: JSONObject): String {
+        return sequenceOf(
+            userData.optString("joinedPathId", "").trim(),
+            userData.optString("goingPathId", "").trim(),
+            userData.optJSONObject("userPathStep")?.optString("pathId", "")?.trim().orEmpty(),
+            userData.optJSONObject("path")?.optString("pathId", "")?.trim().orEmpty()
+        ).firstOrNull { it.isNotEmpty() }.orEmpty()
+    }
+
+    private fun isActiveRouteStatus(status: String): Boolean {
+        return status == "JOIN" || status == "NOT_COMPLETED"
+    }
+
+    private fun isRouteCompleted(status: String): Boolean {
+        return status.equals("COMPLETED", ignoreCase = true)
+    }
+
+    private fun isRouteTerminal(pathData: JSONObject?, status: String): Boolean {
+        if (isRouteCompleted(status)) {
+            return true
+        }
+        val userPathStep = pathData?.optJSONObject("userPathStep") ?: return false
+        if (userPathStep.optInt("pathProgress", 0) >= 100) {
+            return true
+        }
+        val pathStepCount = pathData.optJSONObject("path")?.optInt("pathStepCount", 0) ?: 0
+        val forwardStepCount = userPathStep.optInt("forwardStepCount", 0)
+        val remainStepCount = userPathStep.optInt("remainStepCount", -1)
+        return pathStepCount > 0 &&
+            forwardStepCount >= pathStepCount &&
+            (userPathStep.optBoolean("dayLimit", false) || remainStepCount <= 0)
+    }
+
+    private fun isRouteStepUnavailable(pathData: JSONObject?, userPathStep: JSONObject?): Boolean {
+        if (userPathStep == null) {
+            return false
+        }
+        val minGoStepCount =
+            pathData?.optJSONObject("path")?.optInt("minGoStepCount", 1)?.coerceAtLeast(1) ?: 1
+        val remainStepCount = userPathStep.optInt("remainStepCount", 0)
+        return userPathStep.optBoolean("dayLimit", false) || remainStepCount < minGoStepCount
+    }
+
+    private fun executeCurrentRouteWalk(pathData: JSONObject): RouteWalkOutcome {
+        val userPathStep = pathData.optJSONObject("userPathStep")
+        val pathObj = pathData.optJSONObject("path")
+        if (userPathStep == null || pathObj == null) {
+            Log.error(TAG, "行走路线🚶🏻‍♂️路线详情缺少 userPathStep/path: $pathData")
+            return RouteWalkOutcome.STOP
+        }
+
+        val pathId = userPathStep.optString("pathId", pathObj.optString("pathId", ""))
+        val pathName = userPathStep.optString("pathName", pathObj.optString("name", pathId))
+        val status = userPathStep.optString("pathCompleteStatus", "")
+        if (isRouteCompleted(status)) {
+            Log.sports(TAG, "行走路线🚶🏻‍♂️路线[$pathName]已完成")
+            return RouteWalkOutcome.COMPLETED
+        }
+
+        val minGoStepCount = pathObj.optInt("minGoStepCount", 1).coerceAtLeast(1)
+        val remainStepCount = userPathStep.optInt("remainStepCount", 0)
+        if (userPathStep.optBoolean("dayLimit", false) || remainStepCount < minGoStepCount) {
+            Log.sports(
+                TAG,
+                "行走路线🚶🏻‍♂️路线[$pathName]今日步数不足[remain=$remainStepCount,min=$minGoStepCount,dayLimit=${userPathStep.optBoolean("dayLimit", false)}]"
+            )
+            return RouteWalkOutcome.NO_STEPS
+        }
+
+        val pathStepCount = pathObj.optInt("pathStepCount", 0)
+        val forwardStepCount = userPathStep.optInt("forwardStepCount", 0)
+        val needStepCount = if (pathStepCount > 0) {
+            val remainToFinish = pathStepCount - (forwardStepCount % pathStepCount)
+            remainToFinish.takeIf { it > 0 } ?: pathStepCount
+        } else {
+            minGoStepCount
+        }
+        val useStepCount = min(remainStepCount, max(needStepCount, minGoStepCount))
+        if (useStepCount < minGoStepCount) {
+            return RouteWalkOutcome.NO_STEPS
+        }
+        return walkGo(pathId, useStepCount, pathName)
+    }
+
+    private fun chooseNextRoute(config: RouteConfig, currentPathData: JSONObject?, joinedPathId: String): RouteDecision? {
+        val currentCandidate = buildRouteCandidateFromPathData(currentPathData)
+            ?: joinedPathId.takeIf { it.isNotBlank() }?.let { RouteCandidate(pathId = it) }
+        val currentPathId = currentCandidate?.pathId
+        val currentStatus = currentPathData?.optJSONObject("userPathStep")?.optString("pathCompleteStatus", "").orEmpty()
+        val currentRouteTerminal = isRouteTerminal(currentPathData, currentStatus)
+
+        if (config.routeLoop) {
+            currentCandidate?.let {
+                return RouteDecision(it, "路线循环")
+            }
+            return firstConfiguredRoute(config)?.let { RouteDecision(it, "路线循环默认首条") }
+        }
+
+        if (config.themeLoop) {
+            val currentThemeId = currentCandidate?.themeId?.takeIf { it in config.themeIds }
+            val themeId = currentThemeId ?: config.themeIds.firstOrNull()
+            if (!themeId.isNullOrBlank()) {
+                val themeRoutes = collectRouteCandidatesForThemes(listOf(themeId))
+                val candidate = themeRoutes.firstOrNull { !isRouteCompleted(it.status) }
+                    ?: themeRoutes.firstOrNull()
+                if (candidate != null) {
+                    return RouteDecision(candidate, "主题循环[$themeId]")
+                }
+            }
+        }
+
+        if (config.pathIds.isNotEmpty()) {
+            val configuredPathRoutes = config.pathIds.mapNotNull { queryRouteCandidateByPathId(it) }
+            configuredPathRoutes.firstOrNull {
+                !isRouteCompleted(it.status) && !(currentRouteTerminal && it.pathId == currentPathId)
+            }?.let {
+                return RouteDecision(it, "自定义路线未完成优先")
+            }
+        }
+
+        val themeRoutes = if (config.pathIds.isEmpty()) {
+            collectRouteCandidatesForThemes(config.themeIds)
+        } else {
+            emptyList()
+        }
+        if (config.pathIds.isEmpty()) {
+            themeRoutes.firstOrNull {
+                !isRouteCompleted(it.status) && !(currentRouteTerminal && it.pathId == currentPathId)
+            }?.let {
+                return RouteDecision(it, "主题路线未完成优先")
+            }
+        }
+
+        findMissingKnowledgeRoute(
+            excludePathId = currentPathId.takeIf { currentRouteTerminal },
+            excludePathName = currentCandidate?.name?.takeIf { currentRouteTerminal && it.isNotBlank() }
+        )?.let { return it }
+
+        currentPathId?.let { pathId ->
+            collectRecommendedRouteCandidates(pathId)
+                .firstOrNull {
+                    !isRouteCompleted(it.status) &&
+                        !(currentRouteTerminal && it.pathId == pathId)
+                }
+                ?.let { return RouteDecision(it, "服务端推荐路线未完成优先") }
+        }
+
+        firstConfiguredRoute(config)?.let { return RouteDecision(it, "默认回到首条路线") }
+
+        return null
+    }
+
+    private fun firstConfiguredRoute(config: RouteConfig): RouteCandidate? {
+        if (config.pathIds.isNotEmpty()) {
+            return queryRouteCandidateByPathId(config.pathIds.first()) ?: RouteCandidate(pathId = config.pathIds.first())
+        }
+        return collectRouteCandidatesForThemes(config.themeIds).firstOrNull()
+    }
+
+    private fun queryRouteCandidateByPathId(pathId: String): RouteCandidate? {
+        return buildRouteCandidateFromPathData(queryPath(pathId)) ?: RouteCandidate(pathId = pathId)
+    }
+
+    private fun buildRouteCandidateFromPathData(pathData: JSONObject?): RouteCandidate? {
+        if (pathData == null) return null
+        val pathObj = pathData.optJSONObject("path")
+        val userPathStep = pathData.optJSONObject("userPathStep")
+        val pathId = userPathStep?.optString("pathId", "")
+            ?.takeIf { it.isNotBlank() }
+            ?: pathObj?.optString("pathId", "").orEmpty()
+        if (pathId.isBlank()) return null
+        return RouteCandidate(
+            pathId = pathId,
+            name = userPathStep?.optString("pathName", "")
+                ?.takeIf { it.isNotBlank() }
+                ?: pathObj?.optString("name", "").orEmpty(),
+            themeId = pathObj?.optString("themeId", "")?.takeIf { it.isNotBlank() },
+            cityId = pathObj?.optString("cityId", "")?.takeIf { it.isNotBlank() },
+            status = userPathStep?.optString("pathCompleteStatus", "").orEmpty()
+        )
+    }
+
+    private fun collectRouteCandidatesForThemes(themeIds: List<String>): List<RouteCandidate> {
+        val candidates = LinkedHashMap<String, RouteCandidate>()
+        for (themeId in themeIds) {
+            val theme = queryWorldMap(themeId) ?: continue
+            val cityList = theme.optJSONArray("cityList") ?: continue
+            for (i in 0 until cityList.length()) {
+                val cityId = cityList.optJSONObject(i)?.optString("cityId", "").orEmpty()
+                if (cityId.isBlank()) continue
+                val city = queryCityPath(cityId) ?: continue
+                val cityPathList = city.optJSONArray("cityPathList") ?: continue
+                for (j in 0 until cityPathList.length()) {
+                    val cityPath = cityPathList.optJSONObject(j) ?: continue
+                    val pathId = cityPath.optString("pathId", "")
+                    if (pathId.isBlank() || candidates.containsKey(pathId)) continue
+                    candidates[pathId] = RouteCandidate(
+                        pathId = pathId,
+                        name = cityPath.optString("name", cityPath.optString("pathName", pathId)),
+                        themeId = cityPath.optString("themeId", themeId).ifBlank { themeId },
+                        cityId = cityPath.optString("cityId", cityId).ifBlank { cityId },
+                        status = cityPath.optString("pathCompleteStatus", "")
+                    )
+                }
+            }
+        }
+        return candidates.values.toList()
+    }
+
+    private fun collectRecommendedRouteCandidates(pathId: String): List<RouteCandidate> {
+        val response = JSONObject(AntSportsRpcCall.queryRecommendPathList(pathId))
+        if (!ResChecker.checkRes(TAG, response)) {
+            Log.error(
+                TAG,
+                "行走路线🚶🏻‍♂️查询推荐路线失败[pathId=$pathId][code=${extractSportsRpcErrorCode(response).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(response)}] raw=$response"
+            )
+            return emptyList()
+        }
+        val recommendList = response.optJSONObject("data")?.optJSONArray("recommendPathList") ?: return emptyList()
+        val candidates = mutableListOf<RouteCandidate>()
+        for (i in 0 until recommendList.length()) {
+            val item = recommendList.optJSONObject(i) ?: continue
+            val recommendPathId = item.optString("pathId", "")
+            if (recommendPathId.isBlank()) continue
+            candidates.add(
+                RouteCandidate(
+                    pathId = recommendPathId,
+                    name = item.optString("name", recommendPathId),
+                    themeId = item.optString("themeId", "").takeIf { it.isNotBlank() },
+                    cityId = item.optString("cityId", "").takeIf { it.isNotBlank() },
+                    status = item.optString("pathCompleteStatus", "")
+                )
+            )
+        }
+        return candidates
+    }
+
+    private fun findMissingKnowledgeRoute(
+        excludePathId: String? = null,
+        excludePathName: String? = null
+    ): RouteDecision? {
+        val summary = JSONObject(AntSportsRpcCall.queryCityKnowledgeSummary())
+        if (!ResChecker.checkRes(TAG, summary)) {
+            Log.error(
+                TAG,
+                "行走路线🚶🏻‍♂️查询城市见闻汇总失败[code=${extractSportsRpcErrorCode(summary).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(summary)}] raw=$summary"
+            )
+            return null
+        }
+        val cityList = summary.optJSONObject("data")?.optJSONArray("cityKnowledgeSummaryList") ?: return null
+        for (i in 0 until cityList.length()) {
+            val city = cityList.optJSONObject(i) ?: continue
+            val total = city.optInt("totalKnowledgeCount", 0)
+            val received = city.optInt("receiveKnowledgeCount", 0)
+            val cityId = city.optString("cityId", "")
+            if (cityId.isBlank() || total <= 0 || received >= total) {
+                continue
+            }
+            val cityPathData = queryCityPath(cityId) ?: continue
+            val pathList = cityPathData.optJSONArray("cityPathList") ?: continue
+            var hasRouteInCity = false
+            var loopCandidate: RouteCandidate? = null
+            var excludedLoopCandidate: RouteCandidate? = null
+            for (j in 0 until pathList.length()) {
+                val cityPath = pathList.optJSONObject(j) ?: continue
+                val candidate = RouteCandidate(
+                    pathId = cityPath.optString("pathId", ""),
+                    name = cityPath.optString("name", cityPath.optString("pathName", "")),
+                    themeId = cityPath.optString("themeId", "").takeIf { it.isNotBlank() },
+                    cityId = cityId,
+                    status = cityPath.optString("pathCompleteStatus", "")
+                )
+                if (candidate.pathId.isBlank()) {
+                    continue
+                }
+                hasRouteInCity = true
+                val isExcluded = (!excludePathId.isNullOrBlank() && candidate.pathId == excludePathId) ||
+                    (!excludePathName.isNullOrBlank() &&
+                        candidate.name.isNotBlank() &&
+                        candidate.name == excludePathName)
+                if (!isExcluded && !isRouteCompleted(candidate.status)) {
+                    return RouteDecision(
+                        candidate,
+                        "城市见闻未完成[${city.optString("cityName", cityId)}:$received/$total]"
+                    )
+                }
+                if (!isExcluded && loopCandidate == null) {
+                    loopCandidate = candidate
+                }
+                if (isExcluded && excludedLoopCandidate == null) {
+                    excludedLoopCandidate = candidate
+                }
+            }
+            if (loopCandidate != null) {
+                return RouteDecision(
+                    loopCandidate,
+                    "城市见闻未完成[${city.optString("cityName", cityId)}:$received/$total]#优先循环路线"
+                )
+            }
+            if (excludedLoopCandidate != null) {
+                return RouteDecision(
+                    excludedLoopCandidate,
+                    "城市见闻未完成[${city.optString("cityName", cityId)}:$received/$total]#仅当前路线可循环"
+                )
+            }
+            if (hasRouteInCity) {
+                Log.sports(
+                    TAG,
+                    "行走路线🚶🏻‍♂️城市见闻未完成但无未完成路线可切换[${city.optString("cityName", cityId)}:$received/$total]"
+                )
+            }
+        }
+        return null
+    }
+
+    private fun isRouteStepLimit(errorCode: String, errorMsg: String): Boolean {
+        val text = "$errorCode $errorMsg"
+        return text.contains("步数") ||
+            text.contains("步數") ||
+            text.contains("上限") ||
+            text.contains("不足") ||
+            text.contains("dayLimit", ignoreCase = true)
+    }
+
+    private fun tryReviveRouteSteps(config: RouteConfig): Boolean {
+        if (!config.reviveSteps) {
+            Log.sports(TAG, "行走路线复活步数已关闭")
+            return false
+        }
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_ROUTE_REVIVE_TRIED)) {
+            Log.sports(TAG, "行走路线复活步数今日已尝试且不可继续，跳过")
+            return false
+        }
+
+        if (config.reviveTask) {
+            completeRouteReviveTasks()
+            invalidateRouteStateCache(includeRevive = true)
+        }
+
+        val reviveData = queryRouteReviveData()
+        if (reviveData == null) {
+            return false
+        }
+
+        val remainTimes = reviveData.optInt("remainReviveTimes", 0)
+        if (remainTimes <= 0) {
+            Log.sports(TAG, "行走路线复活次数不足，今日不再重复尝试")
+            Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_ROUTE_REVIVE_TRIED)
+            return false
+        }
+
+        val candidates = collectReviveCandidates(reviveData)
+        if (candidates.isEmpty()) {
+            Log.sports(TAG, "行走路线没有可复活历史步数，今日不再重复尝试")
+            Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_ROUTE_REVIVE_TRIED)
+            return false
+        }
+
+        var attempted = 0
+        for (candidate in candidates) {
+            if (attempted >= remainTimes) break
+            attempted++
+            val resp = JSONObject(AntSportsRpcCall.reviveSteps(candidate.date))
+            if (isSportsRpcSuccess(resp)) {
+                invalidateRouteStateCache(includeRevive = true)
+                val reviveCount = resp.optJSONObject("data")?.optInt("reviveCount", candidate.count) ?: candidate.count
+                Log.sports(TAG, "行走路线复活步数成功[date=${candidate.date}, count=$reviveCount]")
+                return true
+            }
+
+            val errorCode = extractSportsRpcErrorCode(resp)
+            val errorMsg = extractSportsRpcErrorMessage(resp)
+            Log.error(
+                TAG,
+                "行走路线复活步数失败[date=${candidate.date}, count=${candidate.count}][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$resp"
+            )
+        }
+
+        Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_ROUTE_REVIVE_TRIED)
+        return false
+    }
+
+    private fun completeRouteReviveTasks() {
+        runCatching {
+            val finishStatus = JSONObject(AntSportsRpcCall.queryReviveTaskFinishStatus())
+            if (!isSportsRpcSuccess(finishStatus)) {
+                Log.error(
+                    TAG,
+                    "行走路线复活任务状态查询失败[code=${extractSportsRpcErrorCode(finishStatus).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(finishStatus)}] raw=$finishStatus"
+                )
+            }
+        }.onFailure {
+            Log.printStackTrace(TAG, "queryReviveTaskFinishStatus err", it)
+        }
+
+        val taskListResp = JSONObject(AntSportsRpcCall.queryReviveTaskList())
+        if (!isSportsRpcSuccess(taskListResp)) {
+            Log.error(
+                TAG,
+                "行走路线复活任务列表查询失败[code=${extractSportsRpcErrorCode(taskListResp).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(taskListResp)}] raw=$taskListResp"
+            )
+            return
+        }
+
+        val tasks = taskListResp.optJSONObject("data")?.optJSONArray("reviveTaskLists") ?: return
+        for (i in 0 until tasks.length()) {
+            val task = tasks.optJSONObject(i) ?: continue
+            val taskId = task.optString("taskId", "")
+            val taskName = task.optString("taskName", taskId)
+            val taskStatus = task.optString("taskStatus", "")
+            val taskType = task.optString("taskType", "")
+            val taskBizId = task.optJSONObject("bizExtMap")?.optString("bizId", "").orEmpty()
+            val isAdTask = task.optBoolean("adTask", false) || taskType == "AD_TASK"
+            if (taskId.isBlank() || taskStatus != "WAIT_COMPLETE") {
+                continue
+            }
+            if (task.optBoolean("needSignUp", false)) {
+                Log.sports(TAG, "行走路线复活任务[需要报名，跳过：$taskName，taskId=$taskId]")
+                continue
+            }
+            if (!isAdTask && taskType != "BROWSER") {
+                Log.sports(TAG, "行走路线复活任务[非浏览任务跳过：$taskName，taskId=$taskId，type=$taskType]")
+                continue
+            }
+            if (isAdTask && taskBizId.isBlank()) {
+                Log.error(TAG, "行走路线复活任务[广告任务缺少bizId，跳过：$taskName，taskId=$taskId]")
+                continue
+            }
+
+            val triggerResp = JSONObject(
+                AntSportsRpcCall.triggerReviveTask(
+                    taskId,
+                    taskBizId.takeIf { it.isNotBlank() }
+                )
+            )
+            if (!isSportsRpcSuccess(triggerResp)) {
+                Log.error(
+                    TAG,
+                    "行走路线复活任务触发失败[$taskName][taskId=$taskId][code=${extractSportsRpcErrorCode(triggerResp).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(triggerResp)}] raw=$triggerResp"
+                )
+                continue
+            }
+            GlobalThreadPools.sleepCompat(500)
+            if (isAdTask) {
+                val adFinishResp = JSONObject(AntSportsRpcCall.finishAdTask(taskBizId))
+                if (isSportsRpcSuccess(adFinishResp)) {
+                    invalidateRouteStateCache(includeRevive = true)
+                    Log.sports(TAG, "行走路线复活广告任务完成[$taskName][taskId=$taskId][bizId=$taskBizId]")
+                } else {
+                    Log.error(
+                        TAG,
+                        "行走路线复活广告任务完成失败[$taskName][taskId=$taskId][bizId=$taskBizId][code=${extractSportsRpcErrorCode(adFinishResp).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(adFinishResp)}] raw=$adFinishResp"
+                    )
+                }
+                GlobalThreadPools.sleepCompat(500)
+                continue
+            }
+            val completeResp = JSONObject(AntSportsRpcCall.completeReviveTask(taskId))
+            if (isSportsRpcSuccess(completeResp)) {
+                invalidateRouteStateCache(includeRevive = true)
+                Log.sports(TAG, "行走路线复活任务完成[$taskName][taskId=$taskId]")
+            } else {
+                Log.error(
+                    TAG,
+                    "行走路线复活任务完成失败[$taskName][taskId=$taskId][code=${extractSportsRpcErrorCode(completeResp).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(completeResp)}] raw=$completeResp"
+                )
+            }
+            GlobalThreadPools.sleepCompat(500)
+        }
+    }
+
+    private fun queryRouteReviveData(): JSONObject? {
+        val resp = JSONObject(AntSportsRpcCall.queryUserReviveStepT2())
+        if (!isSportsRpcSuccess(resp)) {
+            Log.error(
+                TAG,
+                "行走路线复活步数明细查询失败[code=${extractSportsRpcErrorCode(resp).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(resp)}] raw=$resp"
+            )
+            return null
+        }
+        return resp.optJSONObject("data")
+    }
+
+    private fun collectReviveCandidates(reviveData: JSONObject): List<ReviveCandidate> {
+        val result = mutableListOf<ReviveCandidate>()
+        val stepRevives = reviveData.optJSONArray("stepRevives") ?: return result
+        for (i in 0 until stepRevives.length()) {
+            val item = stepRevives.optJSONObject(i) ?: continue
+            val date = item.optString("date", "")
+            val count = item.optInt("count", 0)
+            if (date.isNotBlank() && count > 0) {
+                result.add(ReviveCandidate(date, count))
+            }
+        }
+        return result.sortedByDescending { it.count }
     }
 
     /**
@@ -1821,19 +2667,44 @@ class AntSports : ModelTask() {
             val userPath = data.optJSONObject("userPathStep")
             Log.sports(TAG, "路线: ${userPath?.optString("pathName")}, 进度: ${userPath?.optInt("pathProgress")}%")
 
-            val boxList = data.optJSONArray("treasureBoxList")
-            if (boxList != null && boxList.length() > 0) {
-                for (i in 0 until boxList.length()) {
-                    val boxNo = boxList.optJSONObject(i)?.optString("boxNo")
-                    if (!boxNo.isNullOrEmpty()) receiveEvent(boxNo)
-                }
-            }
+            processRouteEvents(data)
 
             return data
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "queryPath 过程中发生崩溃", t)
         }
         return null
+    }
+
+    private fun processRouteEvents(data: JSONObject?) {
+        if (data == null) return
+
+        val boxList = data.optJSONArray("treasureBoxList")
+        if (boxList != null && boxList.length() > 0) {
+            for (i in 0 until boxList.length()) {
+                val box = boxList.optJSONObject(i) ?: continue
+                val eventBillNo = box.optString("eventBillNo", "")
+                    .ifBlank { box.optString("boxNo", "") }
+                if (eventBillNo.isNotBlank()) {
+                    receiveEvent(eventBillNo)
+                }
+            }
+        }
+
+        val cityKnowledgeList = data.optJSONArray("cityKnowledgeList")
+        if (cityKnowledgeList != null && cityKnowledgeList.length() > 0) {
+            for (i in 0 until cityKnowledgeList.length()) {
+                val knowledge = cityKnowledgeList.optJSONObject(i) ?: continue
+                val eventBillNo = knowledge.optString("eventBillNo", "")
+                if (eventBillNo.isNotBlank()) {
+                    Log.sports(
+                        TAG,
+                        "行走路线📍领取城市见闻[${knowledge.optString("name", knowledge.optString("knowledgeId", eventBillNo))}]"
+                    )
+                    receiveEvent(eventBillNo)
+                }
+            }
+        }
     }
 
     /**
@@ -1845,28 +2716,40 @@ class AntSports : ModelTask() {
             if (!isSportsRpcSuccess(jo)) {
                 val errorCode = extractSportsRpcErrorCode(jo)
                 val errorMsg = extractSportsRpcErrorMessage(jo)
-                if (errorCode == "RECEIVE_REWARD_REPEATED") {
-                    Log.sports(TAG, "行走路线🎁宝箱已领取，跳过重复领取[eventBillNo=$eventBillNo]")
+                if (isRouteEventDuplicate(errorCode, errorMsg)) {
+                    Log.sports(TAG, "行走路线🎁事件已领取，跳过重复领取[eventBillNo=$eventBillNo][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]")
                     return
                 }
                 Log.error(
                     TAG,
-                    "行走路线🎁开启宝箱失败[eventBillNo=$eventBillNo][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]"
+                    "行走路线🎁领取事件失败[eventBillNo=$eventBillNo][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$jo"
                 )
                 return
             }
 
-            val ja = jo.getJSONObject("data").getJSONArray("rewards")
+            invalidateRouteStateCache()
+            val ja = jo.optJSONObject("data")?.optJSONArray("rewards")
+            if (ja == null || ja.length() == 0) {
+                Log.sports(TAG, "行走路线🎁事件领取成功[eventBillNo=$eventBillNo]")
+                return
+            }
             for (i in 0 until ja.length()) {
                 val reward = ja.getJSONObject(i)
                 Log.sports(
                     TAG,
-                    "行走路线🎁开启宝箱[${reward.getString("rewardName")}]*${reward.getInt("count")}"
+                    "行走路线🎁领取奖励[${reward.optString("rewardName", reward.optString("name", "未知奖励"))}]*${reward.optInt("count", 1)}"
                 )
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "receiveEvent err:", t)
         }
+    }
+
+    private fun isRouteEventDuplicate(errorCode: String, errorMsg: String): Boolean {
+        return errorCode == "RECEIVE_REWARD_REPEATED" ||
+            errorMsg.contains("已领取") ||
+            errorMsg.contains("已经领取") ||
+            errorMsg.contains("重复")
     }
 
     /**
@@ -1878,7 +2761,7 @@ class AntSports : ModelTask() {
         }
         var pathId: String? = null
         try {
-            val theme = queryWorldMap(walkPathThemeId)
+            val theme = queryWorldMap(themeId)
             if (theme == null) {
                 Log.error(TAG, "queryJoinPath-> theme 失败：$theme")
                 return null
@@ -1913,11 +2796,24 @@ class AntSports : ModelTask() {
         }
         try {
             val jo = JSONObject(AntSportsRpcCall.joinPath(realPathId))
-            if (ResChecker.checkRes(TAG, jo)) {
+            if (isSportsRpcSuccess(jo)) {
+                invalidateRouteStateCache()
                 val path = queryPath(realPathId)
-                Log.sports(TAG, "行走路线🚶🏻‍♂️路线[${path?.getJSONObject("path")?.getString("name")}]已加入")
+                Log.sports(TAG, "行走路线🚶🏻‍♂️路线[${path?.optJSONObject("path")?.optString("name", realPathId)}]已加入")
             } else {
-                Log.error(TAG, "行走路线🚶🏻‍♂️路线[$realPathId]有误，无法加入！")
+                val errorCode = extractSportsRpcErrorCode(jo)
+                val errorMsg = extractSportsRpcErrorMessage(jo)
+                if (isSportsRouteBusinessTerminal(errorCode, errorMsg)) {
+                    Log.sports(
+                        TAG,
+                        "行走路线🚶🏻‍♂️加入路线业务终态[pathId=$realPathId][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]"
+                    )
+                    return
+                }
+                Log.error(
+                    TAG,
+                    "行走路线🚶🏻‍♂️加入路线失败[pathId=$realPathId][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$jo"
+                )
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "joinPath err:", t)
@@ -2617,16 +3513,58 @@ class AntSports : ModelTask() {
     private fun processBubbleList(obj: JSONObject?) {
         if (obj == null || !obj.has("bubbleList")) return
         try {
-            val bubbleList = obj.getJSONArray("bubbleList")
+            val bubbleList = obj.optJSONArray("bubbleList") ?: return
             for (j in 0 until bubbleList.length()) {
-                val bubble = bubbleList.getJSONObject(j)
-                val bubbleId = bubble.optString("bubbleId")
+                val bubble = bubbleList.optJSONObject(j) ?: continue
+                val recordId = resolveTrainFriendBubbleRecordId(bubble)
+                if (recordId.isBlank()) {
+                    Log.error(TAG, "训练好友收益泡泡缺少可领取ID raw=$bubble")
+                    continue
+                }
+                if (recordId in skippedTrainBubbleRecordIds) {
+                    continue
+                }
 
-                val responseStr = AntSportsRpcCall.pickBubbleTaskEnergy(bubbleId, false)
+                val responseStr = AntSportsRpcCall.pickBubbleTaskEnergy(recordId, false)
                 val responseJson = JSONObject(responseStr)
 
-                if (!ResChecker.checkRes(TAG, responseJson)) {
-                    Log.error(TAG, "收取训练好友 失败: $responseStr")
+                if (!isSportsRpcSuccess(responseJson)) {
+                    val errorCode = extractSportsRpcErrorCode(responseJson)
+                    val errorMsg = extractSportsRpcErrorMessage(responseJson)
+                    if (isTrainFriendBubbleAlreadyHandled(errorCode, errorMsg)) {
+                        skippedTrainBubbleRecordIds.add(recordId)
+                        Log.sports(
+                            TAG,
+                            "训练好友收益泡泡已处理[recordId=$recordId][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]"
+                        )
+                        continue
+                    }
+                    if (isTrainFriendBubbleInvalid(errorCode, errorMsg)) {
+                        skippedTrainBubbleRecordIds.add(recordId)
+                        Log.sports(
+                            TAG,
+                            "训练好友收益泡泡已失效[recordId=$recordId][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]"
+                        )
+                        continue
+                    }
+                    if (errorCode == "CAMP_TRIGGER_ERROR") {
+                        Log.error(
+                            TAG,
+                            "收取训练好友失败-业务RPC受限[recordId=$recordId][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$responseStr"
+                        )
+                        continue
+                    }
+                    if (!isSportsRpcRetryable(responseJson)) {
+                        Log.error(
+                            TAG,
+                            "收取训练好友失败-非重试RPC[recordId=$recordId][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$responseStr"
+                        )
+                        continue
+                    }
+                    Log.error(
+                        TAG,
+                        "收取训练好友失败[recordId=$recordId][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$responseStr"
+                    )
                     continue
                 }
 
@@ -2657,6 +3595,31 @@ class AntSports : ModelTask() {
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "processBubbleList 异常:", t)
         }
+    }
+
+    private fun resolveTrainFriendBubbleRecordId(bubble: JSONObject): String {
+        return sequenceOf(
+            bubble.optString("medEnergyBallInfoRecordId", ""),
+            bubble.optString("recordId", ""),
+            bubble.optString("assetId", ""),
+            bubble.optString("bubbleId", "")
+        ).map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
+    }
+
+    private fun isTrainFriendBubbleAlreadyHandled(errorCode: String, errorMsg: String): Boolean {
+        val errorText = "$errorCode $errorMsg"
+        return errorCode == "RECEIVE_REWARD_REPEATED" ||
+            errorText.contains("已领取") ||
+            errorText.contains("已经领取") ||
+            errorText.contains("重复领取")
+    }
+
+    private fun isTrainFriendBubbleInvalid(errorCode: String, errorMsg: String): Boolean {
+        val errorText = "$errorCode $errorMsg"
+        return errorCode == "ENERGY_BALL_STATUS_IS_INVALID_ERROR" ||
+            errorText.contains("能量球数据状态校验错误") ||
+            errorText.contains("已失效") ||
+            errorText.contains("已过期")
     }
 
     /**
@@ -2743,111 +3706,300 @@ class AntSports : ModelTask() {
      */
     internal fun buyMember() {
         try {
-            val clubHomeResponse = AntSportsRpcCall.queryClubHome()
-            GlobalThreadPools.sleepCompat(500)
-            val clubHomeJson = JSONObject(clubHomeResponse)
+            var clubHomeJson = queryClubHomeForBattle() ?: return
+            if (!isClubHomeEnabled(clubHomeJson)) return
+            clubHomeJson = unlockNextRoomsIfPossible(clubHomeJson)
 
-            if ("ENABLE" != clubHomeJson.optString("clubAuth")) {
-                Log.sports(TAG, "抢好友大战🧑‍🤝‍🧑未授权开启")
-                return
-            }
+            var boughtAny = false
+            roomLoop@ while (true) {
+                if (!isClubHomeEnabled(clubHomeJson)) return
 
-            val assetsInfo = clubHomeJson.optJSONObject("assetsInfo") ?: return
-            val coinBalance = assetsInfo.optInt("energyBalance", 0)
-            if (coinBalance <= 0) {
-                Log.sports(TAG, "抢好友大战🧑‍🤝‍🧑当前能量为0，跳过抢好友")
-                return
-            }
-
-            val roomList = clubHomeJson.optJSONArray("roomList") ?: return
-
-            for (i in 0 until roomList.length()) {
-                val room = roomList.optJSONObject(i) ?: continue
-                val memberList = room.optJSONArray("memberList")
-
-                if (memberList != null && memberList.length() > 0) continue
-
-                val roomId = room.optString("roomId")
-                if (roomId.isEmpty()) continue
-
-                val memberPriceResult = AntSportsRpcCall.queryMemberPriceRanking(coinBalance)
-                GlobalThreadPools.sleepCompat(500)
-                val memberPriceJson = JSONObject(memberPriceResult)
-                if (!memberPriceJson.optBoolean("success", true)) {
-                    Log.error(TAG, "queryMemberPriceRanking err: ${memberPriceJson.optString("resultDesc")}")
-                    continue
+                val coinBalance = clubHomeJson.optJSONObject("assetsInfo")?.optInt("energyBalance", 0) ?: 0
+                if (coinBalance <= 0) {
+                    Log.sports(TAG, "抢好友大战🧑‍🤝‍🧑当前能量为0，跳过抢好友")
+                    return
                 }
 
-                val memberDetailList = memberPriceJson.optJSONArray("memberDetailList") ?: run {
+                val room = findEmptyClubRoom(clubHomeJson)
+                if (room == null) {
+                    Log.sports(TAG, if (boughtAny) "抢好友大战🧑‍🤝‍🧑空场地已处理完" else "抢好友大战🧑‍🤝‍🧑暂无空场地")
+                    return
+                }
+                val roomId = room.optString("roomId", "")
+                if (roomId.isBlank()) {
+                    Log.error(TAG, "抢好友大战🧑‍🤝‍🧑空场地缺少roomId raw=$room")
+                    return
+                }
+
+                val memberPriceJson = queryMemberPriceRankingForBattle(coinBalance) ?: return
+                val candidates = collectClubMemberCandidates(memberPriceJson)
+                if (candidates.isEmpty()) {
                     Log.sports(TAG, "抢好友大战🧑‍🤝‍🧑暂无可抢好友")
-                    continue
+                    return
                 }
 
-                for (j in 0 until memberDetailList.length()) {
-                    val detail = memberDetailList.optJSONObject(j) ?: continue
-                    val memberModel = detail.optJSONObject("memberModel") ?: continue
-
-                    val originBossId = memberModel.optString("originBossId")
-                    val memberIdFromRank = memberModel.optString("memberId")
-                    if (originBossId.isEmpty() || memberIdFromRank.isEmpty()) continue
-                    if (FriendGuard.shouldSkipFriend(originBossId, TAG, "抢好友")) {
+                var matchedTarget = false
+                for (candidate in candidates) {
+                    if (!shouldRobClubMember(candidate.originBossId)) {
+                        continue
+                    }
+                    matchedTarget = true
+                    if (candidate.price > coinBalance) {
+                        continue
+                    }
+                    if (FriendGuard.shouldSkipFriend(candidate.originBossId, TAG, "抢好友")) {
                         continue
                     }
 
-                    var isTarget = originBossIdList.value?.contains(originBossId) == true
-                    if (battleForFriendType.value == BattleForFriendType.DONT_ROB) {
-                        isTarget = !isTarget
+                    val memberObj = queryClubMemberForBattle(candidate) ?: continue
+                    val currentBossId = memberObj.optString("currentBossId", candidate.currentBossId)
+                    val memberId = memberObj.optString("memberId", candidate.memberId)
+                    val priceInfo = memberObj.optJSONObject("priceInfo")
+                    if (currentBossId.isBlank() || memberId.isBlank() || priceInfo == null) {
+                        Log.error(TAG, "抢好友大战🧑‍🤝‍🧑成员详情缺少必要字段[originBossId=${candidate.originBossId}] raw=$memberObj")
+                        continue
                     }
-                    if (!isTarget) continue
+                    val realPrice = priceInfo.optInt("price", candidate.price)
+                    if (realPrice > coinBalance) {
+                        continue
+                    }
 
-                    val priceInfoObj = memberModel.optJSONObject("priceInfo") ?: continue
-                    val price = priceInfoObj.optInt("price", Int.MAX_VALUE)
-                    if (price > coinBalance) continue
-
-                    val clubMemberResult = AntSportsRpcCall.queryClubMember(memberIdFromRank, originBossId)
-                    GlobalThreadPools.sleepCompat(500)
-                    val clubMemberDetailJson = JSONObject(clubMemberResult)
-                    if (!clubMemberDetailJson.optBoolean("success", true) ||
-                        !clubMemberDetailJson.has("member")
-                    ) continue
-
-                    val memberObj = clubMemberDetailJson.getJSONObject("member")
-                    val currentBossId = memberObj.optString("currentBossId")
-                    val memberId = memberObj.optString("memberId")
-                    val priceInfoFull = memberObj.optJSONObject("priceInfo") ?: continue
-
-                    if (currentBossId.isEmpty() || memberId.isEmpty()) continue
-
-                    val priceInfoStr = priceInfoFull.toString()
-
-                    val buyMemberResult = AntSportsRpcCall.buyMember(
-                        currentBossId,
-                        memberId,
-                        originBossId,
-                        priceInfoStr,
-                        roomId
+                    val buyMemberResponse = JSONObject(
+                        AntSportsRpcCall.buyMember(
+                            currentBossId,
+                            memberId,
+                            candidate.originBossId,
+                            priceInfo.toString(),
+                            roomId
+                        )
                     )
                     GlobalThreadPools.sleepCompat(500)
-                    val buyMemberResponse = JSONObject(buyMemberResult)
 
-                    if (ResChecker.checkRes(TAG, buyMemberResponse)) {
-                        val userName = UserMap.getMaskName(originBossId) ?: originBossId
-                        Log.sports("抢购好友🥋[成功:将 $userName 抢回来]")
+                    if (isSportsRpcSuccess(buyMemberResponse)) {
+                        boughtAny = true
+                        val userName = UserMap.getMaskName(candidate.originBossId) ?: candidate.originBossId
+                        Log.sports("抢购好友🥋[成功:将 $userName 抢回来，消耗${realPrice}能量]")
+                        clubHomeJson = queryClubHomeForBattle() ?: return
                         if (trainFriend.value == true) {
                             queryTrainItem()
+                            clubHomeJson = queryClubHomeForBattle() ?: return
                         }
-                        return
-                    } else if ("CLUB_AMOUNT_NOT_ENOUGH" == buyMemberResponse.optString("resultCode")) {
-                        Log.sports(TAG, "[能量🎈不足，无法完成抢购好友！]")
-                        return
-                    } else if ("CLUB_MEMBER_TRADE_PROTECT" == buyMemberResponse.optString("resultCode")) {
-                        Log.sports(TAG, "[暂时无法抢购好友，给Ta一段独处的时间吧！]")
+                        clubHomeJson = unlockNextRoomsIfPossible(clubHomeJson)
+                        continue@roomLoop
+                    }
+
+                    val errorCode = extractSportsRpcErrorCode(buyMemberResponse)
+                    val errorMsg = extractSportsRpcErrorMessage(buyMemberResponse)
+                    when {
+                        errorCode == "CLUB_AMOUNT_NOT_ENOUGH" -> {
+                            Log.sports(TAG, "抢好友大战🧑‍🤝‍🧑能量不足，停止抢购[code=$errorCode][msg=$errorMsg]")
+                            return
+                        }
+
+                        isClubRetryableConflict(errorCode, errorMsg) -> {
+                            Log.sports(
+                                TAG,
+                                "抢好友大战🧑‍🤝‍🧑成员或房间状态变化，刷新主页后重试[code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]"
+                            )
+                            clubHomeJson = queryClubHomeForBattle() ?: return
+                            continue@roomLoop
+                        }
+
+                        else -> {
+                            Log.error(
+                                TAG,
+                                "抢好友大战🧑‍🤝‍🧑抢购失败[originBossId=${candidate.originBossId}][roomId=$roomId][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$buyMemberResponse"
+                            )
+                            return
+                        }
                     }
                 }
+
+                Log.sports(
+                    TAG,
+                    if (matchedTarget) "抢好友大战🧑‍🤝‍🧑可抢目标能量不足或不可交易" else "抢好友大战🧑‍🤝‍🧑未匹配到配置中的可抢好友"
+                )
+                return
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "buyMember err:", t)
         }
+    }
+
+    private fun queryClubHomeForBattle(): JSONObject? {
+        val clubHomeJson = JSONObject(AntSportsRpcCall.queryClubHome())
+        GlobalThreadPools.sleepCompat(500)
+        if (!isSportsRpcSuccess(clubHomeJson)) {
+            Log.error(
+                TAG,
+                "抢好友大战🧑‍🤝‍🧑queryClubHome失败[code=${extractSportsRpcErrorCode(clubHomeJson).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(clubHomeJson)}] raw=$clubHomeJson"
+            )
+            return null
+        }
+        return clubHomeJson
+    }
+
+    private fun isClubHomeEnabled(clubHomeJson: JSONObject): Boolean {
+        if (clubHomeJson.optString("clubAuth", "") == "ENABLE") {
+            return true
+        }
+        Log.sports(TAG, "抢好友大战🧑‍🤝‍🧑未授权开启[clubAuth=${clubHomeJson.optString("clubAuth", "UNKNOWN")}]")
+        return false
+    }
+
+    private fun unlockNextRoomsIfPossible(clubHomeJson: JSONObject): JSONObject {
+        if (!::battleAutoUnlockRoom.isInitialized || battleAutoUnlockRoom.value != true) {
+            return clubHomeJson
+        }
+
+        var latestHome = clubHomeJson
+        var unlockCount = 0
+        while (unlockCount < 10) {
+            val unlockPrice = latestHome.optInt("nextRoomUnlockPrice", 0)
+            if (unlockPrice <= 0) {
+                return latestHome
+            }
+            val energyBalance = latestHome.optJSONObject("assetsInfo")?.optInt("energyBalance", 0) ?: 0
+            if (energyBalance < unlockPrice) {
+                Log.sports(TAG, "抢好友大战🧑‍🤝‍🧑解锁新场地能量不足[balance=$energyBalance, price=$unlockPrice]")
+                return latestHome
+            }
+
+            val unlockResp = JSONObject(AntSportsRpcCall.unlockNextRoom(energyBalance))
+            GlobalThreadPools.sleepCompat(500)
+            if (isSportsRpcSuccess(unlockResp)) {
+                unlockCount++
+                Log.sports(
+                    TAG,
+                    "抢好友大战🧑‍🤝‍🧑解锁新场地成功[price=$unlockPrice,balanceBefore=$energyBalance,nextPrice=${unlockResp.optInt("nextRoomUnlockPrice", 0)}]"
+                )
+                latestHome = queryClubHomeForBattle() ?: return latestHome
+                continue
+            }
+
+            val errorCode = extractSportsRpcErrorCode(unlockResp)
+            val errorMsg = extractSportsRpcErrorMessage(unlockResp)
+            if (errorCode == "CLUB_AMOUNT_NOT_ENOUGH") {
+                Log.sports(TAG, "抢好友大战🧑‍🤝‍🧑解锁新场地能量不足[code=$errorCode][msg=$errorMsg]")
+                return latestHome
+            }
+            if (isClubRetryableConflict(errorCode, errorMsg)) {
+                Log.sports(
+                    TAG,
+                    "抢好友大战🧑‍🤝‍🧑解锁场地遇到状态变化，刷新主页[code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]"
+                )
+                return queryClubHomeForBattle() ?: latestHome
+            }
+
+            Log.error(
+                TAG,
+                "抢好友大战🧑‍🤝‍🧑解锁新场地失败[price=$unlockPrice,balance=$energyBalance][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$unlockResp"
+            )
+            return latestHome
+        }
+        Log.error(TAG, "抢好友大战🧑‍🤝‍🧑解锁新场地达到保护上限，停止解锁")
+        return latestHome
+    }
+
+    private fun findEmptyClubRoom(clubHomeJson: JSONObject): JSONObject? {
+        val roomList = clubHomeJson.optJSONArray("roomList") ?: return null
+        for (i in 0 until roomList.length()) {
+            val room = roomList.optJSONObject(i) ?: continue
+            val memberList = room.optJSONArray("memberList")
+            if (memberList == null || memberList.length() == 0) {
+                return room
+            }
+        }
+        return null
+    }
+
+    private fun queryMemberPriceRankingForBattle(coinBalance: Int): JSONObject? {
+        val memberPriceJson = JSONObject(AntSportsRpcCall.queryMemberPriceRanking(coinBalance))
+        GlobalThreadPools.sleepCompat(500)
+        if (!isSportsRpcSuccess(memberPriceJson)) {
+            Log.error(
+                TAG,
+                "抢好友大战🧑‍🤝‍🧑queryMemberPriceRanking失败[coinBalance=$coinBalance][code=${extractSportsRpcErrorCode(memberPriceJson).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(memberPriceJson)}] raw=$memberPriceJson"
+            )
+            return null
+        }
+        return memberPriceJson
+    }
+
+    private fun collectClubMemberCandidates(memberPriceJson: JSONObject): List<ClubMemberCandidate> {
+        val candidates = mutableListOf<ClubMemberCandidate>()
+
+        val memberDetailList = memberPriceJson.optJSONArray("memberDetailList")
+        if (memberDetailList != null) {
+            for (i in 0 until memberDetailList.length()) {
+                val memberModel = memberDetailList.optJSONObject(i)?.optJSONObject("memberModel") ?: continue
+                val memberId = memberModel.optString("memberId", "")
+                val originBossId = memberModel.optString("originBossId", "")
+                if (memberId.isBlank() || originBossId.isBlank()) continue
+                candidates.add(
+                    ClubMemberCandidate(
+                        currentBossId = memberModel.optString("currentBossId", ""),
+                        memberId = memberId,
+                        originBossId = originBossId,
+                        price = memberModel.optJSONObject("priceInfo")?.optInt("price", Int.MAX_VALUE)
+                            ?: memberModel.optInt("price", Int.MAX_VALUE)
+                    )
+                )
+            }
+        }
+
+        val rankData = memberPriceJson.optJSONObject("rank")?.optJSONArray("data")
+        if (rankData != null) {
+            for (i in 0 until rankData.length()) {
+                val item = rankData.optJSONObject(i) ?: continue
+                val memberId = item.optString("memberId", "")
+                val originBossId = item.optString("originBossId", "")
+                if (memberId.isBlank() || originBossId.isBlank()) continue
+                candidates.add(
+                    ClubMemberCandidate(
+                        currentBossId = item.optString("currentBossId", ""),
+                        memberId = memberId,
+                        originBossId = originBossId,
+                        price = item.optInt("price", Int.MAX_VALUE)
+                    )
+                )
+            }
+        }
+
+        return candidates.distinctBy { "${it.memberId}#${it.originBossId}" }
+    }
+
+    private fun shouldRobClubMember(originBossId: String): Boolean {
+        var isTarget = originBossIdList.value?.contains(originBossId) == true
+        if (battleForFriendType.value == BattleForFriendType.DONT_ROB) {
+            isTarget = !isTarget
+        }
+        return isTarget
+    }
+
+    private fun queryClubMemberForBattle(candidate: ClubMemberCandidate): JSONObject? {
+        val clubMemberDetailJson = JSONObject(
+            AntSportsRpcCall.queryClubMember(candidate.memberId, candidate.originBossId)
+        )
+        GlobalThreadPools.sleepCompat(500)
+        if (!isSportsRpcSuccess(clubMemberDetailJson) || !clubMemberDetailJson.has("member")) {
+            Log.error(
+                TAG,
+                "抢好友大战🧑‍🤝‍🧑queryClubMember失败[memberId=${candidate.memberId}][originBossId=${candidate.originBossId}][code=${extractSportsRpcErrorCode(clubMemberDetailJson).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(clubMemberDetailJson)}] raw=$clubMemberDetailJson"
+            )
+            return null
+        }
+        return clubMemberDetailJson.optJSONObject("member")
+    }
+
+    private fun isClubRetryableConflict(errorCode: String, errorMsg: String): Boolean {
+        val text = "$errorCode $errorMsg"
+        return errorCode == "CLUB_MEMBER_TRADE_PROTECT" ||
+            errorCode == "CLUB_MEMBER_CHANGED" ||
+            text.contains("独处") ||
+            text.contains("保护") ||
+            text.contains("变化") ||
+            text.contains("已被抢")
     }
 
     // ---------------------------------------------------------------------
@@ -2879,6 +4031,8 @@ class AntSports : ModelTask() {
 
         /** @brief 任务循环间隔（毫秒） */
         private val TASK_LOOP_DELAY: Long = 1000
+        private val pickedNeverlandBubbleRecordIds = mutableSetOf<String>()
+        private val handledNeverlandBubbleEncryptValues = mutableSetOf<String>()
 
         /**
          * @brief 健康岛任务入口
@@ -3144,6 +4298,7 @@ class AntSports : ModelTask() {
                 Log.sports(TAG, "开始检查健康岛浏览任务")
                 var hasTask = true
                 val completedEncryptValues = mutableSetOf<String>()
+                val nonRetryableEncryptValues = mutableSetOf<String>()
                 while (hasTask) {
                     val taskInfoResp = JSONObject(
                         AntSportsRpcCall.NeverlandRpcCall.queryTaskInfo(
@@ -3184,7 +4339,10 @@ class AntSports : ModelTask() {
                             )
                             continue
                         }
-                        if (encryptValue in completedEncryptValues || !roundEncryptValues.add(encryptValue)) {
+                        if (encryptValue in completedEncryptValues ||
+                            encryptValue in nonRetryableEncryptValues ||
+                            !roundEncryptValues.add(encryptValue)
+                        ) {
                             repeatedTaskCount++
                             continue
                         }
@@ -3227,6 +4385,13 @@ class AntSports : ModelTask() {
                             completedEncryptValues.add(encryptValue)
                             Log.sports("✅ 健康岛浏览任务[$taskTitle]完成，获得能量+$energyNum")
                         } else {
+                            if (!isSportsRpcRetryable(receiveResp)) {
+                                nonRetryableEncryptValues.add(encryptValue)
+                                Log.sports(
+                                    TAG,
+                                    "健康岛任务[$taskTitle]非重试失败，加入本轮跳过列表[encryptValue=$encryptValue]"
+                                )
+                            }
                             Log.error(
                                 TAG,
                                 "健康岛任务领取失败[$taskTitle][viewSec=$viewSec][energyNum=$energyNum][encryptValue=$encryptValue]: $receiveResp"
@@ -3345,6 +4510,13 @@ class AntSports : ModelTask() {
                     val viewSec = item.optInt("viewSec", 15)
 
                     if ("INIT" == bubbleTaskStatus && encryptValue.isNotEmpty()) {
+                        if (encryptValue in handledNeverlandBubbleEncryptValues) {
+                            Log.sports(
+                                TAG,
+                                "浏览任务已处理，跳过重复提交：${item.optString("title")}"
+                            )
+                            continue
+                        }
                         encryptValues.add(encryptValue)
                         Log.sports(
                             TAG,
@@ -3353,7 +4525,12 @@ class AntSports : ModelTask() {
                     } else if (!item.optBoolean("initState") &&
                         item.optString("medEnergyBallInfoRecordId").isNotEmpty()
                     ) {
-                        ids.add(item.getString("medEnergyBallInfoRecordId"))
+                        val recordId = item.getString("medEnergyBallInfoRecordId")
+                        if (recordId in pickedNeverlandBubbleRecordIds) {
+                            Log.sports(TAG, "泡泡奖励已处理，跳过重复领取[recordId=$recordId]")
+                            continue
+                        }
+                        ids.add(recordId)
                     }
                 }
 
@@ -3381,6 +4558,7 @@ class AntSports : ModelTask() {
                     } else {
                         Log.sports("捡泡泡成功 🎈 +$changeAmount 余额：$balance")
                     }
+                    pickedNeverlandBubbleRecordIds.addAll(ids)
                 }
 
                 for (encryptValue in encryptValues) {
@@ -3403,8 +4581,12 @@ class AntSports : ModelTask() {
                             )
 
                             if (ResChecker.checkRes(TAG + "领取泡泡任务奖励:", receiveResp)) {
+                                handledNeverlandBubbleEncryptValues.add(encryptValue)
                                 Log.sports("✅ 浏览任务[$title]完成，获得能量+$energyNum")
                             } else {
+                                if (!isSportsRpcRetryable(receiveResp)) {
+                                    handledNeverlandBubbleEncryptValues.add(encryptValue)
+                                }
                                 Log.error(TAG, "浏览任务领取失败: $receiveResp")
                             }
 
@@ -3488,6 +4670,10 @@ class AntSports : ModelTask() {
                 var branchId = baseData.optString("branchId", "MASTER")
                 var mapId = baseData.optString("mapId", "")
                 val mapName = baseData.optString("mapName", "未知地图")
+                if (isNewGame && Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_NEVERLAND_ENERGY_LIMIT)) {
+                    Log.sports(TAG, "健康岛 · 今日已判定能量不足以单倍建造，跳过自动建造")
+                    return
+                }
 
                 Log.sports(
                     TAG,
@@ -3506,13 +4692,28 @@ class AntSports : ModelTask() {
                 }
 
                 var leftEnergy = queryUserEnergy()
-                if (leftEnergy < 5) {
+                if (leftEnergy < 0) {
+                    Log.error(TAG, "健康岛 · 查询用户能量失败，停止本轮自动建造")
+                    return
+                }
+                if (isNewGame) {
+                    neverlandPickAllBubble()
+                    val refreshedEnergy = queryUserEnergy()
+                    if (refreshedEnergy >= 0) {
+                        leftEnergy = refreshedEnergy
+                    } else {
+                        Log.error(TAG, "健康岛 · 领取泡泡后刷新能量失败，停止本轮自动建造")
+                        return
+                    }
+                }
+                if (!isNewGame && leftEnergy < 5) {
                     Log.sports(TAG, "剩余能量不足(< 5), 无法执行任务")
                     return
                 }
 
                 if (isNewGame) {
                     executeAutoBuild(branchId, mapId, remainSteps, leftEnergy, mapName)
+                    neverlandPickAllBubble()
                 } else {
                     executeAutoWalk(branchId, mapId, remainSteps, leftEnergy, mapName)
                 }
@@ -3533,7 +4734,7 @@ class AntSports : ModelTask() {
                     energyResp.optJSONObject("data") == null
                 ) {
                     Log.error(TAG, "queryUserEnergy 失败, 响应数据: $energyResp")
-                    0
+                    -1
                 } else {
                     val balance = energyResp.getJSONObject("data").optInt("balance", 0)
                     Log.sports(TAG, "当前剩余能量: $balance")
@@ -3541,7 +4742,7 @@ class AntSports : ModelTask() {
                 }
             } catch (t: Throwable) {
                 Log.printStackTrace(TAG, "queryUserEnergy err", t)
-                0
+                -1
             }
         }
 
@@ -3737,13 +4938,16 @@ class AntSports : ModelTask() {
         }
 
         /**
-         * @brief 查询地图列表，优先返回 DOING 地图，否则随机选择 LOCKED 地图并切换
+         * @brief 查询地图列表，按服务端顺序选择可处理的新游戏岛屿
          */
-        private fun chooseAvailableMap(): JSONObject? {
+        private fun chooseAvailableMap(skipMapId: String? = null): JSONObject? {
             return try {
                 val mapResp = JSONObject(AntSportsRpcCall.NeverlandRpcCall.queryMapList())
                 if (!ResChecker.checkRes(TAG + " 查询地图失败:", mapResp)) {
-                    Log.error(TAG, "queryMapList 失败: $mapResp")
+                    Log.error(
+                        TAG,
+                        "queryMapList 失败[code=${extractSportsRpcErrorCode(mapResp).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(mapResp)}] raw=$mapResp"
+                    )
                     return null
                 }
 
@@ -3754,35 +4958,42 @@ class AntSports : ModelTask() {
                     return null
                 }
 
+                var finishNotRewardMap: JSONObject? = null
                 var doingMap: JSONObject? = null
-                val lockedMaps = mutableListOf<JSONObject>()
+                var firstUnfinishedMap: JSONObject? = null
                 for (i in 0 until mapList.length()) {
-                    val map = mapList.getJSONObject(i)
+                    val map = mapList.optJSONObject(i) ?: continue
+                    if (skipMapId != null && map.optString("mapId", "") == skipMapId) {
+                        continue
+                    }
                     val status = map.optString("status")
-                    if ("DOING" == status) {
+                    if ("FINISH_NOT_REWARD" == status && finishNotRewardMap == null) {
+                        finishNotRewardMap = map
+                    }
+                    if ("DOING" == status && doingMap == null) {
                         doingMap = map
-                        break
-                    } else if ("LOCKED" == status) {
-                        lockedMaps.add(map)
+                    }
+                    val currentPercent = map.optInt("currentPercent", 0)
+                    if (firstUnfinishedMap == null &&
+                        map.optBoolean("newIsLandFlg", true) &&
+                        status != "LOCKED" &&
+                        status != "FINISH" &&
+                        currentPercent < 100
+                    ) {
+                        firstUnfinishedMap = map
                     }
                 }
 
-                if (doingMap != null) {
-                    Log.sports(
-                        "当前 DOING 地图: " + doingMap.optString("mapName") +
-                            doingMap.optString("mapId") + " → 执行一次强制切换确保状态一致"
-                    )
-                    return chooseMap(doingMap)
-                }
-
-                if (lockedMaps.isEmpty()) {
-                    Log.error(TAG, "没有 DOING 且没有可选的 LOCKED 地图")
+                val selected = doingMap ?: firstUnfinishedMap ?: finishNotRewardMap
+                if (selected == null) {
+                    Log.sports(TAG, "健康岛没有可切换的未完成岛屿")
                     return null
                 }
-
-                val chosenLocked = lockedMaps[Random().nextInt(lockedMaps.size)]
-                Log.sports("随机选择 LOCKED 地图: " + chosenLocked.optString("mapId"))
-                chooseMap(chosenLocked)
+                Log.sports(
+                    TAG,
+                    "健康岛选择岛屿[${selected.optString("mapName", selected.optString("mapId"))}][status=${selected.optString("status", "")}]"
+                )
+                chooseMap(selected)
             } catch (t: Throwable) {
                 Log.printStackTrace(TAG, "chooseAvailableMap err", t)
                 null
@@ -3795,7 +5006,7 @@ class AntSports : ModelTask() {
         private fun chooseMap(map: JSONObject): JSONObject? {
             return try {
                 val mapId = map.optString("mapId")
-                val branchId = map.optString("branchId")
+                val branchId = map.optString("branchId", "MASTER").ifBlank { "MASTER" }
                 val resp = JSONObject(
                     AntSportsRpcCall.NeverlandRpcCall.chooseMap(branchId, mapId)
                 )
@@ -3803,7 +5014,10 @@ class AntSports : ModelTask() {
                     Log.sports(TAG, "切换地图成功: $mapId")
                     map
                 } else {
-                    Log.error(TAG, "切换地图失败: $resp")
+                    Log.error(
+                        TAG,
+                        "切换地图失败[mapId=$mapId][branchId=$branchId][code=${extractSportsRpcErrorCode(resp).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(resp)}] raw=$resp"
+                    )
                     null
                 }
             } catch (t: Throwable) {
@@ -3839,109 +5053,141 @@ class AntSports : ModelTask() {
             leftEnergyInit: Int,
             mapName: String
         ) {
-            var branchId = branchIdInit
+            var branchId = branchIdInit.ifBlank { "MASTER" }
             var mapId = mapIdInit
             var remainSteps = remainStepsInit
             var leftEnergy = leftEnergyInit
+            var currentMapName = mapName
+            val blockedMultis = mutableSetOf<Int>()
             try {
                 Log.sports(String.format("开始执行建造任务, 地图: %s", mapId))
 
-                val resp = AntSportsRpcCall.NeverlandRpcCall.queryMapInfoNew(mapId)
-                val mapInfo = JSONObject(resp)
-
-                if (!ResChecker.checkRes(TAG + " 查询建造地图失败", mapInfo)) {
-                    Log.error(TAG, "查询建造地图失败 $mapInfo")
-                    return
-                }
-                val data = mapInfo.optJSONObject("data")
-                if (data == null) {
-                    Log.error(TAG, "地图Data 为空，无法解析")
-                    return
-                }
-
-                val mapEnergyFinal = data.optInt("mapEnergyFinal")
-                val mapEnergyProcess = data.optInt("mapEnergyProcess")
-                val buildings = data.optJSONArray("buildingConfigInfos")
-                var lastBuildingIndex = -1
-                if (buildings != null && buildings.length() > 0) {
-                    lastBuildingIndex = buildings.getJSONObject(buildings.length() - 1)
-                        .optInt("buildingIndex", -1)
-                    Log.sports(TAG, "最后一个建筑 Index: $lastBuildingIndex")
-                }
-
-                if (mapEnergyProcess == mapEnergyFinal) {
-                    Log.sports(TAG, "当前地图已建造完成，准备切换地图...")
-                    val choiceMapInfo = chooseAvailableMap()
-                    if (choiceMapInfo == null) {
-                        Log.error(TAG, "切换地图失败，可能无可用地图，任务终止。")
+                while (remainSteps > 0) {
+                    neverlandPickAllBubble()
+                    val refreshedEnergy = queryUserEnergy()
+                    if (refreshedEnergy >= 0) {
+                        leftEnergy = refreshedEnergy
+                    } else if (leftEnergy <= 0) {
+                        Log.error(TAG, "健康岛[$currentMapName]刷新能量失败，停止本轮建造")
                         return
                     }
-                    if (choiceMapInfo.optBoolean("newIsLandFlg", true)) {
-                        branchId = choiceMapInfo.optString("branchId")
-                        mapId = choiceMapInfo.optString("mapId")
-                        Log.sports(TAG, "成功切换到可建造的新地图: $mapId，继续执行建造。")
-                    } else {
-                        Log.sports(TAG, "已切换至走路地图: $mapId，将在下次运行时执行，任务终止。")
-                        return
-                    }
-                }
 
-                while (remainSteps > 0 && leftEnergy >= 5) {
-                    val maxMulti = min(10, remainSteps)
-                    val energyBasedMulti = leftEnergy / 5
-                    val multiNum = min(maxMulti, energyBasedMulti)
-
-                    val buildResp = JSONObject(
-                        AntSportsRpcCall.NeverlandRpcCall.build(branchId, mapId, multiNum)
-                    )
-                    if (!ResChecker.checkRes(TAG + " build 失败:", buildResp)) {
+                    val mapInfo = JSONObject(AntSportsRpcCall.NeverlandRpcCall.queryMapInfoNew(mapId, branchId))
+                    if (!ResChecker.checkRes(TAG + " 查询建造地图失败", mapInfo)) {
                         Log.error(
                             TAG,
-                            String.format(
-                                "build 失败, multiNum=%d, 响应: %s",
-                                multiNum,
-                                buildResp
-                            )
+                            "查询建造地图失败[mapId=$mapId][branchId=$branchId][code=${extractSportsRpcErrorCode(mapInfo).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(mapInfo)}] raw=$mapInfo"
                         )
-                        break
+                        return
+                    }
+                    val data = mapInfo.optJSONObject("data")
+                    if (data == null) {
+                        Log.error(TAG, "地图Data 为空，无法解析 raw=$mapInfo")
+                        return
+                    }
+
+                    branchId = data.optString("branchId", branchId).ifBlank { branchId }
+                    mapId = data.optString("mapId", mapId).ifBlank { mapId }
+                    currentMapName = data.optString("mapName", currentMapName).ifBlank { currentMapName }
+                    val mapEnergyFinal = data.optInt("mapEnergyFinal", 0)
+                    val mapEnergyProcess = data.optInt("mapEnergyProcess", 0)
+                    val mapStatus = data.optString("mapStatus", "")
+                    if (isNeverlandMapFinished(mapStatus, mapEnergyProcess, mapEnergyFinal)) {
+                        Log.sports(TAG, "健康岛[$currentMapName]已完成，准备领奖与切换岛屿")
+                        neverlandPickAllBubble()
+                        if (!::neverlandAutoReward.isInitialized || neverlandAutoReward.value == true) {
+                            tryChooseMapReward(branchId, mapId)
+                        } else {
+                            Log.sports(TAG, "健康岛自动领奖已关闭，跳过[$currentMapName]")
+                        }
+                        val nextMap = chooseAvailableMap(mapId) ?: return
+                        if (!nextMap.optBoolean("newIsLandFlg", true)) {
+                            Log.sports(TAG, "已切换至旧版走路地图[${nextMap.optString("mapId")}], 本轮新游戏建造结束")
+                            return
+                        }
+                        branchId = nextMap.optString("branchId", "MASTER").ifBlank { "MASTER" }
+                        mapId = nextMap.optString("mapId", "")
+                        currentMapName = nextMap.optString("mapName", mapId)
+                        blockedMultis.clear()
+                        if (mapId.isBlank()) {
+                            Log.error(TAG, "健康岛切换后 mapId 为空 raw=$nextMap")
+                            return
+                        }
+                        continue
+                    }
+
+                    val mapConfig = data.optJSONObject("mapConfig")
+                    val oneBuildEnergy = mapConfig?.optInt("oneBuildEnergy", 5)?.takeIf { it > 0 } ?: 5
+                    val buildMultis = extractBuildMultis(mapConfig)
+                    val multiNum = buildMultis.firstOrNull { multi ->
+                        multi !in blockedMultis && multi <= remainSteps && leftEnergy >= oneBuildEnergy * multi
+                    }
+
+                    if (multiNum == null) {
+                        if (leftEnergy < oneBuildEnergy) {
+                            Log.sports(
+                                TAG,
+                                "健康岛[$currentMapName]单倍能量不足[balance=$leftEnergy, oneBuildEnergy=$oneBuildEnergy]，今日停止建造"
+                            )
+                            Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_NEVERLAND_ENERGY_LIMIT)
+                        } else {
+                            Log.sports(TAG, "健康岛[$currentMapName]今日建造次数不足以执行最小倍数[remainSteps=$remainSteps]")
+                        }
+                        return
+                    }
+
+                    val buildResp = JSONObject(
+                        AntSportsRpcCall.NeverlandRpcCall.build(mapId, multiNum, branchId)
+                    )
+                    if (!ResChecker.checkRes(TAG + " build 失败:", buildResp)) {
+                        val errorCode = extractSportsRpcErrorCode(buildResp)
+                        val errorMsg = extractSportsRpcErrorMessage(buildResp)
+                        if (isNeverlandEnergyLimit(errorCode, errorMsg)) {
+                            if (multiNum > 1) {
+                                blockedMultis.add(multiNum)
+                                leftEnergy = queryUserEnergy()
+                                if (leftEnergy < 0) {
+                                    Log.error(TAG, "健康岛[$currentMapName]刷新能量失败，停止降级重试")
+                                    return
+                                }
+                                Log.sports(TAG, "健康岛[$currentMapName]x$multiNum 能量不足，刷新能量后降级重试[balance=$leftEnergy]")
+                                continue
+                            }
+                            Log.sports(TAG, "健康岛[$currentMapName]单倍建造受限[code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]")
+                            Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_NEVERLAND_ENERGY_LIMIT)
+                            return
+                        }
+                        if (isNeverlandBuildTimesLimit(errorCode, errorMsg)) {
+                            Log.sports(
+                                TAG,
+                                "健康岛[$currentMapName]建造受限[code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]，停止当前岛屿建造"
+                            )
+                            return
+                        }
+                        Log.error(
+                            TAG,
+                            "build 失败[mapId=$mapId][branchId=$branchId][multiNum=$multiNum][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$buildResp"
+                        )
+                        return
                     }
 
                     val buildData = buildResp.optJSONObject("data")
                     if (buildData == null || buildData.length() == 0) {
-                        Log.sports(TAG, "⚠️ build响应数据为空，当前地图已达限制，任务重新进入地图完成处理流程。")
-                        chooseAvailableMap()
-                        return
+                        Log.sports(TAG, "build响应数据为空，刷新地图状态后继续判断")
+                        GlobalThreadPools.sleepCompat(500)
+                        continue
                     }
 
-                    val before = buildData.optJSONObject("beforeStageInfo")
-                    val end = buildData.optJSONObject("endStageInfo")
-                    var actualUsedEnergy = 0
-
-                    if (before != null && end != null) {
-                        val bIdxBefore = before.optInt("buildingIndex")
-                        val bIdxEnd = end.optInt("buildingIndex")
-                        actualUsedEnergy = if (bIdxEnd > bIdxBefore) {
-                            (before.optInt("buildingEnergyFinal") -
-                                before.optInt("buildingEnergyProcess")) +
-                                end.optInt("buildingEnergyProcess")
-                        } else {
-                            end.optInt("buildingEnergyProcess") -
-                                before.optInt("buildingEnergyProcess")
-                        }
-                    } else {
-                        actualUsedEnergy = multiNum * 5
-                    }
-
-                    leftEnergy -= actualUsedEnergy
                     val stepIncrease = calculateBuildSteps(buildData, multiNum)
                     val totalSteps = recordStepIncrease(stepIncrease)
                     remainSteps -= stepIncrease
+                    leftEnergy = (leftEnergy - oneBuildEnergy * stepIncrease).coerceAtLeast(0)
 
                     val awardInfo = extractAwardInfo(buildData)
-
                     Log.sports(
                         String.format(
-                            "建造进度 🏗️ 倍数: x%d | 能量: %d | 本次: +%d | 今日: %d/%d%s",
+                            "建造进度 🏗️ [%s] 倍数: x%d | 能量: %d | 本次: +%d | 今日: %d/%d%s",
+                            currentMapName,
                             multiNum,
                             leftEnergy,
                             stepIncrease,
@@ -3950,12 +5196,186 @@ class AntSports : ModelTask() {
                             awardInfo
                         )
                     )
+                    if (isBuildDataMapFinished(buildData)) {
+                        neverlandPickAllBubble()
+                    }
                     GlobalThreadPools.sleepCompat(1000)
                 }
+                handleFinishedMapAfterBuildLimit(branchId, mapId, currentMapName)
                 Log.sports("自动建造任务完成 ✓")
             } catch (t: Throwable) {
                 Log.printStackTrace(TAG, "executeAutoBuild err", t)
             }
+        }
+
+        private fun handleFinishedMapAfterBuildLimit(branchId: String, mapId: String, mapName: String) {
+            try {
+                val mapInfo = JSONObject(AntSportsRpcCall.NeverlandRpcCall.queryMapInfoNew(mapId, branchId))
+                if (!ResChecker.checkRes(TAG + " 查询建造地图失败", mapInfo)) {
+                    Log.error(
+                        TAG,
+                        "健康岛结束前查询地图失败[mapId=$mapId][branchId=$branchId][code=${extractSportsRpcErrorCode(mapInfo).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(mapInfo)}] raw=$mapInfo"
+                    )
+                    return
+                }
+                val data = mapInfo.optJSONObject("data") ?: return
+                val latestMapId = data.optString("mapId", mapId).ifBlank { mapId }
+                val latestBranchId = data.optString("branchId", branchId).ifBlank { branchId }
+                val latestMapName = data.optString("mapName", mapName).ifBlank { mapName }
+                if (!isNeverlandMapFinished(
+                        data.optString("mapStatus", ""),
+                        data.optInt("mapEnergyProcess", 0),
+                        data.optInt("mapEnergyFinal", 0)
+                    )
+                ) {
+                    return
+                }
+                Log.sports(TAG, "健康岛[$latestMapName]建造已完成，结束前尝试领奖与切换岛屿")
+                neverlandPickAllBubble()
+                if (!::neverlandAutoReward.isInitialized || neverlandAutoReward.value == true) {
+                    tryChooseMapReward(latestBranchId, latestMapId)
+                } else {
+                    Log.sports(TAG, "健康岛自动领奖已关闭，跳过[$latestMapName]")
+                }
+                chooseAvailableMap(latestMapId)
+            } catch (t: Throwable) {
+                Log.printStackTrace(TAG, "handleFinishedMapAfterBuildLimit err", t)
+            }
+        }
+
+        private fun isNeverlandMapFinished(mapStatus: String, process: Int, final: Int): Boolean {
+            return mapStatus == "FINISH_NOT_REWARD" ||
+                mapStatus == "FINISH" ||
+                (final > 0 && process >= final)
+        }
+
+        private fun isBuildDataMapFinished(buildData: JSONObject): Boolean {
+            val end = buildData.optJSONObject("endStageInfo") ?: return false
+            val final = end.optInt("buildingEnergyFinal", 0)
+            val process = end.optInt("buildingEnergyProcess", 0)
+            val rewardCount = buildData.optJSONArray("rewards")?.length() ?: 0
+            return final > 0 && process >= final && rewardCount > 0
+        }
+
+        private fun extractBuildMultis(mapConfig: JSONObject?): List<Int> {
+            val arr = mapConfig?.optJSONArray("buildMulti")
+            val result = mutableListOf<Int>()
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val multi = arr.optInt(i, 0)
+                    if (multi > 0) result.add(multi)
+                }
+            }
+            return result.ifEmpty { listOf(1) }.distinct().sortedDescending()
+        }
+
+        private fun tryChooseMapReward(branchId: String, mapId: String): Boolean {
+            val detailResp = JSONObject(AntSportsRpcCall.NeverlandRpcCall.queryMapDetail(mapId))
+            if (!ResChecker.checkRes(TAG + " queryMapDetail 失败:", detailResp)) {
+                Log.error(
+                    TAG,
+                    "健康岛查询领奖详情失败[mapId=$mapId][code=${extractSportsRpcErrorCode(detailResp).ifEmpty { "UNKNOWN" }}][msg=${extractSportsRpcErrorMessage(detailResp)}] raw=$detailResp"
+                )
+                return false
+            }
+            val baseMapInfo = detailResp.optJSONObject("data")?.optJSONObject("baseMapInfo")
+            val rewards = collectNeverlandRewardCandidates(baseMapInfo)
+            if (rewards.isEmpty()) {
+                Log.sports(TAG, "健康岛[$mapId]没有可选奖励")
+                return false
+            }
+            val orderedRewards = orderNeverlandRewards(rewards)
+            for (reward in orderedRewards) {
+                val chooseResp = JSONObject(
+                    AntSportsRpcCall.NeverlandRpcCall.chooseReward(branchId, mapId, reward.rewardId)
+                )
+                if (ResChecker.checkRes(TAG, chooseResp)) {
+                    Log.sports(TAG, "健康岛领奖成功[mapId=$mapId][reward=${reward.name}][rewardId=${reward.rewardId}]")
+                    return true
+                }
+                val errorCode = extractSportsRpcErrorCode(chooseResp)
+                val errorMsg = extractSportsRpcErrorMessage(chooseResp)
+                if (isNeverlandRewardNonRetryable(errorCode, errorMsg)) {
+                    Log.sports(
+                        TAG,
+                        "健康岛奖励不可领取，尝试下一个[reward=${reward.name}][rewardId=${reward.rewardId}][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]"
+                    )
+                    continue
+                }
+                if (isNeverlandDuplicateReward(errorCode, errorMsg)) {
+                    Log.sports(
+                        TAG,
+                        "健康岛奖励已处理[reward=${reward.name}][rewardId=${reward.rewardId}][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg]"
+                    )
+                    return true
+                }
+                Log.error(
+                    TAG,
+                    "健康岛领奖失败[mapId=$mapId][reward=${reward.name}][rewardId=${reward.rewardId}][code=${errorCode.ifEmpty { "UNKNOWN" }}][msg=$errorMsg] raw=$chooseResp"
+                )
+                return false
+            }
+            Log.error(TAG, "健康岛[$mapId]所有奖励均领取失败或不可领取")
+            return false
+        }
+
+        private fun collectNeverlandRewardCandidates(baseMapInfo: JSONObject?): List<NeverlandRewardCandidate> {
+            if (baseMapInfo == null) return emptyList()
+            val rewardArray = baseMapInfo.optJSONArray("rewards") ?: baseMapInfo.optJSONArray("reward") ?: return emptyList()
+            val candidates = mutableListOf<NeverlandRewardCandidate>()
+            for (i in 0 until rewardArray.length()) {
+                val reward = rewardArray.optJSONObject(i) ?: continue
+                val rewardId = reward.optString("itemId", reward.optString("rewardId", ""))
+                if (rewardId.isBlank()) continue
+                candidates.add(
+                    NeverlandRewardCandidate(
+                        rewardId = rewardId,
+                        name = reward.optString("name", rewardId),
+                        status = reward.opt("status")?.toString().orEmpty(),
+                        prizeStatus = reward.optString("prizeStatus", "")
+                    )
+                )
+            }
+            return candidates
+        }
+
+        private fun orderNeverlandRewards(rewards: List<NeverlandRewardCandidate>): List<NeverlandRewardCandidate> {
+            if (!::neverlandPreferMedal.isInitialized || neverlandPreferMedal.value == true) {
+                val medal = rewards.firstOrNull { it.name.contains("奖牌") }
+                if (medal != null) {
+                    return listOf(medal) + rewards.filterNot { it.rewardId == medal.rewardId }
+                }
+            }
+            return rewards
+        }
+
+        private fun isNeverlandEnergyLimit(errorCode: String, errorMsg: String): Boolean {
+            val text = "$errorCode $errorMsg"
+            return text.contains("能量") ||
+                text.contains("体力") ||
+                text.contains("體力") ||
+                text.contains("ENERGY", ignoreCase = true) ||
+                text.contains("NOT_ENOUGH", ignoreCase = true)
+        }
+
+        private fun isNeverlandBuildTimesLimit(errorCode: String, errorMsg: String): Boolean {
+            val text = "$errorCode $errorMsg"
+            return text.contains("次数") ||
+                text.contains("上限") ||
+                text.contains("今日")
+        }
+
+        private fun isNeverlandRewardNonRetryable(errorCode: String, errorMsg: String): Boolean {
+            val text = "$errorCode $errorMsg"
+            return errorCode == "PROMO_PRIZE_NOT_RETRY_ERROR" ||
+                text.contains("奖品已抢完") ||
+                text.contains("不可重试") ||
+                text.contains("今日已兑完")
+        }
+
+        private fun isNeverlandDuplicateReward(errorCode: String, errorMsg: String): Boolean {
+            val text = "$errorCode $errorMsg"
+            return text.contains("已领取") || text.contains("重复领取")
         }
 
         /**
@@ -3980,7 +5400,7 @@ class AntSports : ModelTask() {
          */
         private fun extractAwardInfo(buildData: JSONObject?): String {
             return try {
-                val awards = buildData?.optJSONArray("awards")
+                val awards = buildData?.optJSONArray("awards") ?: buildData?.optJSONArray("rewards")
                 if (awards != null && awards.length() > 0) {
                     String.format(" | 获得奖励: %d 项", awards.length())
                 } else {

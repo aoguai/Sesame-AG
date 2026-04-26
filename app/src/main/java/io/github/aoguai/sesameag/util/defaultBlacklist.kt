@@ -182,6 +182,7 @@ private val forestDefaultBlacklist = setOf(
     "YUSHU_202511",        // 单种榆树，年年有榆
     "KTKZ_YS202511",       // 一起组团种榆树
     "mokuai_senlin_hlz",   // 去玩一玩得活力值
+    "CNXDY_TASK_QUDONG",   // 玩下蛋鸭击败20只怪：不支持rpc调用
     "去会员抢演唱会门票"     // 活动已完结
 )
 
@@ -230,7 +231,13 @@ private val memberDefaultBlacklist = setOf(
     "玩向西冲冲冲升5级"
 )
 
-private val sportsDefaultBlacklist = emptySet<String>()
+private val sportsDefaultBlacklist = setOf(
+    // 运动
+    "去设计签名",
+    "签名设计",
+    "个性签名",
+    "玩游戏"
+)
 
 val DEFAULT_BLACKLIST: Map<String, Set<String>> = mapOf(
     "芝麻信用" to sesameCreditDefaultBlacklist,

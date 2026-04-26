@@ -176,6 +176,12 @@ object StatusFlags {
     /** 走路挑战赛：服务端当日不可用，停止重复报名 */
     const val FLAG_ANTSPORTS_WALK_CHALLENGE_UNAVAILABLE_TODAY = "AntSports::walkChallengeUnavailableToday"
 
+    /** 运动路线：今日已尝试复活步数且无可继续复活资源 */
+    const val FLAG_ANTSPORTS_ROUTE_REVIVE_TRIED = "AntSports::routeReviveTried"
+
+    /** 健康岛：今日能量不足以执行单倍建造 */
+    const val FLAG_ANTSPORTS_NEVERLAND_ENERGY_LIMIT = "AntSports::neverlandEnergyLimit"
+
     // ============================================================
     // 合种 / 海洋
     // ============================================================
