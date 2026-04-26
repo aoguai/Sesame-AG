@@ -4951,6 +4951,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     resultCode = combineResponse.optString("resultCode")
                     if ("SUCCESS" == resultCode) {
                         Log.forest("成功合成动物💡[$name]")
+                        RpcCache.invalidate("alipay.antforest.forest.h5.queryAnimalAndPiece")
                         animalId = id
                         GlobalThreadPools.sleepCompat(100) // 等待一段时间再查询
                         continue
