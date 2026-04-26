@@ -17,6 +17,7 @@ object AntMemberRpcCall {
     private const val SESAME_TASK_SCENE_ZML = "zml"
     private const val SESAME_TASK_CH_INFO = "ch_zmxy_zmlsy__chsub_zmsy_jingangwei"
     private const val SESAME_TASK_JOIN_CH_INFO = "seasameList"
+    private const val GAME_CENTER_SOURCE = "ch_appcollect__chsub_my-recentlyUsed"
     
     private fun getUniqueId(): String {
         return System.currentTimeMillis().toString() + RandomUtil.nextLong()
@@ -25,7 +26,7 @@ object AntMemberRpcCall {
     private fun buildMemberSourcePassMap(): JSONObject {
         return JSONObject().apply {
             put("innerSource", "")
-            put("source", "myTab")
+            put("source", "mytab")
             put("unid", "")
         }
     }
@@ -158,14 +159,6 @@ object AntMemberRpcCall {
     }
 
     @JvmStatic
-    fun zcjTaskListQueryV2(taskItemCode: String = ""): String {
-        return RequestManager.requestString(
-            "alipay.mrchservbase.zcj.taskList.query.v2",
-            """[{"taskItemCode":"$taskItemCode"}]"""
-        )
-    }
-
-    @JvmStatic
     fun taskListQuery(): String {
         return RequestManager.requestString(
             "alipay.mrchservbase.task.more.query",
@@ -183,10 +176,27 @@ object AntMemberRpcCall {
 
     /* 商家服务任务 */
     @JvmStatic
-    fun taskFinish(bizId: String): String {
+    fun taskFinish(bizId: String, includeExtendInfo: Boolean = false): String {
+        val args = JSONObject().apply {
+            put("bizId", bizId)
+            if (includeExtendInfo) {
+                put("extendInfo", JSONObject())
+            }
+        }
         return RequestManager.requestString(
             "com.alipay.adtask.biz.mobilegw.service.task.finish",
-            """[{"bizId":"$bizId"}]"""
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun adTaskApplayerQuery(spaceCode: String): String {
+        val args = JSONObject().apply {
+            put("spaceCode", spaceCode)
+        }
+        return RequestManager.requestString(
+            "com.alipay.adtask.biz.mobilegw.service.applayer.query",
+            JSONArray().put(args).toString()
         )
     }
 
@@ -216,9 +226,20 @@ object AntMemberRpcCall {
 
     @JvmStatic
     fun merchantBallQuery(): String {
+        val args = JSONObject().apply {
+            put(
+                "context",
+                JSONObject().apply {
+                    put("autoCheckIn", "true")
+                    put("isGuide", "true")
+                    put("underTakeTrace", "NULL")
+                    put("userPath", "undertakeVisit")
+                }
+            )
+        }
         return RequestManager.requestString(
             "alipay.mrchservbase.mrchpoint.ball.query.v1",
-            "[{}]"
+            JSONArray().put(args).toString()
         )
     }
 
@@ -234,7 +255,7 @@ object AntMemberRpcCall {
     fun applyTask(darwinName: String, taskConfigId: Long): String {
         return RequestManager.requestString(
             "alipay.antmember.biz.rpc.membertask.h5.applyTask",
-            """[{"darwinExpParams":{"darwinName":"$darwinName"},"sourcePassMap":{"innerSource":"","source":"myTab","unid":""},"taskConfigId":$taskConfigId}]"""
+            """[{"darwinExpParams":{"darwinName":"$darwinName"},"sourcePassMap":{"innerSource":"","source":"mytab","unid":""},"taskConfigId":$taskConfigId}]"""
         )
     }
 
@@ -243,7 +264,7 @@ object AntMemberRpcCall {
         val bizOutNo = TimeUtil.getFormatDate().replace("-", "")
         return RequestManager.requestString(
             "alipay.antmember.biz.rpc.membertask.h5.executeTask",
-            """[{"bizOutNo":"$bizOutNo","bizParam":"$bizParam","bizSubType":"$bizSubType","bizType":"$bizType","sourcePassMap":{"innerSource":"","source":"myTab","unid":""},"syncProcess":true,"taskConfigId":"$taskConfigId"}]"""
+            """[{"bizOutNo":"$bizOutNo","bizParam":"$bizParam","bizSubType":"$bizSubType","bizType":"$bizType","sourcePassMap":{"innerSource":"","source":"mytab","unid":""},"syncProcess":true,"taskConfigId":"$taskConfigId"}]"""
         )
     }
 
@@ -251,7 +272,7 @@ object AntMemberRpcCall {
     fun queryLegacyAllStatusTaskList(): String {
         return RequestManager.requestString(
             "alipay.antmember.biz.rpc.membertask.h5.queryAllStatusTaskList",
-            """[{"sourceBusiness":"signInAd","sourcePassMap":{"innerSource":"","source":"myTab","unid":""}}]"""
+            """[{"sourceBusiness":"signInAd","sourcePassMap":{"innerSource":"","source":"mytab","unid":""}}]"""
         )
     }
 
@@ -262,6 +283,46 @@ object AntMemberRpcCall {
         }
         return RequestManager.requestString(
             "com.alipay.amic.memtask.h5.MemTaskListQueryFacade.queryAllStatusTaskList",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun querySignFloatingBall(): String {
+        val args = JSONObject().apply {
+            put("extMap", JSONObject())
+            put("sourcePassMap", buildMemberSourcePassMap())
+        }
+        return RequestManager.requestString(
+            "com.alipay.amic.biz.rpc.signin.h5.querySignFloatingBall",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun triggerSignFloatingBall(bizNo: String, taskType: String): String {
+        val args = JSONObject().apply {
+            put("bizNo", bizNo)
+            put("extMap", JSONObject())
+            put("sourcePassMap", buildMemberSourcePassMap())
+            put("taskType", taskType)
+        }
+        return RequestManager.requestString(
+            "com.alipay.amic.biz.rpc.signin.h5.triggerSignFloatingBall",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun querySignFloatingBallAdTask(bizNo: String, adType: String = "AD_VIDEO_TASK"): String {
+        val args = JSONObject().apply {
+            put("adType", adType)
+            put("bizNo", bizNo)
+            put("extMap", JSONObject())
+            put("sourcePassMap", buildMemberSourcePassMap())
+        }
+        return RequestManager.requestString(
+            "com.alipay.amic.biz.rpc.signin.h5.querySignFloatingBallAdTask",
             JSONArray().put(args).toString()
         )
     }
@@ -389,7 +450,7 @@ object AntMemberRpcCall {
     fun querySignInBall(): String {
         return RequestManager.requestString(
             "com.alipay.gamecenteruprod.biz.rpc.v3.querySignInBall",
-            """[{"source":"ch_appcenter__chsub_9patch"}]"""
+            """[{"source":"$GAME_CENTER_SOURCE"}]"""
         )
     }
 
@@ -400,7 +461,7 @@ object AntMemberRpcCall {
     fun continueSignIn(): String {
         return RequestManager.requestString(
             "com.alipay.gamecenteruprod.biz.rpc.continueSignIn",
-            """[{"sceneId":"GAME_CENTER","signType":"NORMAL_SIGN","source":"ch_appcenter__chsub_9patch"}]"""
+            """[{"sceneId":"GAME_CENTER","signType":"NORMAL_SIGN","source":"$GAME_CENTER_SOURCE"}]"""
         )
     }
 
@@ -411,7 +472,7 @@ object AntMemberRpcCall {
     fun queryGameCenterTaskList(): String {
         return RequestManager.requestString(
             "com.alipay.gamecenteruprod.biz.rpc.v4.queryTaskList",
-            """[{"source":"ch_appcenter__chsub_9patch"}]"""
+            """[{"source":"$GAME_CENTER_SOURCE"}]"""
         )
     }
 
@@ -433,7 +494,7 @@ object AntMemberRpcCall {
     fun doTaskSignup(taskId: String): String {
         return RequestManager.requestString(
             "com.alipay.gamecenteruprod.biz.rpc.v3.doTaskSignup",
-            """[{"source":"ch_appcenter__chsub_9patch","taskId":"$taskId"}]"""
+            """[{"source":"$GAME_CENTER_SOURCE","taskId":"$taskId"}]"""
         )
     }
 
@@ -444,7 +505,7 @@ object AntMemberRpcCall {
     fun queryPointBallList(): String {
         return RequestManager.requestString(
             "com.alipay.gamecenteruprod.biz.rpc.v3.queryPointBallList",
-            """[{"source":"ch_appcenter__chsub_9patch"}]"""
+            """[{"source":"$GAME_CENTER_SOURCE"}]"""
         )
     }
 
@@ -456,6 +517,40 @@ object AntMemberRpcCall {
         return RequestManager.requestString(
             "com.alipay.gamecenteruprod.biz.rpc.v3.batchReceivePointBall",
             "[{}]"
+        )
+    }
+
+    /**
+     * 游戏中心赚现金首页
+     */
+    @JvmStatic
+    fun queryGameCenterP2eHomePage(): String {
+        val args = JSONObject().apply {
+            put("canAddHome", true)
+            put("deviceLevel", "high")
+            put("screenType", 10)
+            put("source", GAME_CENTER_SOURCE)
+            put("unityDeviceLevel", "high")
+        }
+        return RequestManager.requestString(
+            "com.alipay.gamecenteruprod.biz.rpc.p2e.queryHomePage",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    /**
+     * 游戏中心赚现金签到
+     */
+    @JvmStatic
+    fun gameCenterP2eSignIn(date: String, index: Int, signSequenceId: String): String {
+        val args = JSONObject().apply {
+            put("date", date)
+            put("index", index)
+            put("signSequenceId", signSequenceId)
+        }
+        return RequestManager.requestString(
+            "com.alipay.gamecenteruprod.biz.rpc.p2e.signIn",
+            JSONArray().put(args).toString()
         )
     }
 
@@ -617,10 +712,10 @@ object AntMemberRpcCall {
      * 查询最近一次被操作的芝麻任务
      */
     @JvmStatic
-    fun queryLastOperateTask(): String {
+    fun queryLastOperateTask(version: String = SESAME_TASK_VERSION): String {
         return RequestManager.requestString(
             "com.antgroup.zmxy.zmmemberop.biz.rpc.creditaccumulate.CreditAccumulateStrategyRpcManager.queryLastOperateTask",
-            """[{"version":"$SESAME_TASK_VERSION"}]"""
+            """[{"version":"$version"}]"""
         )
     }
 
@@ -653,7 +748,7 @@ object AntMemberRpcCall {
     fun queryAvailableCollectInsuredGold(): String {
         return RequestManager.requestString(
             "com.alipay.insgiftbff.insgiftMain.queryMultiSceneWaitToGainList",
-            """[{"entrance":"wealth_entry","eventToWaitParamDTO":{"giftProdCode":"GIFT_UNIVERSAL_COVERAGE","rightNoList":["UNIVERSAL_ACCIDENT","UNIVERSAL_HOSPITAL","UNIVERSAL_OUTPATIENT","UNIVERSAL_SERIOUSNESS","UNIVERSAL_WEALTH","UNIVERSAL_TRANS","UNIVERSAL_FRAUD_LIABILITY"]},"helpChildParamDTO":{"giftProdCode":"GIFT_HEALTH_GOLD_CHILD","rightNoList":["UNIVERSAL_ACCIDENT","UNIVERSAL_HOSPITAL","UNIVERSAL_OUTPATIENT","UNIVERSAL_SERIOUSNESS","UNIVERSAL_WEALTH","UNIVERSAL_TRANS","UNIVERSAL_FRAUD_LIABILITY"]},"priorityChannelParamDTO":{"giftProdCode":"GIFT_UNIVERSAL_COVERAGE","rightNoList":["UNIVERSAL_ACCIDENT","UNIVERSAL_HOSPITAL","UNIVERSAL_OUTPATIENT","UNIVERSAL_SERIOUSNESS","UNIVERSAL_WEALTH","UNIVERSAL_TRANS","UNIVERSAL_FRAUD_LIABILITY"]},"signInParamDTO":{"giftProdCode":"GIFT_UNIVERSAL_COVERAGE","rightNoList":["UNIVERSAL_ACCIDENT","UNIVERSAL_HOSPITAL","UNIVERSAL_OUTPATIENT","UNIVERSAL_SERIOUSNESS","UNIVERSAL_WEALTH","UNIVERSAL_TRANS","UNIVERSAL_FRAUD_LIABILITY"]}}]""",
+            """[{"entrance":"cfsy","eventToWaitParamDTO":{"giftProdCode":"GIFT_UNIVERSAL_COVERAGE","rightNoList":["UNIVERSAL_ACCIDENT","UNIVERSAL_HOSPITAL","UNIVERSAL_OUTPATIENT","UNIVERSAL_SERIOUSNESS","UNIVERSAL_WEALTH","UNIVERSAL_TRANS","UNIVERSAL_FRAUD_LIABILITY"]},"helpChildParamDTO":{"giftProdCode":"GIFT_HEALTH_GOLD_CHILD","rightNoList":["UNIVERSAL_ACCIDENT","UNIVERSAL_HOSPITAL","UNIVERSAL_OUTPATIENT","UNIVERSAL_SERIOUSNESS","UNIVERSAL_WEALTH","UNIVERSAL_TRANS","UNIVERSAL_FRAUD_LIABILITY"]},"priorityChannelParamDTO":{"giftProdCode":"GIFT_UNIVERSAL_COVERAGE","rightNoList":["UNIVERSAL_ACCIDENT","UNIVERSAL_HOSPITAL","UNIVERSAL_OUTPATIENT","UNIVERSAL_SERIOUSNESS","UNIVERSAL_WEALTH","UNIVERSAL_TRANS","UNIVERSAL_FRAUD_LIABILITY"]},"signInParamDTO":{"giftProdCode":"GIFT_UNIVERSAL_COVERAGE","rightNoList":["UNIVERSAL_ACCIDENT","UNIVERSAL_HOSPITAL","UNIVERSAL_OUTPATIENT","UNIVERSAL_SERIOUSNESS","UNIVERSAL_WEALTH","UNIVERSAL_TRANS","UNIVERSAL_FRAUD_LIABILITY"]}}]""",
             "insgiftbff", "queryMultiSceneWaitToGainList", "insgiftMain"
         )
     }
@@ -665,7 +760,7 @@ object AntMemberRpcCall {
     fun collectInsuredGold(goldBallObj: JSONObject): String {
         return RequestManager.requestString(
             "com.alipay.insgiftbff.insgiftMain.gainMyAndFamilySumInsured",
-            goldBallObj.toString(), "insgiftbff", "gainMyAndFamilySumInsured", "insgiftMain"
+            JSONArray().put(goldBallObj).toString(), "insgiftbff", "gainMyAndFamilySumInsured", "insgiftMain"
         )
     }
 
@@ -745,9 +840,16 @@ object AntMemberRpcCall {
     // 安心豆
     @JvmStatic
     fun querySignInProcess(appletId: String, scene: String): String {
+        val args = JSONObject().apply {
+            put("appletId", appletId)
+            put("bizData", JSONObject().apply {
+                put("checkMultiAccountFrequency", "true")
+            })
+            put("scene", scene)
+        }
         return RequestManager.requestString(
             "com.alipay.insmarketingbff.bean.querySignInProcess",
-            """[{"appletId":"$appletId","scene":"$scene"}]"""
+            JSONArray().put(args).toString()
         )
     }
 
@@ -756,6 +858,32 @@ object AntMemberRpcCall {
         return RequestManager.requestString(
             "com.alipay.insmarketingbff.bean.signInTrigger",
             """[{"appletId":"$appletId","scene":"$scene"}]"""
+        )
+    }
+
+    @JvmStatic
+    fun queryGuardianGradeAwards(): String {
+        val args = JSONObject().apply {
+            put("entrance", "myb_tab_axd_qd")
+            put("queryAwardStatus", true)
+            put("sceneCode", "POSITION")
+        }
+        return RequestManager.requestString(
+            "com.alipay.insmarketingbff.guardian.queryGradeAwards",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun guardianAwardSend(skuId: String): String {
+        val args = JSONObject().apply {
+            put("entrance", "myb_tab_axd_qd")
+            put("sceneCode", "POSITION")
+            put("skuId", skuId)
+        }
+        return RequestManager.requestString(
+            "com.alipay.insmarketingbff.guardian.awardSend",
+            JSONArray().put(args).toString()
         )
     }
 
@@ -1100,9 +1228,94 @@ object AntMemberRpcCall {
     @JvmStatic
     fun receiveSticker(year: String, month: String, stickerIds: List<String>): String {
         if (stickerIds.isEmpty()) return ""
-        val stickerIdsJson = stickerIds.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
-        val data = """[{"month":"$month","stickerIds":$stickerIdsJson,"year":"$year"}]"""
-        return RequestManager.requestString("alipay.memberasset.sticker.receiveSticker", data)
+        val args = JSONObject().apply {
+            put("month", month)
+            put("stickerIds", JSONArray().apply {
+                stickerIds.forEach { put(it) }
+            })
+            put("year", year)
+        }
+        return RequestManager.requestString(
+            "alipay.memberasset.sticker.receiveSticker",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun queryStickerHomePage(year: String, month: String, day: String): String {
+        val args = JSONObject().apply {
+            put("day", day)
+            put("gmtBiz", "")
+            put("month", month)
+            put("scene", "")
+            put("source", "")
+            put("stickerConfigId", "")
+            put("year", year)
+        }
+        return RequestManager.requestString(
+            "alipay.memberasset.sticker.queryHomePage",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun upgradeStickerBatch(upgradeReqList: JSONArray): String {
+        val args = JSONObject().apply {
+            put("upgradeReqList", upgradeReqList)
+        }
+        return RequestManager.requestString(
+            "alipay.memberasset.sticker.upgradeStickerBatch",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun queryStickerDetailPage(year: String, month: String, stickerConfigId: String): String {
+        val args = JSONObject().apply {
+            put("month", month)
+            put("stickerConfigId", stickerConfigId)
+            put("stickerStatus", "received")
+            put("year", year)
+        }
+        return RequestManager.requestString(
+            "alipay.memberasset.sticker.queryDetailPage",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun triggerStickerUpgradePrize(stickerConfigId: String): String {
+        val args = JSONObject().apply {
+            put("levelCode", "")
+            put("stickerCfgId", stickerConfigId)
+        }
+        return RequestManager.requestString(
+            "alipay.memberasset.sticker.triggerUpgradePrize",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun queryStickerPrizeHomePage(): String {
+        val args = JSONObject().apply {
+            put("externParams", JSONObject())
+        }
+        return RequestManager.requestString(
+            "alipay.memberasset.sticker.prize.home.page",
+            JSONArray().put(args).toString()
+        )
+    }
+
+    @JvmStatic
+    fun triggerStickerDrawing(prizeQuotaRecordId: String): String {
+        val args = JSONObject().apply {
+            put("prizeQuotaRecordId", prizeQuotaRecordId)
+            put("type", "Drawing")
+        }
+        return RequestManager.requestString(
+            "alipay.memberasset.prize.trigger",
+            JSONArray().put(args).toString()
+        )
     }
 
     @JvmStatic
