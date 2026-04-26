@@ -14,10 +14,8 @@ import io.github.aoguai.sesameag.util.GlobalThreadPools
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.maps.IdMapManager
 import io.github.aoguai.sesameag.util.maps.ReserveaMap
-import io.github.aoguai.sesameag.util.RandomUtil
 import io.github.aoguai.sesameag.util.ResChecker
 import io.github.aoguai.sesameag.data.Status
-import kotlinx.coroutines.delay
 
 class Reserve : ModelTask() {
     
@@ -87,7 +85,6 @@ class Reserve : ModelTask() {
             }
             var s: String? = ReserveRpcCall.queryTreeItemsForExchange()
             if (s == null) {
-                delay(RandomUtil.delay().toLong())
                 s = ReserveRpcCall.queryTreeItemsForExchange()
             }
             val jo = JSONObject(s)
@@ -187,12 +184,9 @@ class Reserve : ModelTask() {
                     Log.forest("领保护地🏕️[$itemName]#发生未知错误，停止申请")
                     break
                 }
-                delay(300)
                 canApply = queryTreeForExchange(projectId)
                 if (!canApply) {
                     break
-                } else {
-                    delay(300)
                 }
                 if (!Status.canReserveToday(projectId, count))
                     break

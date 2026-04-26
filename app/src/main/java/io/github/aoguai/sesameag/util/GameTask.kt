@@ -3,7 +3,6 @@ package io.github.aoguai.sesameag.util
 import io.github.aoguai.sesameag.hook.ApplicationHook
 import io.github.aoguai.sesameag.hook.internal.AlipayMiniMarkHelper
 import io.github.aoguai.sesameag.hook.internal.AuthCodeHelper
-import kotlinx.coroutines.delay
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -103,7 +102,6 @@ enum class GameTask(
                 // 如果第一次就失败，或者中途由于 Token 失效等原因失败
                 break
             }
-            if (i < totalNeeded) delay((1000..3000).random().toLong())
         }
         //Log.record(title, "🏁 任务流程运行结束")
         return successCount >= requiredSuccesses

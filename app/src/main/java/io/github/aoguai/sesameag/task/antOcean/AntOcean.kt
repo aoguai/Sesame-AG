@@ -1384,7 +1384,6 @@ class AntOcean : ModelTask() {
                             }
                         }
 
-                        delay(500)
                     }
                 }
                 if (!done) break
@@ -1652,7 +1651,6 @@ class AntOcean : ModelTask() {
                     }
                     val str = "保护海洋生态🏖️[$itemName]#第${appliedTimes}次-获得奖励$award"
                     Log.ocean(str)
-                    delay(300)
                 } else {
                     Log.error("保护海洋生态🏖️[$itemName]#发生未知错误，停止申请")
                     break
@@ -1660,8 +1658,6 @@ class AntOcean : ModelTask() {
                 appliedTimes = queryCultivationDetail(cultivationCode, projectCode, count)
                 if (appliedTimes < 0) {
                     break
-                } else {
-                    delay(300)
                 }
             }
         } catch (t: Throwable) {
@@ -1862,7 +1858,6 @@ class AntOcean : ModelTask() {
                     }
                     holdsNum -= useCount
                     Log.ocean("神奇海洋🏖️[$propName]使用${useCount}张，获得[${target.name}]剩余${holdsNum}张")
-                    delay(1000)
                 }
             }
         } catch (t: Throwable) {

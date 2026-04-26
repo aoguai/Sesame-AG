@@ -1492,7 +1492,6 @@ class AntSports : ModelTask() {
                     handledRecordIds.add(candidate.recordId)
                 }
             }
-            ActionDelayUtil.humanActionSleep()
         }
         return receivedAny
     }
@@ -1730,7 +1729,6 @@ class AntSports : ModelTask() {
                         val assetCoinAmount =
                             dataObj?.optInt("assetCoinAmount", task.optInt("prizeAmount", 0)) ?: 0
                         Log.sports("运动球任务✅[$taskName]#奖励$assetCoinAmount💰")
-                        ActionDelayUtil.humanActionSleep()
                         continue
                     }
 
@@ -1751,7 +1749,6 @@ class AntSports : ModelTask() {
                             "运动首页任务❌[$taskName][taskId=$taskId][code=$errorCode][msg=$errorMsg] 响应：$completeRes"
                         )
                     }
-                    ActionDelayUtil.humanActionSleep()
                 }
 
                 if (hasCompletedTask || hasPendingRewardBubble) {

@@ -204,7 +204,6 @@ abstract class ModelTask : Model() {
      * ```kotlin
      * // Kotlin挂起函数
      * addChildTask(ChildModelTask("task1", "GROUP") {
-     *     delay(1000)
      *     Log.record("执行成功")
      * }, execTime = System.currentTimeMillis() + 5000)
      * 
@@ -280,11 +279,6 @@ abstract class ModelTask : Model() {
             }
             // 统一使用顺序执行
             executeSequential(round, stats)
-            
-            // 轮次间延迟
-            if (round < rounds) {
-                delay(1000) // 1秒间隔
-            }
         }
         
         val endTime = System.currentTimeMillis()
@@ -550,7 +544,6 @@ abstract class ModelTask : Model() {
          *     override suspend fun defaultRun() {
          *         // 自定义任务逻辑
          *         Log.record("执行自定义任务: $id")
-         *         delay(1000)
          *         // 执行业务逻辑...
          *     }
          * }

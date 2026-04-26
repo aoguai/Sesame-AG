@@ -23,7 +23,6 @@ import io.github.aoguai.sesameag.util.TaskBlacklist.autoAddToBlacklist
 import io.github.aoguai.sesameag.task.ModelTask
 import io.github.aoguai.sesameag.task.antOrchard.AntOrchardRpcCall.orchardSpreadManure
 import io.github.aoguai.sesameag.task.antOrchard.UrlUtil
-import io.github.aoguai.sesameag.util.ActionDelayUtil
 import io.github.aoguai.sesameag.util.CoroutineUtils
 import io.github.aoguai.sesameag.util.GlobalThreadPools
 import io.github.aoguai.sesameag.util.Log
@@ -193,8 +192,7 @@ class AntMember : ModelTask() {
         val status: String,
         val taskId: String?,
         val taskIdCandidates: List<String>,
-        val needManuallyReceiveAward: Boolean,
-        val browseWaitMillis: Long = 0L
+        val needManuallyReceiveAward: Boolean
     ) {
         fun describeCandidates(): String {
             if (taskIdCandidates.isEmpty()) {
@@ -881,8 +879,6 @@ class AntMember : ModelTask() {
                     continue
                 }
                 applied++
-
-                ActionDelayUtil.humanActionDelay(500L)
 
                 // ========== Step 2: 提交任务完成 (process) ==========
                 val processResp = AntMemberRpcCall.annualReviewProcessTask(code, recordNo)
@@ -1617,10 +1613,6 @@ class AntMember : ModelTask() {
                 )
                 return@run MemberFloatingBallTaskProcessState.RETRY_LATER
             }
-            if (remainingMillis > 0L) {
-                delay(remainingMillis + 800L)
-            }
-
             val triggerResponse = AntMemberRpcCall.triggerSignFloatingBall(taskRef.bizNo, taskRef.taskType)
             val triggerObject = JSONObject(triggerResponse)
             val triggerStopReason = resolveMemberTaskQueryStopReason(triggerObject)
@@ -2046,9 +2038,6 @@ class AntMember : ModelTask() {
                     break
                 }
 
-                if (round < sesameTaskRefreshRoundLimit) {
-                    delay(800)
-                }
             }
 
             Log.sesame(
@@ -2273,7 +2262,6 @@ class AntMember : ModelTask() {
         var needFallbackCollect = true
 
         if (preferOneClick) {
-            ActionDelayUtil.humanActionDelay(2000L)
             val collectAllResp = AntMemberRpcCall.collectAllCreditFeedback()
             val collectAllJo = JSONObject(collectAllResp)
             if (ResChecker.checkRes(TAG, collectAllJo)) {
@@ -4157,8 +4145,7 @@ class AntMember : ModelTask() {
 
             // ================= Step 4: [新增] 任务完成后一键收取芝麻粒 =================
             Log.sesame(TAG, "芝麻炼金⚗️[任务处理完毕，准备收取芝麻粒]")
-            ActionDelayUtil.humanActionDelay(2000L) // 稍作等待，确保任务奖励到账
-
+            delay(2000) // 稍作等待，确保任务奖励到账
             val feedbackItems = queryUnclaimedSesameFeedbackItems("芝麻炼金⚗️")
             if (feedbackItems == null) {
                 Log.sesame(TAG, "芝麻炼金⚗️[查询待收取芝麻粒失败]")
@@ -4194,7 +4181,6 @@ class AntMember : ModelTask() {
         var freeAlchemyNum = data.optInt("freeAlchemyNum", 0)
 
         while (freeAlchemyNum > 0 || (allowPaidAlchemy && zmlBalance >= cost && !capReached)) {
-            delay(1500)
             val alchemyRes = AntMemberRpcCall.Zmxy.Alchemy.alchemyExecute()
             val alchemyJo = JSONObject(alchemyRes)
 
@@ -4284,8 +4270,6 @@ class AntMember : ModelTask() {
             totalProcessedCount += roundProcessedCount
             if (round == maxRound) {
                 Log.sesame(TAG, "芝麻炼金⚗️[任务列表达到安全轮次上限]#已处理${totalProcessedCount}项")
-            } else {
-                ActionDelayUtil.humanActionDelay(1500L)
             }
         }
 
@@ -4371,7 +4355,6 @@ class AntMember : ModelTask() {
                         recordId = joinData.optString("recordId")
                     }
                     Log.sesame(TAG, "任务领取成功: $title")
-                    ActionDelayUtil.humanActionDelay(1000L)
                 } else {
                     Log.error(
                         TAG, "任务领取失败: " + title + " - " + joinJo.optString("resultView", joinRes)
@@ -4408,7 +4391,6 @@ class AntMember : ModelTask() {
                     }
                 }
             }
-            delay(2000)
         }
 
         return processedCount
@@ -4621,9 +4603,6 @@ class AntMember : ModelTask() {
                 }
                 return false
             }
-            val waitMillis = resolveAdLayerWaitMillis(layerJo)
-            Log.sesame(TAG, "芝麻树🌳[广告浏览等待] ${taskRef.title} - ${waitMillis / 1000}秒")
-            delay(waitMillis)
             val finishRes = AntMemberRpcCall.taskFinish(taskRef.bizId, includeExtendInfo = false)
             val finishJo = JSONObject(finishRes)
             if (isAdTaskFinishSuccess(finishJo, finishRes)) {
@@ -4668,42 +4647,8 @@ class AntMember : ModelTask() {
             status = task.optString("taskProcessStatus"),
             taskId = taskId,
             taskIdCandidates = taskIdCandidates,
-            needManuallyReceiveAward = task.optBoolean("needManuallyReceiveAward", true),
-            browseWaitMillis = resolveZhimaTreeBrowseWaitMillis(task, title)
+            needManuallyReceiveAward = task.optBoolean("needManuallyReceiveAward", true)
         )
-    }
-
-    private fun resolveZhimaTreeBrowseWaitMillis(task: JSONObject, title: String): Long {
-        val taskMaterial = task.optJSONObject("taskMaterial")
-        val materialBrowseTime = taskMaterial?.optDouble("browseTime", 0.0) ?: 0.0
-        if (materialBrowseTime > 0.0) {
-            return buildBrowseWaitMillis(materialBrowseTime)
-        }
-
-        val morphoDetail = task.optJSONObject("taskExtProps")
-            ?.optString("TASK_MORPHO_DETAIL")
-            .orEmpty()
-        if (morphoDetail.isNotBlank()) {
-            try {
-                val browseTime = JSONObject(morphoDetail).optDouble("browseTime", 0.0)
-                if (browseTime > 0.0) {
-                    return buildBrowseWaitMillis(browseTime)
-                }
-            } catch (_: Throwable) {
-            }
-        }
-
-        val matcher = Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*秒").matcher(title)
-        if (matcher.find()) {
-            matcher.group(1)?.toDoubleOrNull()?.takeIf { it > 0.0 }?.let {
-                return buildBrowseWaitMillis(it)
-            }
-        }
-        return 0L
-    }
-
-    private fun buildBrowseWaitMillis(durationSeconds: Double): Long {
-        return ((durationSeconds * 1000).toLong() + 1200L).coerceIn(3_000L, 65_000L)
     }
 
     private fun normalizeZhimaTreeTaskId(rawTaskId: String?): String? {
@@ -4910,10 +4855,6 @@ class AntMember : ModelTask() {
                 logZhimaTreeActionFailure("开始任务", "send", taskRef, sendResult)
                 return false
             }
-            if (taskRef.browseWaitMillis > 0L) {
-                Log.sesame(TAG, "芝麻树🌳[浏览等待] ${taskRef.title} - ${taskRef.browseWaitMillis / 1000}秒")
-                delay(taskRef.browseWaitMillis)
-            }
             val refreshResult = queryZhimaTreeTaskRefs()
             val refreshedTask = findMatchingZhimaTreeTask(taskRef, refreshResult.tasks)
             if (refreshedTask == null) {
@@ -5097,7 +5038,6 @@ class AntMember : ModelTask() {
                 if (growth != -1) log += "|成长:$growth"
                 Log.sesame("$log ✅")
 
-                delay(1500)
             }
         } catch (e: Exception) {
             Log.printStackTrace(TAG, e)
@@ -5873,14 +5813,6 @@ class AntMember : ModelTask() {
             return null
         }
 
-        private fun resolveAdLayerWaitMillis(layerResponse: JSONObject?, fallbackSeconds: Double = 15.0): Long {
-            val durationSeconds = layerResponse?.optJSONObject("resultData")
-                ?.optDouble("duration", 0.0)
-                ?.takeIf { it > 0.0 }
-                ?: fallbackSeconds
-            return ((durationSeconds * 1000).toLong() + 1200L).coerceIn(3_000L, 65_000L)
-        }
-
         private fun isAdTaskFinishSuccess(response: JSONObject, rawResponse: String): Boolean {
             return ResChecker.checkRes(TAG, response) ||
                 "0" == response.optString("errCode") ||
@@ -6083,7 +6015,6 @@ class AntMember : ModelTask() {
             }
         }
         val spaceCode = resolveSesameAdTaskSpaceCode(task, logExtMap)
-        var layerJo: JSONObject? = null
         if (!spaceCode.isNullOrBlank()) {
             val layerRes = AntMemberRpcCall.adTaskApplayerQuery(spaceCode)
             val layerResponse = JSONObject(layerRes)
@@ -6100,13 +6031,9 @@ class AntMember : ModelTask() {
                 }
                 return false
             }
-            layerJo = layerResponse
         } else {
-            Log.sesame(TAG, "$logPrefix[广告浏览配置缺失，使用保守等待]#$taskTitle")
+            Log.sesame(TAG, "$logPrefix[广告浏览配置缺失，直接上报]#$taskTitle")
         }
-        val waitMillis = resolveAdLayerWaitMillis(layerJo)
-        Log.sesame(TAG, "$logPrefix[广告浏览等待]#$taskTitle - ${waitMillis / 1000}秒")
-        delay(waitMillis)
         val adFinishRes = AntMemberRpcCall.taskFinish(bizId, includeExtendInfo = true)
         val adFinishJo = JSONObject(adFinishRes)
         if (isAdTaskFinishSuccess(adFinishJo, adFinishRes)) {
@@ -6397,7 +6324,6 @@ class AntMember : ModelTask() {
                     if (ResChecker.checkRes(TAG, jo)) {
                         val activityNo = jo.optString("activityNo")
                         if (activityNo.isEmpty()) {
-                            delay(500)
                             continue
                         }
                         if (TimeUtil.getFormatDate().replace("-", "") != activityNo.split("_".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()[2]) {
@@ -6421,7 +6347,6 @@ class AntMember : ModelTask() {
                         Log.member(TAG, "queryActivity")
                         Log.member(TAG, jo.toString())
                     }
-                    delay(500)
                 }
             } catch (t: Throwable) {
                 Log.printStackTrace(TAG, "kmdkSignUp err:", t)
@@ -6492,16 +6417,9 @@ class AntMember : ModelTask() {
                     if (!taskStateChanged) {
                         return@run
                     }
-                    delay(500)
                 }
             } catch (t: Throwable) {
                 Log.printStackTrace(TAG, "taskListQuery err:", t)
-            } finally {
-                try {
-                    delay(1000)
-                } catch (e: Exception) {
-                    Log.printStackTrace(e)
-                }
             }
         }
 
@@ -6538,7 +6456,6 @@ class AntMember : ModelTask() {
                     return@run false
                 }
 
-                ActionDelayUtil.humanActionDelay(500L)
                 for (actionCode in actionCodes) {
                     var jo = JSONObject(AntMemberRpcCall.actioncode(actionCode))
                     var evaluation = evaluateMerchantRpc(jo)
@@ -6553,9 +6470,6 @@ class AntMember : ModelTask() {
                     var produceSuccess = false
                     var remainingCount = max(1, targetCount)
                     for (index in 0 until max(1, targetCount)) {
-                        if (index > 0) {
-                            delay(5000)
-                        }
                         jo = JSONObject(AntMemberRpcCall.produce(actionCode))
                         evaluation = evaluateMerchantRpc(jo)
                         if (!evaluation.success) {
@@ -7031,10 +6945,7 @@ class AntMember : ModelTask() {
                     }
                     // 4. 执行兑换 (这里不加每日限制判断了，只要有库存且勾选了就尝试兑换)
                     Log.sesame(TAG, "准备兑换[$name], ID: $id, 需芝麻粒: $pointNeeded")
-                    if (exchangeSesameGift(id, name, pointNeeded)) {
-                        // 兑换成功后，稍微等待一下
-                        delay(2000)
-                    }
+                    exchangeSesameGift(id, name, pointNeeded)
                 }
                 // 判断是否有下一页
                 hasNextPage = data.optBoolean("hasNext", false)

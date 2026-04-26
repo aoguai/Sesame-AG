@@ -270,7 +270,6 @@ object FarmGame {
                                 }
                             }
                             Log.farm("庄园小鸡🎁[获得奖品: ${awardStrings.joinToString(",")}]")
-                            delay(3000)
                         } else {
                             val desc = drawRes.optString("desc")
                                 .ifBlank { drawRes.optString("resultDesc") }
