@@ -2,6 +2,7 @@ package io.github.aoguai.sesameag.task.antDodo
 
 import io.github.aoguai.sesameag.hook.RequestManager
 import io.github.aoguai.sesameag.util.RandomUtil
+import io.github.aoguai.sesameag.util.RpcCache
 import org.json.JSONObject
 
 /**
@@ -9,13 +10,53 @@ import org.json.JSONObject
  */
 object AntDodoRpcCall {
 
+    private const val METHOD_QUERY_ANIMAL_STATUS = "alipay.antdodo.rpc.h5.queryAnimalStatus"
+    private const val METHOD_HOME_PAGE = "alipay.antdodo.rpc.h5.homePage"
+    private const val METHOD_COLLECT = "alipay.antdodo.rpc.h5.collect"
+    private const val METHOD_PROP_LIST = "alipay.antdodo.rpc.h5.propList"
+    private const val METHOD_CONSUME_PROP = "alipay.antdodo.rpc.h5.consumeProp"
+    private const val METHOD_QUERY_BOOK_INFO = "alipay.antdodo.rpc.h5.queryBookInfo"
+    private const val METHOD_SOCIAL = "alipay.antdodo.rpc.h5.social"
+    private const val METHOD_QUERY_FRIEND = "alipay.antdodo.rpc.h5.queryFriend"
+    private const val METHOD_QUERY_BOOK_LIST = "alipay.antdodo.rpc.h5.queryBookList"
+    private const val METHOD_GENERATE_BOOK_MEDAL = "alipay.antdodo.rpc.h5.generateBookMedal"
+
+    private val BOOK_CACHE_METHODS = arrayOf(
+        METHOD_HOME_PAGE,
+        METHOD_QUERY_BOOK_INFO,
+        METHOD_QUERY_BOOK_LIST
+    )
+
+    private val COLLECTION_CACHE_METHODS = arrayOf(
+        METHOD_QUERY_ANIMAL_STATUS,
+        METHOD_HOME_PAGE,
+        METHOD_PROP_LIST,
+        METHOD_QUERY_BOOK_INFO,
+        METHOD_QUERY_BOOK_LIST,
+        METHOD_QUERY_FRIEND
+    )
+
+    private fun invalidateMethods(vararg methods: String) {
+        for (method in methods) {
+            RpcCache.invalidate(method)
+        }
+    }
+
+    fun invalidateBookCache() {
+        invalidateMethods(*BOOK_CACHE_METHODS)
+    }
+
+    private fun invalidateCollectionCache() {
+        invalidateMethods(*COLLECTION_CACHE_METHODS)
+    }
+
     /**
      * 查询动物状态
      */
     @JvmStatic
     fun queryAnimalStatus(): String {
         return RequestManager.requestString(
-            "alipay.antdodo.rpc.h5.queryAnimalStatus",
+            METHOD_QUERY_ANIMAL_STATUS,
             "[{\"source\":\"chInfo_ch_appcenter__chsub_9patch\"}]"
         )
     }
@@ -25,7 +66,7 @@ object AntDodoRpcCall {
      */
     @JvmStatic
     fun homePage(): String {
-        return RequestManager.requestString("alipay.antdodo.rpc.h5.homePage", "[{}]")
+        return RequestManager.requestString(METHOD_HOME_PAGE, "[{}]")
     }
 
     /**
@@ -44,7 +85,9 @@ object AntDodoRpcCall {
      */
     @JvmStatic
     fun collect(): String {
-        return RequestManager.requestString("alipay.antdodo.rpc.h5.collect", "[{}]")
+        val response = RequestManager.requestString(METHOD_COLLECT, "[{}]")
+        invalidateCollectionCache()
+        return response
     }
 
     /**
@@ -52,7 +95,7 @@ object AntDodoRpcCall {
      */
     @JvmStatic
     fun taskList(): String {
-        return RequestManager.requestString("alipay.antdodo.rpc.h5.taskList", "[{}]")
+        return RequestManager.requestString("alipay.antdodo.rpc.h5.taskList", "[{\"version\":\"20241203\"}]")
     }
 
     /**
@@ -107,7 +150,7 @@ object AntDodoRpcCall {
      */
     @JvmStatic
     fun propList(): String {
-        return RequestManager.requestString("alipay.antdodo.rpc.h5.propList", "[{}]")
+        return RequestManager.requestString(METHOD_PROP_LIST, "[{}]")
     }
 
     /**
@@ -124,10 +167,12 @@ object AntDodoRpcCall {
         if (!animalId.isNullOrBlank()) {
             args.put("extendInfo", JSONObject().put("animalId", animalId))
         }
-        return RequestManager.requestString(
-            "alipay.antdodo.rpc.h5.consumeProp",
+        val response = RequestManager.requestString(
+            METHOD_CONSUME_PROP,
             "[$args]"
         )
+        invalidateCollectionCache()
+        return response
     }
 
     /**
@@ -138,7 +183,7 @@ object AntDodoRpcCall {
     @JvmStatic
     fun queryBookInfo(bookId: String): String {
         return RequestManager.requestString(
-            "alipay.antdodo.rpc.h5.queryBookInfo",
+            METHOD_QUERY_BOOK_INFO,
             "[{\"bookId\":\"$bookId\"}]"
         )
     }
@@ -151,10 +196,12 @@ object AntDodoRpcCall {
      */
     @JvmStatic
     fun social(targetAnimalId: String, targetUserId: String): String {
-        return RequestManager.requestString(
-            "alipay.antdodo.rpc.h5.social",
+        val response = RequestManager.requestString(
+            METHOD_SOCIAL,
             "[{\"actionCode\":\"GIFT_TO_FRIEND\",\"source\":\"GIFT_TO_FRIEND_FROM_CC\",\"targetAnimalId\":\"$targetAnimalId\",\"targetUserId\":\"$targetUserId\",\"triggerTime\":\"${System.currentTimeMillis()}\"}]"
         )
+        invalidateCollectionCache()
+        return response
     }
 
     /**
@@ -163,7 +210,7 @@ object AntDodoRpcCall {
     @JvmStatic
     fun queryFriend(): String {
         return RequestManager.requestString(
-            "alipay.antdodo.rpc.h5.queryFriend",
+            METHOD_QUERY_FRIEND,
             "[{\"sceneCode\":\"EXCHANGE\"}]"
         )
     }
@@ -175,10 +222,12 @@ object AntDodoRpcCall {
      */
     @JvmStatic
     fun collect(targetUserId: String): String {
-        return RequestManager.requestString(
-            "alipay.antdodo.rpc.h5.collect",
+        val response = RequestManager.requestString(
+            METHOD_COLLECT,
             "[{\"targetUserId\":$targetUserId}]"
         )
+        invalidateCollectionCache()
+        return response
     }
 
     /**
@@ -190,7 +239,7 @@ object AntDodoRpcCall {
     @JvmStatic
     fun queryBookList(pageSize: Int, pageStart: Int): String {
         val args = "[{\"pageSize\":$pageSize,\"pageStart\":\"$pageStart\",\"v2\":\"true\"}]"
-        return RequestManager.requestString("alipay.antdodo.rpc.h5.queryBookList", args)
+        return RequestManager.requestString(METHOD_QUERY_BOOK_LIST, args)
     }
 
     /**
@@ -201,7 +250,9 @@ object AntDodoRpcCall {
     @JvmStatic
     fun generateBookMedal(bookId: String): String {
         val args = "[{\"bookId\":\"$bookId\"}]"
-        return RequestManager.requestString("alipay.antdodo.rpc.h5.generateBookMedal", args)
+        val response = RequestManager.requestString(METHOD_GENERATE_BOOK_MEDAL, args)
+        invalidateBookCache()
+        return response
     }
 }
 

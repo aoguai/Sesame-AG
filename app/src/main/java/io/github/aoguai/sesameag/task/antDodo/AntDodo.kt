@@ -33,6 +33,8 @@ class AntDodo : ModelTask() {
     private var usePropCollectHistoryAnimal7Days: BooleanModelField? = null
     private var usePropCollectToFriendTimes7Days: BooleanModelField? = null
     private var autoGenerateBook: BooleanModelField? = null
+    private val handledTaskFinishes = LinkedHashSet<String>()
+    private val handledTaskAwards = LinkedHashSet<String>()
 
     override fun getName(): String = "神奇物种"
 
@@ -120,6 +122,8 @@ class AntDodo : ModelTask() {
     override fun runJava() {
         try {
             Log.forest(TAG, "执行开始-${getName()}")
+            handledTaskFinishes.clear()
+            handledTaskAwards.clear()
             receiveTaskAward()
             propList()
             collect()
@@ -265,19 +269,27 @@ class AntDodo : ModelTask() {
                         val awardCount = bizInfo.optString("awardCount", "1")
                         val sceneCode = taskBaseInfo.getString("sceneCode")
                         val taskStatus = taskBaseInfo.getString("taskStatus")
+                        val taskKey = buildTaskKey(sceneCode, taskType)
                         when {
                             TaskStatus.FINISHED.name == taskStatus -> {
+                                if (handledTaskAwards.contains(taskKey)) {
+                                    continue
+                                }
                                 val awardResponse = AntDodoRpcCall.receiveTaskAward(sceneCode, taskType)
                                 if (awardResponse.isNullOrEmpty()) {
                                     Log.runtime(TAG, "receiveTaskAward返回空")
                                     continue
                                 }
                                 val joAward = JSONObject(awardResponse)
-                                if (joAward.optBoolean("success") || joAward.optString("code") == "100000000") {
+                                if (isDodoTaskRpcSuccess(joAward)) {
+                                    handledTaskAwards.add(taskKey)
                                     doubleCheck = true
                                     Log.forest("任务奖励🎖️[$taskTitle]#${awardCount}个")
                                 } else {
                                     Log.forest(TAG, "领取失败[$taskTitle]：${joAward.optString("resultDesc", joAward.toString())}")
+                                    if (isTaskTerminalFailure(joAward)) {
+                                        handledTaskAwards.add(taskKey)
+                                    }
                                 }
                             }
                             TaskStatus.TODO.name == taskStatus -> {
@@ -290,6 +302,9 @@ class AntDodo : ModelTask() {
                                 ) {
                                     continue
                                 }
+                                if (handledTaskFinishes.contains(taskKey)) {
+                                    continue
+                                }
 
                                 val finishResponse = finishTodoTask(taskBaseInfo, bizInfo, sceneCode, taskType)
                                 if (finishResponse.isNullOrEmpty()) {
@@ -297,7 +312,8 @@ class AntDodo : ModelTask() {
                                     continue
                                 }
                                 val joFinishTask = JSONObject(finishResponse)
-                                if (joFinishTask.optBoolean("success") || joFinishTask.optString("code") == "100000000") {
+                                if (isDodoTaskRpcSuccess(joFinishTask)) {
+                                    handledTaskFinishes.add(taskKey)
                                     Log.forest("物种任务🧾️[$taskTitle]")
                                     doubleCheck = true
                                 } else {
@@ -309,6 +325,9 @@ class AntDodo : ModelTask() {
                                         TAG,
                                         "完成任务失败[$taskTitle] code=${errorCode.ifBlank { "UNKNOWN" }} msg=$resultDesc"
                                     )
+                                    if (isTaskTerminalFailure(joFinishTask)) {
+                                        handledTaskFinishes.add(taskKey)
+                                    }
                                     val blacklistReason = errorCode.ifBlank { resultDesc }
                                     if (blacklistReason.isNotBlank()) {
                                         TaskBlacklist.autoAddToBlacklist(
@@ -333,6 +352,29 @@ class AntDodo : ModelTask() {
             Log.runtime(TAG, "AntDodo ReceiveTaskAward 错误:")
             Log.printStackTrace(TAG, t)
         }
+    }
+
+    private fun buildTaskKey(sceneCode: String, taskType: String): String {
+        return "$sceneCode|$taskType"
+    }
+
+    private fun isDodoTaskRpcSuccess(response: JSONObject): Boolean {
+        return response.optBoolean("success") ||
+            response.optString("code") == "100000000" ||
+            response.optString("resultCode").equals("SUCCESS", ignoreCase = true)
+    }
+
+    private fun isTaskTerminalFailure(response: JSONObject): Boolean {
+        val code = response.optString("code")
+            .ifBlank { response.optString("errorCode") }
+            .ifBlank { response.optString("resultCode") }
+        val desc = response.optString("desc")
+            .ifBlank { response.optString("errorMsg") }
+            .ifBlank { response.optString("resultDesc") }
+        return code == "400000030" ||
+            code == "400000012" ||
+            desc.contains("任务已完结") ||
+            desc.contains("权益获取次数超过上限")
     }
 
     private fun finishTodoTask(
@@ -891,6 +933,10 @@ class AntDodo : ModelTask() {
 
     private fun autoGenerateBook() {
         try {
+            AntDodoRpcCall.invalidateBookCache()
+            val generatedBookIds = LinkedHashSet<String>()
+            generateCurrentBookIfReminded()?.let { generatedBookIds.add(it) }
+            AntDodoRpcCall.invalidateBookCache()
             var hasMore: Boolean
             var pageStart = 0
             do {
@@ -904,36 +950,161 @@ class AntDodo : ModelTask() {
                 }
                 var jo = JSONObject(bookListResponse)
                 if (!ResChecker.checkRes(TAG, jo)) {
+                    Log.runtime(TAG, "queryBookList失败：${jo.optString("resultDesc", jo.toString())}")
                     break
                 }
                 jo = jo.getJSONObject("data")
-                hasMore = jo.getBoolean("hasMore")
+                hasMore = jo.optBoolean("hasMore")
                 pageStart += 9
-                val bookForUserList = jo.getJSONArray("bookForUserList")
+                val bookForUserList = jo.optJSONArray("bookForUserList") ?: break
                 for (i in 0 until bookForUserList.length()) {
-                    jo = bookForUserList.getJSONObject(i)
-                    if ("已集齐" != jo.optString("medalGenerationStatus")) {
+                    val bookForUser = bookForUserList.optJSONObject(i) ?: continue
+                    val animalBookResult = bookForUser.optJSONObject("animalBookResult") ?: continue
+                    if (animalBookResult.optBoolean("stopAnimalCirculation")) {
                         continue
                     }
-                    val animalBookResult = jo.getJSONObject("animalBookResult")
-                    val bookId = animalBookResult.getString("bookId")
-                    val ecosystem = animalBookResult.getString("ecosystem")
-                    val medalResponse = AntDodoRpcCall.generateBookMedal(bookId)
-                    if (medalResponse.isNullOrEmpty()) {
-                        Log.runtime(TAG, "generateBookMedal返回空")
+                    val bookId = animalBookResult.optString("bookId")
+                    if (bookId.isBlank() || generatedBookIds.contains(bookId)) {
                         continue
                     }
-                    jo = JSONObject(medalResponse)
-                    if (!ResChecker.checkRes(TAG, jo)) {
-                        break
+                    if (!isBookReadyForMedal(bookForUser, bookId)) {
+                        continue
                     }
-                    Log.forest("神奇物种🦕合成勋章[$ecosystem]")
+                    val ecosystem = animalBookResult.optString("ecosystem")
+                    if (generateBookMedal(bookId, ecosystem)) {
+                        generatedBookIds.add(bookId)
+                    }
                 }
             } while (hasMore && !Thread.currentThread().isInterrupted)
         } catch (t: Throwable) {
             Log.runtime(TAG, "generateBookMedal err:")
             Log.printStackTrace(TAG, t)
         }
+    }
+
+    private fun generateCurrentBookIfReminded(): String? {
+        val homeResponse = AntDodoRpcCall.homePage()
+        if (homeResponse.isNullOrEmpty()) {
+            Log.runtime(TAG, "自动合成图鉴homePage返回空")
+            return null
+        }
+        val jo = JSONObject(homeResponse)
+        if (!ResChecker.checkRes(TAG, jo)) {
+            Log.runtime(TAG, "自动合成图鉴homePage失败：${jo.optString("resultDesc", jo.toString())}")
+            return null
+        }
+        val data = jo.getJSONObject("data")
+        if (!data.optBoolean("showBookMedalGenerationRemind") && !data.optBoolean("showMedalRedDot")) {
+            return null
+        }
+        val animalBook = data.optJSONObject("animalBook") ?: return null
+        if (animalBook.optBoolean("stopAnimalCirculation")) {
+            return null
+        }
+        val bookId = animalBook.optString("bookId")
+        if (bookId.isBlank()) {
+            return null
+        }
+        val ecosystem = animalBook.optString("ecosystem")
+        return if (isBookCollectedButMedalMissing(bookId) == true && generateBookMedal(bookId, ecosystem)) {
+            bookId
+        } else {
+            null
+        }
+    }
+
+    private fun isBookReadyForMedal(bookForUser: JSONObject, bookId: String): Boolean {
+        val status = bookForUser.optString("medalGenerationStatus")
+        if (isGeneratedBookStatus(status) || isNotReadyBookStatus(status)) {
+            return false
+        }
+        if (isReadyBookStatus(status)) {
+            return true
+        }
+        return isBookCollectedButMedalMissing(bookId) == true
+    }
+
+    private fun isGeneratedBookStatus(status: String): Boolean {
+        return status == "已合成" ||
+            status == "已生成" ||
+            status.uppercase() in setOf(
+                "GENERATED",
+                "HAS_GENERATED",
+                "GENERATED_BOOK_MEDAL"
+            )
+    }
+
+    private fun isReadyBookStatus(status: String): Boolean {
+        return status == "已集齐" ||
+            status.uppercase() in setOf(
+                "CAN_GENERATE",
+                "CAN_GENERATE_MEDAL",
+                "CAN_GENERATE_BOOK_MEDAL",
+                "READY_TO_GENERATE",
+                "TO_GENERATE"
+            )
+    }
+
+    private fun isNotReadyBookStatus(status: String): Boolean {
+        return status == "未集齐" ||
+            status == "不可合成" ||
+            status.uppercase() in setOf(
+                "CAN_NOT_GENERATE",
+                "NOT_COLLECTED",
+                "UNFINISHED"
+            )
+    }
+
+    private fun isBookCollectedButMedalMissing(bookId: String): Boolean? {
+        return try {
+            val response = AntDodoRpcCall.queryBookInfo(bookId)
+            if (response.isNullOrEmpty()) {
+                Log.runtime(TAG, "自动合成图鉴queryBookInfo返回空，bookId=$bookId")
+                return null
+            }
+            val jo = JSONObject(response)
+            if (!ResChecker.checkRes(TAG, jo)) {
+                Log.runtime(TAG, "自动合成图鉴queryBookInfo失败，bookId=$bookId：${jo.optString("resultDesc")}")
+                return null
+            }
+            val data = jo.getJSONObject("data")
+            if (data.optJSONObject("animalBookResult")?.optBoolean("stopAnimalCirculation") == true) {
+                return false
+            }
+            val animalForUserList = data.optJSONArray("animalForUserList") ?: return null
+            if (animalForUserList.length() == 0) {
+                return false
+            }
+            var hasMedalPending = false
+            for (i in 0 until animalForUserList.length()) {
+                val collectDetail = animalForUserList.optJSONObject(i)?.optJSONObject("collectDetail")
+                if (!isCollectedAnimal(collectDetail)) {
+                    return false
+                }
+                if (collectDetail?.optBoolean("hasGeneratedBookMedal") != true) {
+                    hasMedalPending = true
+                }
+            }
+            hasMedalPending
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "isBookCollectedButMedalMissing err:", t)
+            null
+        }
+    }
+
+    private fun generateBookMedal(bookId: String, ecosystem: String): Boolean {
+        val medalResponse = AntDodoRpcCall.generateBookMedal(bookId)
+        if (medalResponse.isNullOrEmpty()) {
+            Log.runtime(TAG, "generateBookMedal返回空，bookId=$bookId")
+            return false
+        }
+        val jo = JSONObject(medalResponse)
+        if (!ResChecker.checkRes(TAG, jo)) {
+            Log.forest(TAG, "合成图鉴失败[${ecosystem.ifBlank { bookId }}]：${jo.optString("resultDesc", jo.toString())}")
+            return false
+        }
+        Log.forest("神奇物种🦕合成勋章[${ecosystem.ifBlank { bookId }}]")
+        return true
     }
 
     interface CollectToFriendType {
