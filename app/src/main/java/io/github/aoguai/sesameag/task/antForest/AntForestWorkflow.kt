@@ -14,33 +14,52 @@ internal suspend fun AntForest.runForestPreparationAndCollectionWorkflow(tc: Tim
     usePropBeforeCollectEnergy(UserMap.currentUid)
     tc.countDebug("使用自己道具卡")
 
-    Log.forest(FOREST_TAG, "🚀 执行找能量功能（协程）")
-    collectEnergyByTakeLook()
-    tc.countDebug("找能量收取（协程）")
+    val collectEnergyEnabled = isCollectEnergyEnabled()
+    if (collectEnergyEnabled) {
+        Log.forest(FOREST_TAG, "🚀 执行找能量功能（协程）")
+        collectEnergyByTakeLook()
+        tc.countDebug("找能量收取（协程）")
+    } else {
+        Log.forest(FOREST_TAG, "收集能量开关关闭，跳过找能量")
+        tc.countDebug("跳过找能量收取（未开启）")
+    }
 
-    if (pkEnergy?.value == true) {
+    if (collectEnergyEnabled && pkEnergy?.value == true) {
         Log.forest(FOREST_TAG, "🚀 异步执行PK好友能量收取")
         collectPKEnergyCoroutine()
         tc.countDebug("收PK好友能量（同步）")
+    } else if (pkEnergy?.value == true) {
+        Log.forest(FOREST_TAG, "收集能量开关关闭，跳过PK好友能量收取")
+        tc.countDebug("跳过PK好友能量（收集能量未开启）")
     } else {
         tc.countDebug("跳过PK好友能量（未开启）")
     }
 
-    Log.forest(FOREST_TAG, "🌳 【正常流程】开始收取自己的能量...")
+    Log.forest(FOREST_TAG, "🌳 【正常流程】查询自己的森林主页...")
     val selfHomeObj = querySelfHome()
     tc.countDebug("获取自己主页对象信息")
     if (selfHomeObj != null) {
-        collectEnergy(UserMap.currentUid, selfHomeObj, "self")
-        Log.forest(FOREST_TAG, "✅ 【正常流程】收取自己的能量完成")
-        tc.countDebug("收取自己的能量")
+        if (collectEnergyEnabled) {
+            collectEnergy(UserMap.currentUid, selfHomeObj, "self")
+            Log.forest(FOREST_TAG, "✅ 【正常流程】收取自己的能量完成")
+            tc.countDebug("收取自己的能量")
+        } else {
+            Log.forest(FOREST_TAG, "收集能量开关关闭，跳过自己的能量收取")
+            tc.countDebug("跳过自己的能量收取（未开启）")
+        }
     } else {
         Log.error(FOREST_TAG, "❌ 【正常流程】获取自己主页信息失败，跳过能量收取")
         tc.countDebug("跳过自己的能量收取（主页获取失败）")
     }
 
-    Log.forest(FOREST_TAG, "🚀 执行好友能量收取（协程）")
-    collectFriendEnergyCoroutine()
-    tc.countDebug("收取好友能量（同步）")
+    if (hasFriendRankingWorkEnabled()) {
+        Log.forest(FOREST_TAG, "🚀 执行好友排行榜处理（协程）")
+        collectFriendEnergyCoroutine()
+        tc.countDebug("好友排行榜处理（同步）")
+    } else {
+        Log.forest(FOREST_TAG, "收集能量、领取礼盒和复活能量均未开启，跳过好友排行榜扫描")
+        tc.countDebug("跳过好友排行榜扫描（无收取/礼盒/复活需求）")
+    }
     return selfHomeObj
 }
 

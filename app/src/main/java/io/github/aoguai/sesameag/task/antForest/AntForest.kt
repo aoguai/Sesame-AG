@@ -332,6 +332,27 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         }
     }
 
+    internal fun isCollectEnergyEnabled(): Boolean {
+        return collectEnergy?.value == true
+    }
+
+    private fun hasRebornProtectWorkEnabled(): Boolean {
+        val type = helpFriendCollectType?.value ?: HelpFriendCollectType.NONE
+        if (type == HelpFriendCollectType.NONE || rebornWeeklyCompleted) {
+            return false
+        }
+        if (type == HelpFriendCollectType.HELP && helpFriendCollectList?.value.isNullOrEmpty()) {
+            return false
+        }
+        return true
+    }
+
+    internal fun hasFriendRankingWorkEnabled(): Boolean {
+        return isCollectEnergyEnabled() ||
+                collectGiftBox?.value == true ||
+                hasRebornProtectWorkEnabled()
+    }
+
     override fun getFields(): ModelFields {
         val modelFields = ModelFields()
         modelFields.addField(
@@ -759,6 +780,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         val minute = now.get(Calendar.MINUTE)
         val isEnergyTime = TaskCommon.IS_ENERGY_TIME || hour == 7 && minute < 30
         if (isEnergyTime) {
+            if (!isCollectEnergyEnabled()) {
+                Log.forest(TAG, "当前为只收能量时间，但收集能量开关关闭，跳过能量循环")
+                return false
+            }
             // 关键改动：将循环放入后台线程，避免阻塞TaskRunner
             GlobalThreadPools.execute({ this.startEnergyCollectionLoop() })
             return false // 只收能量期间不执行正常任务，check()立刻返回
@@ -788,6 +813,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                         val minute = now.get(Calendar.MINUTE)
                         if (!(TaskCommon.IS_ENERGY_TIME || hour == 7 && minute < 30)) {
                             Log.forest(TAG, "当前不在只收能量时间段，退出循环")
+                            break
+                        }
+                        if (!isCollectEnergyEnabled()) {
+                            Log.forest(TAG, "收集能量开关已关闭，退出只收能量循环")
                             break
                         }
                         // 收取自己能量（协程中执行）
@@ -2261,6 +2290,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * 协程版本：收取PK好友能量
      */
     internal suspend fun collectPKEnergyCoroutine() {
+        if (!isCollectEnergyEnabled() || pkEnergy?.value != true) {
+            Log.forest(TAG, "收集能量或PK榜收取未开启，跳过PK排行榜扫描")
+            return
+        }
         if (Status.hasFlagToday(StatusFlags.FLAG_ANTFOREST_PK_SKIP_TODAY)) {
             Log.forest(TAG, "PK排行榜：今日已判定无需处理，跳过以避免风控")
             return
@@ -2292,6 +2325,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * 逻辑：服务器自动轮询，返回空 friendId 代表无更多目标
      */
     internal fun collectEnergyByTakeLook(source: String? = null) {
+        if (!isCollectEnergyEnabled()) {
+            Log.forest(TAG, "收集能量开关关闭，跳过找能量")
+            return
+        }
         // 1. 冷却检查
         val currentTime = System.currentTimeMillis()
         if (currentTime < nextTakeLookTime) {
@@ -2421,6 +2458,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * 7点-7点30分快速收取能量，跳过道具判断
      */
     private fun quickcollectEnergyByTakeLook() {
+        if (!isCollectEnergyEnabled()) {
+            Log.forest(TAG, "收集能量开关关闭，跳过快速找能量")
+            return
+        }
         // 1. 冷却检查
         val currentTime = System.currentTimeMillis()
         if (currentTime < nextTakeLookTime) {
@@ -2539,6 +2580,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * 协程版本：收取好友能量
      */
     internal suspend fun collectFriendEnergyCoroutine() {
+        if (!hasFriendRankingWorkEnabled()) {
+            Log.forest(TAG, "收集能量、领取礼盒和复活能量均未开启，跳过好友排行榜扫描")
+            return
+        }
         resetRebornScanStateForFriendRanking()
         var cancelled = false
         try {
@@ -6505,6 +6550,14 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     }
 
     override suspend fun collectUserEnergyForWaiting(task: EnergyWaitingManager.WaitingTask): CollectResult {
+        if (!isCollectEnergyEnabled()) {
+            Log.forest(TAG, "收集能量开关关闭，跳过蹲点收取")
+            return CollectResult(
+                success = false,
+                userName = task.userName,
+                message = "收集能量开关关闭"
+            )
+        }
         return try {
             withContext(Dispatchers.Default) {
                 // 主号蹲点查询自己的主页，好友蹲点走好友主页守卫。

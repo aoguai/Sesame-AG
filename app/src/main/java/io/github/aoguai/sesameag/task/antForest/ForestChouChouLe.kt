@@ -6,6 +6,7 @@ import io.github.aoguai.sesameag.task.TaskStatus
 import io.github.aoguai.sesameag.util.GlobalThreadPools.sleepCompat
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.ResChecker
+import io.github.aoguai.sesameag.util.TaskBlacklist
 import io.github.aoguai.sesameag.util.maps.UserMap
 import org.json.JSONObject
 import java.util.Locale
@@ -20,22 +21,13 @@ class ForestChouChouLe {
     companion object {
         private const val TAG = "ForestChouChouLe"
         private const val SOURCE = "task_entry"
+        private const val FOREST_BLACKLIST_MODULE = "蚂蚁森林"
 
         // 场景代码常量
         private const val SCENE_NORMAL = "ANTFOREST_NORMAL_DRAW"
         private const val SCENE_ACTIVITY = "ANTFOREST_ACTIVITY_DRAW"
-
-        // 屏蔽的任务类型关键词
-        private val BLOCKED_TYPES = setOf(
-            "FOREST_NORMAL_DRAW_SHARE",
-            "FOREST_ACTIVITY_DRAW_SHARE",
-            "FOREST_ACTIVITY_DRAW_SGBHSD",
-            "FOREST_ACTIVITY_DRAW_XS" // 玩游戏得新机会
-        )
-
-        // 屏蔽的任务名称关键词
-        private val BLOCKED_NAMES = setOf("玩游戏得", "开宝箱")
         private const val TASK_AWARD_ALREADY_FINISHED_CODE = "400000030"
+        private const val TASK_ALREADY_FINISHED_CODE = "2600000016"
 
         /**
          * 抽奖场景数据类
@@ -53,9 +45,20 @@ class ForestChouChouLe {
         private fun String.toJson(): JSONObject? = runCatching { JSONObject(this) }.getOrNull()
         private fun JSONObject.check(): Boolean = ResChecker.checkRes(TAG, this)
         private fun JSONObject.isTaskAwardAlreadyFinished(): Boolean {
-            val code = optString("code")
+            val code = optString("code").ifBlank { optString("resultCode") }
             val desc = optString("desc")
             return code == TASK_AWARD_ALREADY_FINISHED_CODE || desc.contains("任务已完结")
+        }
+
+        private fun JSONObject.isTaskAlreadyFinished(): Boolean {
+            val code = optString("code").ifBlank { optString("resultCode") }
+            return code == TASK_ALREADY_FINISHED_CODE ||
+                listOf(
+                    optString("desc"),
+                    optString("resultDesc"),
+                    optString("resultMessage"),
+                    optString("memo")
+                ).any { it.contains("任务已完成") || it.contains("任务已完结") }
         }
 
         // 动态获取抽奖场景配置
@@ -268,8 +271,8 @@ class ForestChouChouLe {
      * 判断任务是否在屏蔽列表中
      */
     private fun isBlockedTask(taskType: String, taskName: String): Boolean {
-        return BLOCKED_TYPES.any { taskType.contains(it) } ||
-                BLOCKED_NAMES.any { taskName.contains(it) }
+        return TaskBlacklist.isTaskInBlacklist(FOREST_BLACKLIST_MODULE, taskType) ||
+            TaskBlacklist.isTaskInBlacklist(FOREST_BLACKLIST_MODULE, taskName)
     }
 
     /**
@@ -303,7 +306,10 @@ class ForestChouChouLe {
             // 活力值兑换
             Log.forest("${s.name} 兑换活力值: $name")
             val res = AntForestRpcCall.exchangeTimesFromTaskopengreen(s.id, s.code, SOURCE, code, type).toJson()
-            if (res != null && res.check()) {
+            if (res != null && res.isTaskAlreadyFinished()) {
+                Log.forest("${s.name} $name 已完成")
+                true
+            } else if (res != null && res.check()) {
                 Log.forest("${s.name} 🧾 $name 兑换成功")
                 true
             } else false
@@ -319,7 +325,12 @@ class ForestChouChouLe {
             }
 
             val resJson = result.toJson()
-            if (resJson != null && resJson.check()) {
+            if (resJson != null && resJson.isTaskAlreadyFinished()) {
+                taskTryCount.remove(type)
+                Log.forest("${s.name} 任务已完成: $name")
+                true
+            } else if (resJson != null && resJson.check()) {
+                taskTryCount.remove(type)
                 Log.forest("${s.name} 🧾 $name")
                 true
             } else {
@@ -336,7 +347,7 @@ class ForestChouChouLe {
         Log.forest("${s.name} 领取奖励: $name")
         sleepCompat(100L)
         val res = AntForestRpcCall.receiveTaskAwardopengreen(SOURCE, code, type).toJson()
-        return if (res != null && res.isTaskAwardAlreadyFinished()) {
+        return if (res != null && (res.isTaskAwardAlreadyFinished() || res.isTaskAlreadyFinished())) {
             rewardHandledTaskKeys.add(buildRewardHandledTaskKey(code, type))
             Log.forest("${s.name} 奖励已领取: $name")
             false
