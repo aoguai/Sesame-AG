@@ -1,0 +1,92 @@
+name: Pull Request Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - "**"
+
+env:
+  CI: "true"
+  JAVA_DISTRIBUTION: "oracle"
+  JAVA_VERSION: "17.0.1"
+  ANDROID_API_LEVEL: "36"
+  ANDROID_BUILD_TOOLS: "36.0.0"
+  LOCAL_GRADLE_VERSION: "9.4.0-milestone-3"
+  LOCAL_AGP_VERSION: "9.0.1"
+  LOCAL_KOTLIN_VERSION: "2.2.10"
+
+concurrency:
+  group: pr-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Project Toolchain Baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          grep -Eq '^distributionUrl=.*gradle-'"${LOCAL_GRADLE_VERSION//./\\.}"'-bin\.zip$' gradle/wrapper/gradle-wrapper.properties
+          grep -Eq '^android-plugin = "'"${LOCAL_AGP_VERSION//./\\.}"'"$' gradle/libs.versions.toml
+          grep -Eq '^kotlin = "'"${LOCAL_KOTLIN_VERSION//./\\.}"'"$' gradle/libs.versions.toml
+          grep -Eq '^appVersion=.+' gradle.properties
+          grep -Eq 'compileSdk = '"${ANDROID_API_LEVEL}"'$' app/build.gradle.kts
+          grep -Eq 'sourceCompatibility = JavaVersion.VERSION_17' app/build.gradle.kts
+          grep -Eq 'targetCompatibility = JavaVersion.VERSION_17' app/build.gradle.kts
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          architecture: x64
+          check-latest: false
+          cache: gradle
+
+      - name: Pin Gradle Java Home
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ORG_GRADLE_JAVA_HOME=${JAVA_HOME}" >> "$GITHUB_ENV"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+
+      - name: Install Required Android SDK Packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API_LEVEL}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}"
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          set -o pipefail
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+          gradle-version: wrapper
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Compile Debug Sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --stacktrace :app:compileDebugKotlin :app:compileDebugJavaWithJavac

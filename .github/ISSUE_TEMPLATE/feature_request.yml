@@ -22,6 +22,7 @@ body:
     id: preflight
     attributes:
       label: 提交前检查
+      description: 所有选项均必须勾选后才能提交。
       options:
         - label: 我已经确认这不是与当前项目定位冲突的边界需求
           required: true
@@ -30,6 +31,8 @@ body:
         - label: 我已经确认这不是一般讨论 / 提问 / 使用交流；这类内容应发到 Discussions
           required: true
         - label: 我已经阅读 README / LEGAL / CONTRIBUTING，并理解当前仓库的协作边界
+          required: true
+        - label: 如建议涉及日志或调试信息，我会仅以附件形式上传脱敏日志，不直接粘贴日志正文
           required: true
         - label: 我理解信息过于模糊、缺少使用场景或不可公开讨论的建议可能会被直接关闭
           required: true
@@ -115,9 +118,11 @@ body:
     id: evidence
     attributes:
       label: 证据、示例或参考
-      description: 可以附类似实现、截图、日志片段、原型或其他参考信息
+      description: 可以附类似实现、截图、原型或其他参考信息；如涉及日志，只能将脱敏后的日志文件作为附件上传，不要粘贴日志正文
       placeholder: |
-        可附上现有界面截图、日志示例、上游参考实现或你自己的原型描述。
+        可附上现有界面截图、上游参考实现或你自己的原型描述。
+
+        如涉及日志，请将 .txt / .log / .zip 等文件拖拽到此处生成附件链接。
 
   - type: textarea
     id: additional_information

@@ -16,16 +16,19 @@ body:
 
         请尽量让每个回答都基于你实际观察到的现象来填写。没有复现步骤、环境信息和日志的 Issue，通常没有足够上下文被处理。
 
+        日志文件获取只需要在日志中心进入对应卡片然后导出即可在 /Download/sesame-AG/ 目录下找到。
+
         日志要求：
-        - 错误日志为必填，不附错误日志的 Bug Issue 通常会被直接关闭
-        - 强烈建议同时附上“全部日志”和“对应模块日志”（如森林日志、农场日志、其他日志等）
+        - 错误日志、全部日志和对应模块日志均为必填，不附日志附件的 Bug Issue 通常会被直接关闭
+        - 日志只能以附件形式上传，请将脱敏后的 .txt / .log / .zip 等文件拖拽到日志附件字段
+        - 不要直接粘贴日志正文，也不要只用截图代替日志附件
         - 如涉及隐私信息，请先脱敏后再提交
 
   - type: checkboxes
     id: preflight
     attributes:
       label: 提交前检查
-      description: 不符合这些前提的 Issue 可能会被直接关闭。
+      description: 所有选项均必须勾选后才能提交；不符合这些前提的 Issue 可能会被直接关闭。
       options:
         - label: 我已经阅读 README / LEGAL / CONTRIBUTING，并确认这个问题符合当前项目的学习研究定位
           required: true
@@ -33,7 +36,7 @@ body:
           required: true
         - label: 我已经在当前可获取的最新版本或最新提交环境中复现过这个问题
           required: true
-        - label: 我已经附上错误日志，并会尽量补充全部日志与对应模块日志
+        - label: 我已经将错误日志、全部日志和对应模块日志作为附件上传，并确认没有直接粘贴日志正文
           required: true
         - label: 我愿意在后续继续补充日志、截图、复现信息并配合排查
           required: true
@@ -150,28 +153,22 @@ body:
   - type: textarea
     id: error_logs
     attributes:
-      label: 错误日志（必填）
-      description: 必须附上脱敏后的错误日志 / 异常堆栈 / 报错片段；不要只写“有报错”
-      render: shell
+      label: 错误日志附件（必填）
+      description: 必须将脱敏后的错误日志 / 异常堆栈 / 报错上下文作为附件上传；请拖拽 .txt / .log / .zip 等文件到此处生成附件链接，不要粘贴日志正文
       placeholder: |
-        请至少贴出：
-        - 错误日志 / 异常堆栈
-        - 出错前后几行上下文
-        - 如能定位到模块，请一并说明对应模块名称
+        请将错误日志文件拖拽到此处。
     validations:
       required: true
 
   - type: textarea
     id: extra_logs
     attributes:
-      label: 全部日志 / 对应模块日志（强烈建议）
-      description: 请尽量补充全部日志，以及与问题相关的模块日志（如森林日志、农场日志、其他日志、抓包日志等）
-      render: shell
+      label: 全部日志 / 对应模块日志附件（必填）
+      description: 必须将全部日志，以及与问题相关的模块日志作为附件上传（如森林日志、农场日志、其他日志、抓包日志等）；不要粘贴日志正文
       placeholder: |
-        建议补充：
-        - 全部日志
-        - 对应模块日志（例如森林日志 / 农场日志 / 其他日志）
-        - 如果没有提供，请说明原因，例如“环境已重置，无法保留完整日志”
+        请将全部日志和对应模块日志文件拖拽到此处。
+    validations:
+      required: true
 
   - type: textarea
     id: additional_information

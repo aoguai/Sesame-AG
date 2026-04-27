@@ -1,0 +1,67 @@
+name: Issue Close Question
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  issue-close-require:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close stale need info issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const labelName = 'need info';
+            const inactiveMs = 3 * 24 * 60 * 60 * 1000;
+            const now = Date.now();
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              labels: labelName,
+              per_page: 100
+            });
+
+            let closedCount = 0;
+            for (const issue of issues) {
+              if (issue.pull_request) {
+                continue;
+              }
+
+              const labels = (issue.labels || []).map((label) => label.name);
+              if (!labels.includes(labelName)) {
+                continue;
+              }
+
+              const inactiveForMs = now - new Date(issue.updated_at).getTime();
+              if (inactiveForMs < inactiveMs) {
+                continue;
+              }
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: `由于该 Issue 3 天内未收到足够信息，现已被自动关闭。若仍需处理，请补充必要附件或信息后重新打开。`
+              });
+
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'not_planned'
+              });
+              closedCount += 1;
+            }
+
+            core.info(`Closed ${closedCount} stale need info issue(s).`);

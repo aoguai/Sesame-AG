@@ -1,0 +1,85 @@
+name: Add Labels
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  add-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check issue attachments and reply
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const labelName = 'need info';
+
+            const labels = (issue.labels || []).map((label) => label.name.toLowerCase());
+            const title = issue.title || '';
+            const body = issue.body || '';
+            const author = issue.user?.login || 'there';
+
+            const isBug = labels.includes('bug') || /^\s*\[bug\]\s*:/i.test(title);
+            const attachmentPatterns = [
+              /https:\/\/github\.com\/user-attachments\/(?:assets|files)\/[^\s)\]]+/i,
+              /https:\/\/user-images\.githubusercontent\.com\/[^\s)\]]+/i,
+              /https:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/files\/\d+\/[^\s)\]]+/i,
+              /\[[^\]]+\]\([^)]+\.(?:txt|log|zip|gz|json|png|jpe?g|webp|mp4)(?:\?[^)]*)?\)/i
+            ];
+            const hasAttachment = attachmentPatterns.some((pattern) => pattern.test(body));
+
+            async function ensureNeedInfoLabel() {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: labelName });
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name: labelName,
+                  color: 'd73a4a',
+                  description: 'Needs more information from the issue author'
+                });
+              }
+            }
+
+            async function addNeedInfoLabel() {
+              const currentLabels = new Set((issue.labels || []).map((label) => label.name));
+              if (currentLabels.has(labelName)) {
+                return;
+              }
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: issue.number,
+                labels: [labelName]
+              });
+            }
+
+            if (isBug && !hasAttachment) {
+              await ensureNeedInfoLabel();
+              await addNeedInfoLabel();
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: `您好 @${author}，感谢反馈。这个 Bug Issue 目前缺少必要的日志或附件。\n\n请将脱敏后的错误日志、全部日志和对应模块日志以附件形式上传到 Issue 正文或评论中，不要直接粘贴日志正文；如果 3 天内没有补充信息，Issue 将被自动关闭。`
+              });
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issue.number,
+              body: `您好 @${author}，已收到 Issue，感谢反馈。如果核实后确实存在问题我们会尽快修复，请耐心等待。`
+            });
