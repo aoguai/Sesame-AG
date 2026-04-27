@@ -102,7 +102,6 @@ class AntMember : ModelTask() {
     private var sesameGrainExchangeList: SelectModelField? = null
 
     private val sesameTaskRefreshRoundLimit = 8
-    private val memberTaskBlacklistModule = "支付宝会员"
     private val sesameAlchemyTaskBlacklistModule = "芝麻炼金"
     private val goldTicketTaskBlacklistModule = "黄金票"
 
@@ -1624,6 +1623,10 @@ class AntMember : ModelTask() {
                 )
                 return@run MemberFloatingBallTaskProcessState.UNKNOWN
             }
+            if (isMemberFloatingBallTaskNotEnded(triggerObject)) {
+                Log.member(TAG, "会员任务[浮球]#倒计时任务未结束，本轮结束，后续轮次继续查询")
+                return@run MemberFloatingBallTaskProcessState.RETRY_LATER
+            }
             if (!ResChecker.checkRes(TAG, triggerObject)) {
                 Log.error(
                     "$TAG.processMemberFloatingBallTaskCompat",
@@ -1647,6 +1650,11 @@ class AntMember : ModelTask() {
             Log.printStackTrace(TAG, "processMemberFloatingBallTaskCompat err:", t)
             return@run MemberFloatingBallTaskProcessState.UNKNOWN
         }
+    }
+
+    private fun isMemberFloatingBallTaskNotEnded(jsonObject: JSONObject): Boolean {
+        return jsonObject.optString("resultCode") == "SIGN_FLOATING_BALL_TASK_NOT_END" ||
+            jsonObject.optString("resultDesc").contains("任务未结束")
     }
 
     private fun buildMemberFloatingBallTaskRef(jsonObject: JSONObject): MemberFloatingBallTaskRef? {
@@ -5407,6 +5415,7 @@ class AntMember : ModelTask() {
 
     companion object {
         private val TAG: String = AntMember::class.java.getSimpleName()
+        private const val memberTaskBlacklistModule = "支付宝会员"
         private const val sesameCreditTaskBlacklistModule = "芝麻信用"
 
         /**
@@ -6711,6 +6720,14 @@ class AntMember : ModelTask() {
 
             val title = task.optString("title", task.optString("taskName", "商家任务"))
             val reward = task.optString("reward", task.optString("point"))
+            val taskCode = task.optString("taskCode")
+
+            if (TaskBlacklist.isTaskInBlacklist(memberTaskBlacklistModule, title) ||
+                TaskBlacklist.isTaskInBlacklist(memberTaskBlacklistModule, taskCode)
+            ) {
+                Log.member(TAG, "商家服务🏬[$title]#黑名单任务，停止执行")
+                return@run false
+            }
 
             if ("NEED_RECEIVE" == taskStatus) {
                 val pointBallId = task.optString("pointBallId")
@@ -6736,7 +6753,6 @@ class AntMember : ModelTask() {
                 return@run evaluation.failureType == MerchantRpcFailureType.DUPLICATE_REWARD
             }
 
-            val taskCode = task.optString("taskCode")
             val actionCodes = resolveMerchantActionCodes(task)
             if (taskCode.isEmpty() || actionCodes.isEmpty()) {
                 return@run false

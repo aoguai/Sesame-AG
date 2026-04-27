@@ -81,6 +81,7 @@ private val orchardDefaultBlacklist = setOf(
     "ORCHARD_NORMAL_AQ_XIAZAI",         // 下载蚂蚁阿福看健康攻略
     "ORCHARD_NORMAL_NCLY_GLY",          // 新春限时试玩福利
     "ORCHARD_NCLY_GAME_TASK",           // 试玩农场乐园火爆新游
+    "ncflzhrw51",                       // 去游戏中心抢金条：不支持rpc调用
     "LINGHUOTIAOKONG",                  // 逛一逛新浪微博
     "ORCHARD_NORMAL_XIANYU_DUAN",       // 逛一逛闲鱼
     "ORCHARD_NORMAL_WAIMAIMIANDAN",     // 逛一逛闪购外卖
@@ -96,7 +97,8 @@ private val orchardDefaultBlacklist = setOf(
     "分享给好友",
     "合种/帮帮种多人施肥",
     "帮帮种组队",
-    "去天猫攒福气兑红包"
+    "去天猫攒福气兑红包",
+    "去游戏中心抢金条"
 )
 
 private val farmDefaultBlacklist = setOf(
@@ -183,6 +185,18 @@ private val forestDefaultBlacklist = setOf(
     "KTKZ_YS202511",       // 一起组团种榆树
     "mokuai_senlin_hlz",   // 去玩一玩得活力值
     "CNXDY_TASK_QUDONG",   // 玩下蛋鸭击败20只怪：不支持rpc调用
+    "FOREST_NORMAL_DRAW_SHARE", // 森林抽抽乐分享任务
+    "FOREST_ACTIVITY_DRAW_SHARE", // 森林抽抽乐活动分享任务
+    "FOREST_ACTIVITY_DRAW_SGBHSD", // 森林抽抽乐游戏任务
+    "FOREST_ACTIVITY_DRAW_XS", // 森林抽抽乐玩游戏得新机会
+    "SYH_51HLZ_zhuanhua202604", // 【抢金条】完成游戏任务：不支持rpc调用
+    "SYH_51HLZ_shichang202604", // 玩任意游戏30s：不支持rpc调用
+    "FKSSJ_QDRW_HUOLI",    // 水世界捡海面物资1次：不支持rpc调用
+    "玩游戏得",             // 森林抽抽乐游戏类任务暂无稳定RPC闭环
+    "开宝箱",               // 森林抽抽乐宝箱类任务不在本流程处理
+    "疯狂水世界",           // 森林抽抽乐游戏类任务暂无稳定RPC闭环
+    "玩任意游戏",           // 森林抽抽乐游戏类任务暂无稳定RPC闭环
+    "抢金条",               // 森林抽抽乐游戏类任务暂无稳定RPC闭环
     "去会员抢演唱会门票"     // 活动已完结
 )
 
@@ -228,7 +242,9 @@ private val memberDefaultBlacklist = setOf(
     "逛一逛淘金币频道",
     "逛美团刷视频领现金",
     "逛一逛抖音极速版",
-    "玩向西冲冲冲升5级"
+    "玩向西冲冲冲升5级",
+    "去设计签名",
+    "个性签名"
 )
 
 private val sportsDefaultBlacklist = setOf(
