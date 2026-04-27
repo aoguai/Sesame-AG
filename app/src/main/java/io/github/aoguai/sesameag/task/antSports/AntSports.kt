@@ -17,6 +17,7 @@ import io.github.aoguai.sesameag.model.modelFieldExt.IntegerModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.SelectModelField
 import io.github.aoguai.sesameag.model.modelFieldExt.StringModelField
 import io.github.aoguai.sesameag.task.ModelTask
+import io.github.aoguai.sesameag.task.TaskCommon
 import io.github.aoguai.sesameag.util.*
 import io.github.aoguai.sesameag.util.FriendGuard
 import io.github.aoguai.sesameag.util.maps.UserMap
@@ -70,6 +71,9 @@ class AntSports : ModelTask() {
 
         /** @brief 新版路线单次运行最大推进轮次，避免路线切换/复活异常造成长循环 */
         private const val MAX_ROUTE_WALK_ROUNDS = 8
+
+        /** @brief 步数同步子任务 ID，用于避免同一天重复排队 */
+        private const val SYNC_STEP_CHILD_TASK_ID = "syncStep"
 
         private const val RPC_WALK_QUERY_PATH = "com.alipay.sportsplay.biz.rpc.walk.queryPath"
         private const val RPC_WALK_QUERY_USER = "com.alipay.sportsplay.biz.rpc.walk.queryUser"
@@ -171,6 +175,10 @@ class AntSports : ModelTask() {
     private var cachedOriginDailyStep: Int = -1
     private var cachedTargetDailyStep: Int = -1
     private var syncStepHookLogged: Boolean = false
+    private val syncStepLock = Any()
+
+    @Volatile
+    private var syncStepInProgress: Boolean = false
 
     // 配置字段
     internal lateinit var walk: BooleanModelField
@@ -464,15 +472,12 @@ class AntSports : ModelTask() {
                 val originStep = chain.proceed() as Int
                 rememberCurrentDailyStep(originStep)
                 val targetStep = resolveTargetDailyStep(originStep)
-                if (shouldOverrideDailyStep(originStep, targetStep)) {
-                    if (!Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)) {
-                        Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)
-                        if (!syncStepHookLogged) {
-                            syncStepHookLogged = true
-                            Log.sports(
-                                "同步步数🏃🏻‍♂️[Hook][原始${originStep}步 + 自定义${targetStep - originStep}步 = ${targetStep}步]"
-                            )
-                        }
+                if (shouldOverrideDailyStep(originStep, targetStep) && tryMarkSyncStepDoneByHook()) {
+                    if (!syncStepHookLogged) {
+                        syncStepHookLogged = true
+                        Log.sports(
+                            "同步步数🏃🏻‍♂️[Hook][原始${originStep}步 + 自定义${targetStep - originStep}步 = ${targetStep}步]"
+                        )
                     }
                     targetStep
                 } else {
@@ -492,6 +497,11 @@ class AntSports : ModelTask() {
         Log.sports(TAG, "执行开始-${getName()}")
 
         try {
+            if (isEnergyOnlyModeNow()) {
+                Log.sports(TAG, "⏸ 当前为只收能量时间【${BaseModel.energyTime.value}】，跳过运动任务")
+                return
+            }
+
             val loader = ApplicationHook.classLoader
             if (loader == null) {
                 Log.error(TAG, "ClassLoader is null, 跳过运动任务")
@@ -533,19 +543,69 @@ class AntSports : ModelTask() {
         }
     }
 
+    private fun tryBeginSyncStepTask(): Boolean {
+        synchronized(syncStepLock) {
+            if (syncStepInProgress ||
+                hasChildTask(SYNC_STEP_CHILD_TASK_ID) ||
+                Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)
+            ) {
+                return false
+            }
+            syncStepInProgress = true
+            return true
+        }
+    }
+
+    private fun finishSyncStepTask() {
+        synchronized(syncStepLock) {
+            syncStepInProgress = false
+        }
+    }
+
+    private fun markSyncStepDone() {
+        synchronized(syncStepLock) {
+            Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)
+        }
+    }
+
+    private fun tryMarkSyncStepDoneByHook(): Boolean {
+        synchronized(syncStepLock) {
+            if (syncStepInProgress ||
+                Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)
+            ) {
+                return false
+            }
+            Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)
+            return true
+        }
+    }
+
+    internal fun isEnergyOnlyModeNow(): Boolean {
+        TaskCommon.update()
+        return TaskCommon.IS_ENERGY_TIME
+    }
+
     /**
      * 步数同步任务
      */
     internal fun syncStepTask() {
+        if (isEnergyOnlyModeNow()) {
+            return
+        }
+
+        if (!tryBeginSyncStepTask()) {
+            return
+        }
+
         addChildTask(
             ChildModelTask(
-                "syncStep",
+                SYNC_STEP_CHILD_TASK_ID,
                 Runnable {
                     try {
                         val customStep = tmpStepCount()
                         if (customStep <= 0) {
                             Log.sports(TAG, "同步步数已关闭，跳过主动同步")
-                            Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)
+                            markSyncStepDone()
                             return@Runnable
                         }
 
@@ -564,13 +624,18 @@ class AntSports : ModelTask() {
                                 TAG,
                                 "同步步数无需处理[原始=${originStep}步, 自定义=${customStep}步, 目标=${targetStep}步]"
                             )
-                            Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)
+                            markSyncStepDone()
+                            return@Runnable
+                        }
+
+                        if (Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)) {
+                            Log.sports(TAG, "今日步数已由其他入口同步，跳过主动提交")
                             return@Runnable
                         }
 
                         if (syncStepByRpcManager(loader, targetStep)) {
                             Log.sports("同步步数🏃🏻‍♂️[原始${originStep}步 + 自定义${targetStep - originStep}步 = ${targetStep}步]")
-                            Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)
+                            markSyncStepDone()
                         } else {
                             Log.sports(
                                 TAG,
@@ -579,6 +644,8 @@ class AntSports : ModelTask() {
                         }
                     } catch (t: Throwable) {
                         Log.printStackTrace(TAG, t)
+                    } finally {
+                        finishSyncStepTask()
                     }
                 }
             )
@@ -658,6 +725,9 @@ class AntSports : ModelTask() {
         if (targetStep <= 0 ||
             originStep >= targetStep
         ) {
+            return false
+        }
+        if (isEnergyOnlyModeNow()) {
             return false
         }
 

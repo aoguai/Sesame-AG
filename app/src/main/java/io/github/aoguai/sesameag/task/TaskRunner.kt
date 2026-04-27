@@ -240,6 +240,13 @@ class CoroutineTaskRunner(allModels: List<Model>) {
         val taskId = "$taskName-R$round"
         val startTime = System.currentTimeMillis()
 
+        TaskCommon.update()
+        if (TaskCommon.IS_ENERGY_TIME && task !is AntForest) {
+            skippedCount.incrementAndGet()
+            Log.record(TAG, "⏸ 当前为只收能量时间【${BaseModel.energyTime.value}】，跳过: $taskName")
+            return
+        }
+
         val isWhitelist = TIMEOUT_WHITELIST.contains(taskName)
 
         // 如果是白名单任务（如森林），它们往往是“启动后即视为完成”，或者是长运行任务
