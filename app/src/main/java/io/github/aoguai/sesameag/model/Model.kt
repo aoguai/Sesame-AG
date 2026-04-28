@@ -18,10 +18,8 @@ abstract class Model {
     val enableField: BooleanModelField
     
     init {
-        // 基础模块默认启用，其他模块默认禁用
-        val defaultValue = "基础" == getName()
         val modelName = getName().orEmpty()
-        this.enableField = BooleanModelField("enable", enableFieldName, defaultValue).withDesc(
+        this.enableField = BooleanModelField("enable", enableFieldName, false).withDesc(
             "控制${modelName}模块的总开关；关闭后会跳过该模块的全部自动任务。"
         )
     }

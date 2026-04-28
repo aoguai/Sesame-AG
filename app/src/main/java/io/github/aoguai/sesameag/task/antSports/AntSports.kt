@@ -295,12 +295,12 @@ class AntSports : ModelTask() {
             ).also { walkRouteLoop = it }
         )
         modelFields.addField(
-            BooleanModelField("walkReviveSteps", "行走路线 | 复活步数", true).withDesc(
+            BooleanModelField("walkReviveSteps", "行走路线 | 复活步数", false).withDesc(
                 "路线当日无可用步数时，尝试复活历史步数；耗尽后当天不再重复尝试。"
             ).also { walkReviveSteps = it }
         )
         modelFields.addField(
-            BooleanModelField("walkReviveTask", "行走路线 | 复活任务", true).withDesc(
+            BooleanModelField("walkReviveTask", "行走路线 | 复活任务", false).withDesc(
                 "复活次数不足时尝试完成复活任务。"
             ).also { walkReviveTask = it }
         )
@@ -364,12 +364,12 @@ class AntSports : ModelTask() {
             ).also { neverlandGrid = it }
         )
         modelFields.addField(
-            BooleanModelField("neverlandAutoReward", "健康岛 | 自动领奖", true).withDesc(
+            BooleanModelField("neverlandAutoReward", "健康岛 | 自动领奖", false).withDesc(
                 "新游戏模式岛屿完成后自动选择奖励；明确非重试错误会记录并尝试下一个奖励。"
             ).also { neverlandAutoReward = it }
         )
         modelFields.addField(
-            BooleanModelField("neverlandPreferMedal", "健康岛 | 优先奖牌", true).withDesc(
+            BooleanModelField("neverlandPreferMedal", "健康岛 | 优先奖牌", false).withDesc(
                 "健康岛自动领奖时优先选择名称包含“奖牌”的奖励，否则选择服务端返回的首个奖励。"
             ).also { neverlandPreferMedal = it }
         )
@@ -387,7 +387,7 @@ class AntSports : ModelTask() {
             ).also { battleForFriends = it }
         )
         modelFields.addField(
-            BooleanModelField("battleAutoUnlockRoom", "抢好友 | 自动解锁场地", true).withDesc(
+            BooleanModelField("battleAutoUnlockRoom", "抢好友 | 自动解锁场地", false).withDesc(
                 "抢购好友前，若可购买新训练室且能量足够，则自动解锁并刷新主页状态。"
             ).also { battleAutoUnlockRoom = it }
         )
@@ -443,7 +443,7 @@ class AntSports : ModelTask() {
                 .also { latestExchangeTime = it }
         )
         modelFields.addField(
-            IntegerModelField("syncStepCount", "自定义同步步数", 22000).withDesc(
+            IntegerModelField("syncStepCount", "自定义同步步数", 0).withDesc(
                 "在当前真实步数基础上额外增加的步数基数，运行时会随机上浮 0~1999，设为 0 关闭自定义同步。"
             ).also { syncStepCount = it }
         )

@@ -37,22 +37,14 @@ object CustomSettings {
     val autoHandleOnceDailyTimes = TimeWindowListModelField(
         "autoHandleOnceDailyTimes",
         "自动全量时间段",
-        "0600-0650,2000-2050",
-        allowDisable = false
+        "-1",
+        allowDisable = true
     )
 
     val onlyOnceDailyList = SelectModelField(
         "onlyOnceDailyList",
         "每日只运行一次 | 模块选择",
-        LinkedHashSet<String?>().apply {
-            add("antOrchard")
-            add("antCooperate")
-            add("antSports")
-            add("antMember")
-            add("EcoProtection")
-            add("greenFinance")
-            add("reserve")
-        },
+        LinkedHashSet<String?>(),
         getModuleList()
     )
 
@@ -100,17 +92,8 @@ object CustomSettings {
     private fun resetToDefault() {
         onlyOnceDaily.setObjectValue(false)
         autoHandleOnceDaily.setObjectValue(false)
-        autoHandleOnceDailyTimes.setObjectValue("0600-0650,2000-2050")
-        val defaultSet = LinkedHashSet<String?>().apply {
-            add("antOrchard")
-            add("antCooperate")
-            add("antSports")
-            add("antMember")
-            add("EcoProtection")
-            add("greenFinance")
-            add("reserve")
-        }
-        onlyOnceDailyList.setObjectValue(defaultSet)
+        autoHandleOnceDailyTimes.setObjectValue("-1")
+        onlyOnceDailyList.setObjectValue(LinkedHashSet<String?>())
     }
 
     @JvmStatic

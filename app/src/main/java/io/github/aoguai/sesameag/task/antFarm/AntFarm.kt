@@ -294,7 +294,7 @@ class AntFarm : ModelTask() {
             ChoiceModelField(
                 "recallAnimalType",
                 "召回小鸡",
-                RecallAnimalType.ALWAYS,
+                RecallAnimalType.NEVER,
                 RecallAnimalType.nickNames
             ).withDesc("控制遇到小鸡外出、偷吃或饥饿时是否主动召回。").also { recallAnimalType = it })
         modelFields.addField(
@@ -313,7 +313,7 @@ class AntFarm : ModelTask() {
             TimeTriggerModelField(
                 "farmTaskTrigger",
                 "饲料任务触发时间",
-                "0830,2200",
+                "-1",
                 TimeTriggerParseOptions(
                     allowCheckpoints = true,
                     allowWindows = false,
@@ -392,7 +392,7 @@ class AntFarm : ModelTask() {
             TimeTriggerModelField(
                 "chouChouLeTrigger",
                 "小鸡抽抽乐触发时间",
-                "0900",
+                "-1",
                 TimeTriggerParseOptions(
                     allowCheckpoints = true,
                     allowWindows = true,
@@ -417,7 +417,7 @@ class AntFarm : ModelTask() {
             TimeTriggerModelField(
                 "farmGameTrigger",
                 "小鸡游戏时间(范围)",
-                "2200-2400",
+                "-1",
                 TimeTriggerParseOptions(
                     allowCheckpoints = false,
                     allowWindows = true,
@@ -437,14 +437,14 @@ class AntFarm : ModelTask() {
             TimePointModelField(
                 "sleepTime",
                 "小鸡睡觉时间",
-                "2330",
+                "-1",
                 true
             ).withDesc("设置自动让小鸡睡觉的时间。").also { sleepTime = it })
         modelFields.addField(
             TimePointModelField(
                 "wakeupTime",
                 "小鸡起床时间",
-                "0530",
+                "-1",
                 true
             ).withDesc("设置自动让小鸡起床的时间。").also { wakeUpTime = it })
         modelFields.addField(
@@ -629,7 +629,7 @@ class AntFarm : ModelTask() {
             BooleanModelField(
                 "signRegardless",
                 "庄园签到忽略饲料余量",
-                true
+                false
             ).withDesc("开启后签到时不再严格检查饲料槽空余，直接尝试领取签到饲料。").also {
                 signRegardless = it
             })

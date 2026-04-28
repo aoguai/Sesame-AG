@@ -85,7 +85,7 @@ class AntOrchard : ModelTask() {
             ).also { executeInterval = it }
         )
         modelFields.addField(
-            BooleanModelField("receiveSevenDayGift", "收取七日礼包", true).withDesc(
+            BooleanModelField("receiveSevenDayGift", "收取七日礼包", false).withDesc(
                 "自动领取芭芭农场七日礼包奖励。"
             ).also { receiveSevenDayGift = it }
         )

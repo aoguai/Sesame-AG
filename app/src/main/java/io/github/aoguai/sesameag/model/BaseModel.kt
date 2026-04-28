@@ -77,7 +77,7 @@ class BaseModel : Model() {
         /**
          * 是否保持唤醒状态
          */
-        val stayAwake: BooleanModelField = BooleanModelField("stayAwake", "保持唤醒", true).withDesc(
+        val stayAwake: BooleanModelField = BooleanModelField("stayAwake", "保持唤醒", false).withDesc(
             "开启后，模块在延时等待和定时调度期间会尽量保持 CPU 唤醒；关闭可省电，但后台定时精度可能下降。"
         )
 
@@ -128,7 +128,7 @@ class BaseModel : Model() {
         val execAtTimeList: TimePointListModelField = TimePointListModelField(
             "execAtTimeList",
             "定时执行",
-            "0010,0030,0100,0700,0730,1200,1230,1700,1730,2000,2030,2359",
+            "-1",
             allowDisable = true
         ).withDesc("自动执行的时间点列表。关闭后仅保留轮询间隔调度。")
 
@@ -138,7 +138,7 @@ class BaseModel : Model() {
         val wakenAtTimeList: TimePointListModelField = TimePointListModelField(
             "wakenAtTimeList",
             "定时唤醒",
-            "0010,0030,0100,0650,2350",
+            "-1",
             allowDisable = true
         ).withDesc("自动唤醒目标应用的时间点列表，适合凌晨或关键时段提前拉起进程。")
 
@@ -148,7 +148,7 @@ class BaseModel : Model() {
         val energyTime: TimeWindowListModelField = TimeWindowListModelField(
             "energyTime",
             "只收能量时间",
-            "0700-0730",
+            "-1",
             allowDisable = true
         ).withDesc("命中该时间段时，只保留蚂蚁森林等能量相关任务。")
 
@@ -159,7 +159,7 @@ class BaseModel : Model() {
             TimeWindowListModelField(
                 "modelSleepTime",
                 "模块休眠时间",
-                "0200-0201",
+                "-1",
                 allowDisable = true
             ).withDesc("命中该时间段时暂停常规任务执行。")
 
@@ -176,7 +176,7 @@ class BaseModel : Model() {
         /**
          * 超时是否重启
          */
-        val timeoutRestart: BooleanModelField = BooleanModelField("timeoutRestart", "超时重启", true).withDesc(
+        val timeoutRestart: BooleanModelField = BooleanModelField("timeoutRestart", "超时重启", false).withDesc(
             "RPC 或关键流程超时后，是否尝试重新拉起目标应用并恢复执行链路。"
         )
 
@@ -206,7 +206,7 @@ class BaseModel : Model() {
         /**
          * 是否启用新接口（最低支持版本 v10.3.96.8100）
          */
-        val newRpc: BooleanModelField = BooleanModelField("newRpc", "使用新接口(最低支持v10.3.96.8100)", true).withDesc(
+        val newRpc: BooleanModelField = BooleanModelField("newRpc", "使用新接口(最低支持v10.3.96.8100)", false).withDesc(
             "优先使用新版 RPC 桥接接口；低版本目标应用不兼容时再考虑关闭。"
         )
 
@@ -220,7 +220,7 @@ class BaseModel : Model() {
         /**
          * 是否申请模块自身的电池优化豁免
          */
-        val batteryPerm: BooleanModelField = BooleanModelField("batteryPerm", "申请模块电池优化豁免", true).withDesc(
+        val batteryPerm: BooleanModelField = BooleanModelField("batteryPerm", "申请模块电池优化豁免", false).withDesc(
             "打开模块界面时检查并按标准 Android 流程申请模块自身的忽略电池优化权限；自动调度链路只读取状态并在缺失时降级，不会主动跳转授权页。"
         )
 
@@ -228,7 +228,7 @@ class BaseModel : Model() {
         /**
          * 是否记录record日志
          */
-        val recordLog: BooleanModelField = BooleanModelField("recordLog", "总览 | 记录 record 日志", true).withDesc(
+        val recordLog: BooleanModelField = BooleanModelField("recordLog", "总览 | 记录 record 日志", false).withDesc(
             "记录聚合后的总览日志与执行摘要，用于查看调度流程、配置状态和全局生命周期；关闭可减少日志体积。"
         )
 
@@ -242,7 +242,7 @@ class BaseModel : Model() {
         /**
          * 是否显示气泡提示
          */
-        val showToast: BooleanModelField = BooleanModelField("showToast", "气泡提示", true).withDesc(
+        val showToast: BooleanModelField = BooleanModelField("showToast", "气泡提示", false).withDesc(
             "控制模块弹出的普通气泡提示开关。关闭后不再显示常规提示气泡。"
         )
 
@@ -253,7 +253,7 @@ class BaseModel : Model() {
         /**
          * 只显示中文并设置时区
          */
-        val languageSimplifiedChinese: BooleanModelField = BooleanModelField("languageSimplifiedChinese", "只显示中文并设置时区", true).withDesc(
+        val languageSimplifiedChinese: BooleanModelField = BooleanModelField("languageSimplifiedChinese", "只显示中文并设置时区", false).withDesc(
             "启动时优先设置简体中文与对应时区，减少页面文案差异导致的识别偏差。"
         )
 
