@@ -84,6 +84,8 @@ object AntSportsRpcCall {
         "com.alipay.neverland.biz.rpc.queryTaskInfo"
     private const val NEVERLAND_QUERY_BUBBLE_TASK_RPC =
         "com.alipay.neverland.biz.rpc.queryBubbleTask"
+    internal const val QUERY_WALK_STEP_RPC =
+        "alipay.antsports.steps.query"
 
     //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 运动任务面板接口
@@ -535,7 +537,7 @@ object AntSportsRpcCall {
      */
     fun queryWalkStep(): String {
         return RequestManager.requestString(
-            "alipay.antsports.steps.query",
+            QUERY_WALK_STEP_RPC,
             """[{"appId":"healthstep","bizId":"donation","chInfo":"h5_donation_healthstep","timeZone":"$TIME_ZONE"}]"""
         )
     }

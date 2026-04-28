@@ -5,17 +5,35 @@ import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.model.ModelField
 import io.github.aoguai.sesameag.model.ModelFields
 
+/**
+ * 配置项在“今日状态”维度上的展示结果。
+ *
+ * inactive 只表示该配置项对应的自动任务在今天已经没有必要继续执行，
+ * 用于设置页灰显或展示原因；它不会修改配置值，也不代表永久禁用该功能。
+ */
 data class ModelFieldTodayState(
     val inactive: Boolean = false,
     val reason: String = ""
 )
 
+/**
+ * 将配置字段映射到今日状态标记，供设置页展示“今日已处理/今日已达上限”等说明。
+ *
+ * 设计边界：
+ * - 这里只读 Status/StatusFlags，不写入状态。
+ * - 这里只处理能从本地状态明确判断的字段；没有可靠 flag 的字段保持可用，避免误灰显。
+ * - 对列表或多选配置，只在所有已选项都能由状态证明完成/达上限时才返回 inactive。
+ */
 object ModelFieldTodayStateResolver {
     private data class OptionFlagState(
         val flag: String,
         val reason: String
     )
 
+    /**
+     * 多选项到状态 flag 的展示层映射。
+     * key 必须与对应 ModelField 中保存的 option value 一致，reason 会直接展示给用户。
+     */
     private val antForestEcoLifeOptionStates = mapOf(
         "plate" to OptionFlagState(StatusFlags.FLAG_ANTFOREST_ECOLIFE_PHOTO_GUANGPAN, "今日光盘行动已处理")
     )

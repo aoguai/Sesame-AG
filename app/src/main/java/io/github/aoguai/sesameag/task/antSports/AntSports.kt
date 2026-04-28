@@ -472,7 +472,7 @@ class AntSports : ModelTask() {
                 val originStep = chain.proceed() as Int
                 rememberCurrentDailyStep(originStep)
                 val targetStep = resolveTargetDailyStep(originStep)
-                if (shouldOverrideDailyStep(originStep, targetStep) && tryMarkSyncStepDoneByHook()) {
+                if (shouldOverrideDailyStep(originStep, targetStep) && canOverrideDailyStepByHook()) {
                     if (!syncStepHookLogged) {
                         syncStepHookLogged = true
                         Log.sports(
@@ -568,15 +568,9 @@ class AntSports : ModelTask() {
         }
     }
 
-    private fun tryMarkSyncStepDoneByHook(): Boolean {
+    private fun canOverrideDailyStepByHook(): Boolean {
         synchronized(syncStepLock) {
-            if (syncStepInProgress ||
-                Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)
-            ) {
-                return false
-            }
-            Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)
-            return true
+            return !Status.hasFlagToday(StatusFlags.FLAG_ANTSPORTS_SYNC_STEP_DONE)
         }
     }
 
@@ -634,8 +628,16 @@ class AntSports : ModelTask() {
                         }
 
                         if (syncStepByRpcManager(loader, targetStep)) {
-                            Log.sports("同步步数🏃🏻‍♂️[原始${originStep}步 + 自定义${targetStep - originStep}步 = ${targetStep}步]")
-                            markSyncStepDone()
+                            val confirmedStep = queryCurrentWalkStepCount()
+                            if (confirmedStep != null && confirmedStep >= targetStep) {
+                                Log.sports("同步步数🏃🏻‍♂️[原始${originStep}步 + 自定义${targetStep - originStep}步 = ${targetStep}步]")
+                                markSyncStepDone()
+                            } else {
+                                Log.sports(
+                                    TAG,
+                                    "同步步数提交返回成功但查询未确认[当前=${confirmedStep ?: "未知"}步, 目标=${targetStep}步]，暂不标记今日已同步"
+                                )
+                            }
                         } else {
                             Log.sports(
                                 TAG,
@@ -740,6 +742,7 @@ class AntSports : ModelTask() {
 
     private fun queryCurrentWalkStepCount(): Int? {
         return try {
+            RpcCache.invalidate(AntSportsRpcCall.QUERY_WALK_STEP_RPC)
             val response = JSONObject(AntSportsRpcCall.queryWalkStep())
             if (!ResChecker.checkRes(TAG, response)) {
                 Log.sports(TAG, "查询当前步数失败，回退到 Hook 实时步数")
