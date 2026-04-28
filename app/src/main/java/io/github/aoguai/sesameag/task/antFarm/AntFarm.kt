@@ -3171,6 +3171,10 @@ class AntFarm : ModelTask() {
                 if (ResChecker.checkRes(TAG, jo)) {
                     hasNext = jo.getBoolean("hasNext")
                     val jaRankingList = jo.getJSONArray("rankingList")
+                    if (jaRankingList.length() == 0) {
+                        Log.farm(TAG, "notifyFriend.rankingList: 好友排行返回空页，终止通知")
+                        break
+                    }
                     pageStartSum += jaRankingList.length()
                     for (i in 0..<jaRankingList.length()) {
                         jo = jaRankingList.getJSONObject(i)
@@ -4178,6 +4182,10 @@ class AntFarm : ModelTask() {
                 if (ResChecker.checkRes(TAG, jo)) {
                     hasNext = jo.getBoolean("hasNext")
                     val jaRankingList = jo.getJSONArray("rankingList")
+                    if (jaRankingList.length() == 0) {
+                        Log.farm(TAG, "雇佣小鸡：好友排行返回空页，终止翻页")
+                        break
+                    }
                     pageStartSum += jaRankingList.length()
                     for (i in 0..<jaRankingList.length()) {
                         val joo = jaRankingList.getJSONObject(i)

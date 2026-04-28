@@ -47,7 +47,7 @@ class CoroutineTaskRunner(allModels: List<Model>) {
         // 可以做成配置项，目前硬编码为 3
         private const val MAX_CONCURRENCY = 3
 
-        private val TIMEOUT_WHITELIST = setOf("森林", "庄园", "运动")
+        private val TIMEOUT_WHITELIST = setOf("蚂蚁森林", "蚂蚁庄园", "运动")
     }
 
     private val taskList: List<ModelTask> = allModels.filterIsInstance<ModelTask>()
@@ -247,11 +247,11 @@ class CoroutineTaskRunner(allModels: List<Model>) {
             return
         }
 
-        val isWhitelist = TIMEOUT_WHITELIST.contains(taskName)
+        val isWhitelist = isLongRunningTask(task, taskName)
 
         // 如果是白名单任务（如森林），它们往往是“启动后即视为完成”，或者是长运行任务
         // 我们可以给一个较短的“启动超时时间”，而不是等待整个任务结束
-        val timeout = if (isWhitelist) 30_000L else DEFAULT_TASK_TIMEOUT
+        val timeout = if (isWhitelist) 30_000L else (BaseModel.taskTimeout.value ?: DEFAULT_TASK_TIMEOUT).toLong()
 
         try {
             Log.record(TAG, "▶️ 启动: $taskId")
@@ -301,6 +301,13 @@ class CoroutineTaskRunner(allModels: List<Model>) {
             failureCount.incrementAndGet()
             Log.error(TAG, "❌ 失败: $taskId (${e.message})")
         }
+    }
+
+    private fun isLongRunningTask(task: ModelTask, taskName: String): Boolean {
+        return task is AntForest ||
+            task is AntFarm ||
+            task is AntSports ||
+            TIMEOUT_WHITELIST.contains(taskName)
     }
 
     private fun scheduleNext() {

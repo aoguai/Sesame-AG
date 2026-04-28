@@ -339,14 +339,21 @@ class GreenFinance : ModelTask() {
             while (currentCoroutineContext().isActive) {
                 val pageJo = queryRankingPage(startIndex) ?: break
                 val result = pageJo.optJSONObject("result") ?: break
+                val rankingList = result.optJSONArray("rankingList")
+                if (rankingList != null && rankingList.length() > 0) {
+                    processRankingList(rankingList)
+                }
                 if (result.optBoolean("lastPage")) {
                     Log.greenFinance("绿色经营🙋，好友金币巡查完成")
                     Status.greenFinancePointFriend()
                     break
                 }
-                startIndex = result.optInt("nextStartIndex")
-                val rankingList = result.optJSONArray("rankingList") ?: continue
-                processRankingList(rankingList)
+                val nextStartIndex = result.optInt("nextStartIndex", startIndex)
+                if (nextStartIndex <= startIndex) {
+                    Log.runtime(TAG, "绿色经营好友排行分页停止：nextStartIndex无进展[$startIndex->$nextStartIndex]")
+                    break
+                }
+                startIndex = nextStartIndex
             }
         } catch (th: Throwable) {
             Log.runtime(TAG, "batchStealFriend err:")
