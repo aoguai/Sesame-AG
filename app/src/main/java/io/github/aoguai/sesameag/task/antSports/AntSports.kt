@@ -431,14 +431,14 @@ class AntSports : ModelTask() {
             ).also { minExchangeCount = it }
         )
         modelFields.addField(
-            HourOfDayModelField("earliestSyncStepTime", "同步步数 | 最早同步时间", "0600").withDesc(
-                "允许开始同步自定义步数的最早时间，仅在自定义同步步数大于 0 时生效。"
+            HourOfDayModelField("earliestSyncStepTime", "同步步数 | 最早同步时间", "-1", allowDisable = true).withDesc(
+                "允许开始同步自定义步数的最早时间，仅在自定义同步步数大于 0 时生效；填 -1 关闭时间触发。"
             )
                 .also { earliestSyncStepTime = it }
         )
         modelFields.addField(
-            HourOfDayModelField("latestExchangeTime", "最晚捐步时间", "2200", allowDayEnd = true).withDesc(
-                "旧版捐步兑换的最晚等待时间；支持 24:00 作为日终截止，超过该时间后即使未达到最小捐步步数也会按当前步数尝试处理。"
+            HourOfDayModelField("latestExchangeTime", "最晚捐步时间", "-1", allowDisable = true, allowDayEnd = true).withDesc(
+                "旧版捐步兑换的最晚等待时间；支持 24:00 作为日终截止，填 -1 后不足最小捐步时不会按截止时间强制处理。"
             )
                 .also { latestExchangeTime = it }
         )
@@ -736,7 +736,7 @@ class AntSports : ModelTask() {
         return if (::earliestSyncStepTime.isInitialized) {
             earliestSyncStepTime.hasReachedToday()
         } else {
-            HourOfDayModelField("defaultEarliestSyncStepTime", "默认最早同步时间", "0800").hasReachedToday()
+            HourOfDayModelField("defaultEarliestSyncStepTime", "默认最早同步时间", "-1", allowDisable = true).hasReachedToday()
         }
     }
 
@@ -3191,7 +3191,7 @@ class AntSports : ModelTask() {
                     Log.sports(TAG, "当前暂无可捐步数")
                     return
                 }
-                if (produceQuantity < minExchange && latestExchangeTime.isBeforeCutoff()) {
+                if (produceQuantity < minExchange && (latestExchangeTime.isDisabled() || latestExchangeTime.isBeforeCutoff())) {
                     return
                 }
 

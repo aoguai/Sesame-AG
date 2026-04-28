@@ -398,8 +398,9 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             TimePointModelField(
                 "whackMoleTime",
                 "🎮 6秒拼手速 | 执行时间",
-                "0820"
-            ).withDesc("限制 6 秒拼手速开始执行的时间。").also { whackMoleTime = it }
+                "-1",
+                allowDisable = true
+            ).withDesc("限制 6 秒拼手速开始执行的时间；填 -1 关闭时间触发限制。").also { whackMoleTime = it }
         )
         modelFields.addField(
             BooleanModelField(
@@ -410,9 +411,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         modelFields.addField(
             TimePointModelField(
                 "energyRainTime",
-                "能量雨 | 默认8点10分后执行",
-                "0810"
-            ).withDesc("限制能量雨开始时间。").also { energyRainTime = it })
+                "能量雨 | 执行时间",
+                "-1",
+                allowDisable = true
+            ).withDesc("限制能量雨开始时间；填 -1 关闭时间触发限制。").also { energyRainTime = it })
         modelFields.addField(
             ChoiceModelField(
                 "CollectSelfEnergyType",
@@ -719,9 +721,14 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         modelFields.addField(BooleanModelField("ecoLife", "绿色行动 | 开关", false).withDesc(
             "执行绿色行动任务。"
         ).also { ecoLife = it })
-        modelFields.addField(TimePointModelField("ecoLifeTime", "绿色行动 | 默认8点后执行", "0800").withDesc(
-            "限制绿色行动开始时间。"
-        ).also { ecoLifeTime = it })
+        modelFields.addField(
+            TimePointModelField(
+                "ecoLifeTime",
+                "绿色行动 | 执行时间",
+                "-1",
+                allowDisable = true
+            ).withDesc("限制绿色行动开始时间；填 -1 关闭时间触发限制。").also { ecoLifeTime = it }
+        )
         modelFields.addField(BooleanModelField("ecoLifeOpen", "绿色任务 |  自动开通", false).withDesc(
             "绿色行动未开通时自动尝试开通后再执行任务。"
         ).also { ecoLifeOpen = it })
@@ -1709,7 +1716,8 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 return
             }
 
-            if (whackMoleTime?.isReachedToday() != true) {
+            val whackMoleTimeAllowed = whackMoleTime?.let { it.isDisabled() || it.isReachedToday() } ?: true
+            if (!whackMoleTimeAllowed) {
                 Log.forest(TAG, "🎮 拼手速未到执行时间，跳过")
                 return
             }

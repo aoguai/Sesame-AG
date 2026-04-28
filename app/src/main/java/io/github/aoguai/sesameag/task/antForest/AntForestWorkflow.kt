@@ -117,7 +117,8 @@ internal suspend fun AntForest.runForestHomeFollowUpWorkflow(selfHomeObj: JSONOb
         tc.countDebug("森林七日礼包")
     }
     if (ecoLife?.value == true) {
-        if (ecoLifeTime?.isReachedToday() == true) {
+        val ecoLifeTimeAllowed = ecoLifeTime?.let { it.isDisabled() || it.isReachedToday() } ?: true
+        if (ecoLifeTimeAllowed) {
             EcoLife.ecoLife()
             tc.countDebug("绿色行动")
         } else {
@@ -139,7 +140,8 @@ internal suspend fun AntForest.runForestHomeFollowUpWorkflow(selfHomeObj: JSONOb
     }
 
     if (energyRain?.value == true) {
-        if (energyRainTime?.isReachedToday() == true) {
+        val energyRainTimeAllowed = energyRainTime?.let { it.isDisabled() || it.isReachedToday() } ?: true
+        if (energyRainTimeAllowed) {
             if (energyRainChance?.value == true) {
                 useEnergyRainChanceCard()
                 tc.countDebug("使用能量雨卡")
