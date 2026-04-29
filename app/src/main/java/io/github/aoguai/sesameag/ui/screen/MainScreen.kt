@@ -10,6 +10,7 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.aoguai.sesameag.SesameApplication.Companion.PREFERENCES_KEY
 import io.github.aoguai.sesameag.entity.UserEntity
 import io.github.aoguai.sesameag.ui.MainActivity
+import io.github.aoguai.sesameag.ui.compose.CommonAlertDialog
 import io.github.aoguai.sesameag.ui.navigation.BottomNavItem
 import io.github.aoguai.sesameag.ui.screen.content.HomeContent
 import io.github.aoguai.sesameag.ui.screen.content.LogsContent
@@ -62,6 +64,7 @@ fun MainScreen(
     val prefs = context.getSharedPreferences(PREFERENCES_KEY, Context.MODE_PRIVATE)
     var isIconHidden by remember { mutableStateOf(prefs.getBoolean("is_icon_hidden", false)) }
     var showMenu by remember { mutableStateOf(false) }
+    var showClearAllLogsDialog by remember { mutableStateOf(false) }
 //    var showUserDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -89,6 +92,17 @@ fun MainScreen(
                     }
 
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+
+                        if (currentScreen == BottomNavItem.Logs) {
+                            DropdownMenuItem(
+                                text = { Text("清空所有日志", color = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    showMenu = false
+                                    showClearAllLogsDialog = true
+                                }
+                            )
+                            HorizontalDivider()
+                        }
 
                         DropdownMenuItem(
                             text = { Text(if (isIconHidden) "显示应用图标" else "隐藏应用图标") },
@@ -154,5 +168,14 @@ fun MainScreen(
         }
     }
 
+    CommonAlertDialog(
+        showDialog = showClearAllLogsDialog,
+        onDismissRequest = { showClearAllLogsDialog = false },
+        onConfirm = { viewModel.clearAllLogs(context) },
+        title = "⚠️ 警告",
+        text = "🤔 确认清空所有日志文件？此操作无法撤销。",
+        confirmText = "确认清空",
+        confirmButtonColor = MaterialTheme.colorScheme.error
+    )
 }
 

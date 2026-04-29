@@ -17,6 +17,8 @@ import io.github.aoguai.sesameag.util.SesameAgUtil
 import io.github.aoguai.sesameag.util.Files
 import io.github.aoguai.sesameag.util.IconManager
 import io.github.aoguai.sesameag.util.Log
+import io.github.aoguai.sesameag.util.LogCatalog
+import io.github.aoguai.sesameag.util.ToastUtil
 import io.github.aoguai.sesameag.util.maps.UserMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * 主界面 ViewModel
@@ -256,6 +259,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun syncIconState(isHidden: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             IconManager.syncIconState(getApplication(), isHidden)
+        }
+    }
+
+    fun clearAllLogs(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val logFiles = LogCatalog.loggerNames()
+                .map { loggerName -> File(Files.LOG_DIR, LogCatalog.fileName(loggerName)) }
+                .distinctBy { it.absolutePath }
+
+            val failedCount = logFiles.count { file ->
+                file.exists() && !Files.clearFile(file)
+            }
+
+            withContext(Dispatchers.Main) {
+                ToastUtil.showToast(
+                    context,
+                    if (failedCount == 0) "所有日志已清空" else "部分日志清空失败：$failedCount"
+                )
+            }
         }
     }
 
