@@ -456,7 +456,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 "6秒拼手速 | 开启",
                 0, // 默认值为 0 (关闭)
                 whackMoleModeNames
-            ).withDesc("开启后按服务端返回的地鼠列表执行一次 6 秒拼手速。").also { whackMoleMode = it }
+            ).asSwitch().withDesc("开启后按服务端返回的地鼠列表执行一次 6 秒拼手速。").also { whackMoleMode = it }
         )
         modelFields.addField(
             TimePointModelField(
@@ -2454,6 +2454,9 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * 自家森林能量球的唯一策略判定入口；海洋返回的森林能量球也必须复用此规则。
      */
     internal fun shouldCollectSelfBubble(bubbleCount: Int): Boolean {
+        if(collectEnergy?.value != true){
+            return false;
+        }
         val type = collectSelfEnergyType?.value ?: CollectSelfType.ALL
         val threshold = collectSelfEnergyThreshold?.value ?: 0
 
