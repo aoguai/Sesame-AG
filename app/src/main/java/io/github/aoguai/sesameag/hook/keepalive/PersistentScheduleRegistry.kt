@@ -331,11 +331,14 @@ object PersistentScheduleRegistry {
     fun markFired(
         id: String,
         now: Long = System.currentTimeMillis(),
+        source: String = "registry",
     ) {
         val schedule = get(id)
         val shouldDispatch = schedule?.kind == PersistentScheduleKind.MODULE_CHILD &&
             schedule.state !in terminalScheduleStates
-        updateSchedule(id) { it.withFired(now) }
+        updateSchedule(id, source) { current ->
+            if (current.state in terminalScheduleStates) current else current.withFired(now)
+        }
         if (shouldDispatch) {
             ApplicationHookCore.dispatchIfNeeded()
         }
@@ -345,9 +348,10 @@ object PersistentScheduleRegistry {
         context: Context?,
         id: String,
         now: Long = System.currentTimeMillis(),
+        source: String = "registry",
     ) {
         val schedule = get(id)
-        markFired(id, now)
+        markFired(id, now, source)
         if (context != null && schedule != null) {
             SystemWakeScheduler.schedule(context, schedule, silent = true)
         }
@@ -357,11 +361,12 @@ object PersistentScheduleRegistry {
         context: Context?,
         id: String,
         now: Long = System.currentTimeMillis(),
+        source: String = "registry",
     ): Boolean {
         if (id.isBlank()) return false
         val schedule = get(id) ?: return false
         if (schedule.state != PersistentScheduleState.SCHEDULED) return false
-        updateSchedule(id) { it.withQueued(now) }
+        updateSchedule(id, source) { it.withQueued(now) }
         context?.let { SystemWakeScheduler.schedule(it, schedule, silent = true) }
         return true
     }
@@ -369,8 +374,9 @@ object PersistentScheduleRegistry {
     fun markRunning(
         id: String,
         now: Long = System.currentTimeMillis(),
+        source: String = "registry",
     ) {
-        updateSchedule(id) { schedule ->
+        updateSchedule(id, source) { schedule ->
             if (schedule.state == PersistentScheduleState.QUEUED || schedule.state == PersistentScheduleState.SCHEDULED) {
                 schedule.withRunning(now)
             } else {
@@ -449,14 +455,43 @@ object PersistentScheduleRegistry {
         id: String,
         error: String,
         now: Long = System.currentTimeMillis(),
+        source: String = "registry",
     ) {
         val schedule = get(id)
         val shouldDispatch = schedule?.kind == PersistentScheduleKind.MODULE_CHILD &&
             schedule.state !in terminalScheduleStates
-        updateSchedule(id) { it.withFailure(error, now) }
+        updateSchedule(id, source) { current ->
+            if (current.state in terminalScheduleStates) current else current.withFailure(error, now)
+        }
         if (shouldDispatch) {
             ApplicationHookCore.dispatchIfNeeded()
         }
+    }
+
+    fun markWorkerFailedIfActive(
+        context: Context?,
+        id: String,
+        error: String,
+        now: Long = System.currentTimeMillis(),
+        source: String = "worker_completion",
+    ): Boolean {
+        val schedule = get(id)
+        var changed = false
+        updateSchedule(id, source) { current ->
+            if (current.state in activeModuleChildStates) {
+                changed = true
+                current.withFailure(error, now)
+            } else {
+                current
+            }
+        }
+        if (changed) {
+            if (context != null && schedule != null) {
+                SystemWakeScheduler.schedule(context, schedule, silent = true)
+            }
+            ApplicationHookCore.dispatchIfNeeded()
+        }
+        return changed
     }
 
     fun markFailed(
@@ -464,9 +499,10 @@ object PersistentScheduleRegistry {
         id: String,
         error: String,
         now: Long = System.currentTimeMillis(),
+        source: String = "registry",
     ) {
         val schedule = get(id)
-        markFailed(id, error, now)
+        markFailed(id, error, now, source)
         if (context != null && schedule != null) {
             SystemWakeScheduler.schedule(context, schedule, silent = true)
         }
@@ -476,11 +512,14 @@ object PersistentScheduleRegistry {
         context: Context?,
         id: String,
         now: Long = System.currentTimeMillis(),
+        source: String = "registry",
     ) {
         val schedule = get(id)
         val shouldDispatch = schedule?.kind == PersistentScheduleKind.MODULE_CHILD &&
             schedule.state !in terminalScheduleStates
-        updateSchedule(id) { it.withScheduleState(PersistentScheduleState.EXPIRED, now) }
+        updateSchedule(id, source) { current ->
+            if (current.state in terminalScheduleStates) current else current.withScheduleState(PersistentScheduleState.EXPIRED, now)
+        }
         if (context != null && schedule != null) {
             SystemWakeScheduler.schedule(context, schedule, silent = true)
         }
@@ -645,6 +684,7 @@ object PersistentScheduleRegistry {
 
     private fun updateSchedule(
         id: String,
+        source: String = "registry",
         updater: (PersistentSchedule) -> PersistentSchedule,
     ) {
         if (id.isBlank()) return
@@ -658,6 +698,12 @@ object PersistentScheduleRegistry {
             if (updated == previous) return@withRegistryLock
             schedules[index] = updated
             save(schedules)
+            if (previous.state != updated.state) {
+                Log.record(
+                    TAG,
+                    "持久调度状态变更[id=${updated.id}] ${previous.state}->${updated.state} kind=${updated.kind} source=$source owner=${updated.ownerUserId} session=${updated.sessionEpoch}",
+                )
+            }
             if (previous.state == PersistentScheduleState.SCHEDULED &&
                 (updated.state != PersistentScheduleState.SCHEDULED || updated.triggerAtMs != previous.triggerAtMs)
             ) {
