@@ -78,9 +78,9 @@ data class TaskFlowActionResult(
     val stopCurrentRound: Boolean = false,
     // 单个任务的可重试失败不一定要停止同一快照里的其他独立任务。
     val continueCurrentRoundOnFailure: Boolean = false,
-    // 默认批量处理当前查询快照，只有强依赖服务端新状态的动作才要求立即刷新。
+    // 延后动作按需请求回查；成功动作由引擎在当前动作批次结束后统一回查服务端状态。
     val refreshAfterAction: Boolean = false,
-    // RPC 成功不一定代表服务端任务状态已经推进；无进展成功不继续驱动刷新闭环。
+    // RPC 成功不一定代表服务端任务状态已经推进；用于控制进展统计和重复动作保护。
     val progressChanged: Boolean = true,
     val deferredReason: DeferredReason? = null,
     val deferredUntil: Long? = null,
@@ -148,7 +148,11 @@ data class TaskFlowSnapshot(
     val totalTasks: Int,
     val completedTasks: Int,
     val availableTasks: Int,
-)
+    val unresolvedTasks: Int = 0,
+) {
+    val isComplete: Boolean
+        get() = completedTasks >= totalTasks && availableTasks == 0 && unresolvedTasks == 0
+}
 
 data class TaskFlowRoundAction(
     val action: String,
@@ -176,9 +180,23 @@ private data class TaskFlowActionCandidate(
     val initialAction: TaskFlowAction,
 )
 
+/**
+ * 动作去重状态的生命周期由调用方决定；默认每次任务流运行独立创建。
+ */
+class TaskFlowExecutionState {
+    internal val failedActionKeys = mutableSetOf<String>()
+    internal val deferredActionKeys = mutableSetOf<String>()
+    internal val executedActionSnapshotKeys = mutableSetOf<String>()
+    internal val noProgressConfirmationSnapshotKeys = mutableSetOf<String>()
+}
+
 interface TaskFlowAdapter {
     val moduleName: String
     val flowName: String
+
+    /** A retryable action can be deferred while independent candidates keep running. */
+    val continueCurrentRoundOnRetryableFailure: Boolean
+        get() = false
 
     fun query(): JSONObject
 
@@ -197,6 +215,9 @@ interface TaskFlowAdapter {
     fun shouldSkipByTodayState(item: TaskFlowItem): Boolean = false
 
     fun shouldSkip(item: TaskFlowItem): Boolean = false
+
+    /** A conservatively skipped item that still needs service-side or manual progress blocks completion. */
+    fun isUnresolvedWhenSkipped(item: TaskFlowItem): Boolean = false
 
     fun receive(item: TaskFlowItem): TaskFlowActionResult = unsupportedAction(item, TaskFlowAction.RECEIVE)
 
@@ -317,6 +338,7 @@ interface TaskFlowAdapter {
 class TaskFlowEngine(
     private val adapter: TaskFlowAdapter,
     private val roundSleepMs: Long = 1000L,
+    private val executionState: TaskFlowExecutionState = TaskFlowExecutionState(),
 ) {
     private companion object {
         const val MAX_DYNAMIC_ROUND_LIMIT = 64
@@ -324,10 +346,7 @@ class TaskFlowEngine(
     }
 
     fun run(): TaskFlowRunResult {
-        val failedActionKeys = mutableSetOf<String>()
-        val deferredActionKeys = mutableSetOf<String>()
-        // 动作 RPC 成功但未宣称状态变化时，只允许一次确认查询，避免同一任务重复撞接口。
-        val noProgressConfirmationActionKeys = mutableSetOf<String>()
+        // 动作去重状态可由同一业务运行内的多个引擎实例共享。
         var round = 1
         var roundLimit = 1
         var hardRoundLimit = 1
@@ -338,6 +357,7 @@ class TaskFlowEngine(
         val deferredReasonCountsAny = linkedMapOf<DeferredReason, Int>()
         var failureCountAny = 0
         var tailFollowUpRefreshBudget = 1
+        var confirmationRefreshOnlyRound = false
 
         while (round <= roundLimit) {
             if (adapter.isFlowHandledToday()) {
@@ -439,9 +459,17 @@ class TaskFlowEngine(
             var stopCurrentRound = false
             var refreshRequested = false
             var noProgressConfirmationRefreshRequested = false
+            var refreshBoundaryAction: TaskFlowAction? = null
             val roundActions = mutableListOf<TaskFlowRoundAction>()
             val roundDeferredReasonCounts = linkedMapOf<DeferredReason, Int>()
-            val candidates = buildActionCandidates(items)
+            val candidates =
+                if (confirmationRefreshOnlyRound) {
+                    adapter.logInfo("${adapter.flowName}[达到动态轮次上限，保留本轮服务端确认查询]")
+                    confirmationRefreshOnlyRound = false
+                    emptyList()
+                } else {
+                    buildActionCandidates(items)
+                }
 
             for (candidate in candidates) {
                 if (ApplicationHookConstants.isOffline()) {
@@ -451,30 +479,39 @@ class TaskFlowEngine(
                 }
 
                 val item = candidate.item
+                val action = candidate.initialAction
+                if (refreshBoundaryAction != null && refreshBoundaryAction != action) {
+                    break
+                }
                 if (shouldSkipItem(item)) continue
 
-                val action = candidate.initialAction
-
                 val actionKey = adapter.actionKey(item, action)
-                if (actionKey in failedActionKeys) {
+                val actionSnapshotKey = actionSnapshotKey(item, action)
+                if (actionKey in executionState.failedActionKeys) {
                     adapter.logInfo("${adapter.flowName}[本轮已跳过${action.logName}失败任务：${item.title}]")
                     roundActions.add(TaskFlowRoundAction("跳过已失败${action.logName}", item.title))
                     continue
                 }
-                if (actionKey in deferredActionKeys) {
-                    adapter.logInfo("${adapter.flowName}[本轮已跳过明确延后任务：${item.title}]")
-                    roundActions.add(TaskFlowRoundAction("跳过已延后${action.logName}", item.title))
-                    continue
-                }
-                if (actionKey in noProgressConfirmationActionKeys) {
+                if (actionSnapshotKey in executionState.noProgressConfirmationSnapshotKeys) {
                     adapter.logInfo("${adapter.flowName}[回查后未确认进展，跳过重复${action.logName}：${item.title}]")
                     roundActions.add(TaskFlowRoundAction("跳过未确认进展${action.logName}", item.title))
+                    continue
+                }
+                if (actionSnapshotKey in executionState.executedActionSnapshotKeys) {
+                    adapter.logInfo("${adapter.flowName}[快照未变化，跳过重复${action.logName}：${item.title}]")
+                    roundActions.add(TaskFlowRoundAction("跳过未变化快照${action.logName}", item.title))
+                    continue
+                }
+                if (actionKey in executionState.deferredActionKeys) {
+                    adapter.logInfo("${adapter.flowName}[本轮已跳过明确延后任务：${item.title}]")
+                    roundActions.add(TaskFlowRoundAction("跳过已延后${action.logName}", item.title))
                     continue
                 }
 
                 val result = executeAction(item, action)
                 actionAttemptedAny = true
                 val deferredReason = result.deferredReason
+                val requiresStateConfirmation = deferredReason == DeferredReason.STATE_CONFIRMATION
                 val failureType = result.failureType ?: TaskRpcFailureType.UNKNOWN_NEEDS_REVIEW
                 if (ApplicationHookConstants.isOffline()) {
                     stopCurrentRound = true
@@ -483,7 +520,9 @@ class TaskFlowEngine(
                 }
                 if (deferredReason != null) {
                     adapter.afterDeferred(item, action, result)
-                    deferredActionKeys.add(actionKey)
+                    if (!requiresStateConfirmation) {
+                        executionState.deferredActionKeys.add(actionKey)
+                    }
                     deferredCountAny++
                     deferredReasonCountsAny[deferredReason] =
                         (deferredReasonCountsAny[deferredReason] ?: 0) + 1
@@ -496,20 +535,30 @@ class TaskFlowEngine(
                     logDeferred(item, action, result, deferredReason)
                     roundActions.add(
                         TaskFlowRoundAction(
-                            deferredActionText(action, deferredReason, result.refreshAfterAction),
+                            deferredActionText(
+                                action,
+                                deferredReason,
+                                result.refreshAfterAction || requiresStateConfirmation,
+                            ),
                             item.title,
                         ),
                     )
+                    if (requiresStateConfirmation) {
+                        executionState.noProgressConfirmationSnapshotKeys.add(actionSnapshotKey)
+                        noProgressConfirmationRefreshRequested = true
+                    }
                     if (result.stopCurrentRound) {
                         stopCurrentRound = true
                         break
                     }
-                    if (result.refreshAfterAction) {
+                    if (result.refreshAfterAction || requiresStateConfirmation) {
                         refreshRequested = true
+                        refreshBoundaryAction = action
                     }
                     continue
                 }
                 if (result.success) {
+                    executionState.executedActionSnapshotKeys.add(actionSnapshotKey)
                     adapter.afterSuccess(item, action, result)
                     if (result.progressChanged) {
                         progressed = true
@@ -518,20 +567,19 @@ class TaskFlowEngine(
                         noProgressSuccessAny = true
                     }
                     roundActions.add(TaskFlowRoundAction(successActionText(action), item.title))
-                    if (result.refreshAfterAction) {
-                        refreshRequested = true
-                        if (!result.progressChanged) {
-                            noProgressConfirmationActionKeys.add(actionKey)
-                            noProgressConfirmationRefreshRequested = true
-                        }
+                    if (!result.progressChanged) {
+                        executionState.noProgressConfirmationSnapshotKeys.add(actionSnapshotKey)
+                        noProgressConfirmationRefreshRequested = true
                     }
+                    refreshRequested = true
+                    refreshBoundaryAction = action
                     continue
                 }
 
                 if (failureType == TaskRpcFailureType.TERMINAL_DONE) {
                     logFailure(item, action, result, failureType, TaskFlowDecision.MARK_HANDLED)
                     adapter.afterFailure(item, action, result, TaskFlowDecision.MARK_HANDLED)
-                    failedActionKeys.add(actionKey)
+                    executionState.failedActionKeys.add(actionKey)
                     progressed = true
                     progressedAny = true
                     roundActions.add(TaskFlowRoundAction("终态成功", item.title))
@@ -545,10 +593,11 @@ class TaskFlowEngine(
                 failureCountAny++
                 logFailure(item, action, result, failureType, decision)
                 adapter.afterFailure(item, action, result, decision)
-                failedActionKeys.add(actionKey)
+                executionState.failedActionKeys.add(actionKey)
                 val shouldStopAfterFailure =
                     result.stopCurrentRound ||
-                        decision == TaskFlowDecision.STOP_TODAY_OR_CURRENT_CHAIN ||
+                        (decision == TaskFlowDecision.STOP_TODAY_OR_CURRENT_CHAIN &&
+                            !result.continueCurrentRoundOnFailure) ||
                         (decision == TaskFlowDecision.RETRY_LATER && !result.continueCurrentRoundOnFailure)
                 roundActions.add(
                     TaskFlowRoundAction(
@@ -568,15 +617,39 @@ class TaskFlowEngine(
                     "[处理前待处理:${snapshot.availableTasks}]" +
                     "[本轮动作:${describeRoundActions(roundActions)}]" +
                     "[本轮明确延后:${describeDeferredReasonCounts(roundDeferredReasonCounts)}]" +
-                    "[本轮批量后刷新:${progressed && !stopCurrentRound}]" +
-                    "[本轮结束后刷新请求:$refreshRequested]" +
+                    "[本轮批量后刷新:$refreshRequested]" +
                     "[本轮有进展:$progressed]",
             )
 
+            if (refreshRequested &&
+                !stopCurrentRound &&
+                !ApplicationHookConstants.isOffline()
+            ) {
+                val confirmationOnly = round >= hardRoundLimit
+                val requiredRound = round + 1
+                val maximumRefreshRound =
+                    if (confirmationOnly) hardRoundLimit + 1 else hardRoundLimit
+                if (requiredRound > roundLimit) {
+                    roundLimit = requiredRound.coerceAtMost(maximumRefreshRound)
+                }
+                if (confirmationOnly) {
+                    confirmationRefreshOnlyRound = true
+                }
+                val reason =
+                    if (noProgressConfirmationRefreshRequested) {
+                        "动作已受理但未确认进展"
+                    } else {
+                        "动作已推进"
+                    }
+                adapter.logInfo("${adapter.flowName}[$reason，先回查服务端任务列表]")
+                GlobalThreadPools.sleepCompat(roundSleepMs)
+                round++
+                continue
+            }
+
             if (!stopCurrentRound &&
                 !ApplicationHookConstants.isOffline() &&
-                snapshot.completedTasks >= snapshot.totalTasks &&
-                snapshot.availableTasks == 0
+                snapshot.isComplete
             ) {
                 adapter.onAllTasksDone(snapshot)
                 return finishRunResult(
@@ -591,20 +664,6 @@ class TaskFlowEngine(
                     deferredReasonCounts = deferredReasonCountsAny,
                     failureCount = failureCountAny,
                 )
-            }
-
-            if (noProgressConfirmationRefreshRequested &&
-                !stopCurrentRound &&
-                !ApplicationHookConstants.isOffline()
-            ) {
-                val requiredRound = (round + 1).coerceAtMost(hardRoundLimit)
-                if (requiredRound > roundLimit) {
-                    roundLimit = requiredRound
-                }
-                adapter.logInfo("${adapter.flowName}[动作成功但未确认进展，执行一次服务端回查]")
-                GlobalThreadPools.sleepCompat(roundSleepMs)
-                round++
-                continue
             }
 
             if (stopCurrentRound || !progressed) {
@@ -622,9 +681,9 @@ class TaskFlowEngine(
                 )
             }
 
-            if (deferredActionKeys.isNotEmpty() && tailFollowUpRefreshBudget > 0) {
+            if (executionState.deferredActionKeys.isNotEmpty() && tailFollowUpRefreshBudget > 0) {
                 adapter.logInfo("${adapter.flowName}[检测到前置状态已推进，允许1次尾部补收刷新]")
-                deferredActionKeys.clear()
+                executionState.deferredActionKeys.clear()
                 tailFollowUpRefreshBudget--
             }
 
@@ -740,12 +799,36 @@ class TaskFlowEngine(
         )
     }
 
+    private fun actionSnapshotKey(
+        item: TaskFlowItem,
+        action: TaskFlowAction,
+    ): String =
+        listOf(
+            action.logName,
+            adapter.actionKey(item, action),
+            item.id.ifBlank { item.title },
+            item.status,
+            item.type,
+            item.sceneCode,
+            item.actionType,
+            item.current?.toString().orEmpty(),
+            item.limit?.toString().orEmpty(),
+            item.progress,
+        ).joinToString("|")
+
     private fun buildSnapshot(items: List<TaskFlowItem>): TaskFlowSnapshot {
         var totalTasks = 0
         var completedTasks = 0
         var availableTasks = 0
+        var unresolvedTasks = 0
         for (item in items) {
-            if (shouldSkipItem(item)) continue
+            if (shouldSkipItem(item)) {
+                if (adapter.isUnresolvedWhenSkipped(item)) {
+                    totalTasks++
+                    unresolvedTasks++
+                }
+                continue
+            }
 
             val phase = adapter.mapPhase(item)
             totalTasks++
@@ -758,10 +841,13 @@ class TaskFlowEngine(
                 TaskFlowPhase.SIGNUP_COMPLETE,
                 -> availableTasks++
 
-                else -> Unit
+                TaskFlowPhase.BUSINESS_ACTION,
+                TaskFlowPhase.UNSUPPORTED,
+                TaskFlowPhase.UNKNOWN,
+                -> unresolvedTasks++
             }
         }
-        return TaskFlowSnapshot(totalTasks, completedTasks, availableTasks)
+        return TaskFlowSnapshot(totalTasks, completedTasks, availableTasks, unresolvedTasks)
     }
 
     private fun buildActionCandidates(items: List<TaskFlowItem>): List<TaskFlowActionCandidate> {
@@ -804,22 +890,33 @@ class TaskFlowEngine(
     private fun executeAction(
         item: TaskFlowItem,
         action: TaskFlowAction,
-    ): TaskFlowActionResult =
-        try {
-            when (action) {
-                TaskFlowAction.RECEIVE -> adapter.receive(item)
-                TaskFlowAction.COMPLETE -> adapter.complete(item)
-                TaskFlowAction.SIGNUP -> adapter.signup(item)
-                TaskFlowAction.SEND -> adapter.send(item)
+    ): TaskFlowActionResult {
+        val result =
+            try {
+                when (action) {
+                    TaskFlowAction.RECEIVE -> adapter.receive(item)
+                    TaskFlowAction.COMPLETE -> adapter.complete(item)
+                    TaskFlowAction.SIGNUP -> adapter.signup(item)
+                    TaskFlowAction.SEND -> adapter.send(item)
+                }
+            } catch (t: Throwable) {
+                TaskFlowActionResult.failure(
+                    failureType = TaskRpcFailureType.UNKNOWN_NEEDS_REVIEW,
+                    message = t.message.orEmpty(),
+                    rpc = "TaskFlowEngine.${action.logName}",
+                    raw = t.toString(),
+                )
             }
-        } catch (t: Throwable) {
-            TaskFlowActionResult.failure(
-                failureType = TaskRpcFailureType.UNKNOWN_NEEDS_REVIEW,
-                message = t.message.orEmpty(),
-                rpc = "TaskFlowEngine.${action.logName}",
-                raw = t.toString(),
-            )
+        return if (adapter.continueCurrentRoundOnRetryableFailure &&
+            !result.stopCurrentRound &&
+            result.failureType == TaskRpcFailureType.RETRYABLE_RPC &&
+            !result.continueCurrentRoundOnFailure
+        ) {
+            result.copy(continueCurrentRoundOnFailure = true)
+        } else {
+            result
         }
+    }
 
     private fun actionPriority(action: TaskFlowAction): Int =
         when (action) {

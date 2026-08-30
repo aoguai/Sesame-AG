@@ -18,6 +18,7 @@ import io.github.aoguai.sesameag.task.antMember.AntMember
 import io.github.aoguai.sesameag.task.antOcean.AntOcean
 import io.github.aoguai.sesameag.task.antOrchard.AntOrchard
 import io.github.aoguai.sesameag.task.antSesameCredit.AntSesameCredit
+import io.github.aoguai.sesameag.task.goldenBean.GoldenBeanTreasure
 import io.github.aoguai.sesameag.task.antSports.AntSports
 import io.github.aoguai.sesameag.task.customTasks.ManualTask
 import io.github.aoguai.sesameag.task.youthPrivilege.YouthPrivilege
@@ -318,12 +319,12 @@ class CoroutineTaskRunner(allModels: List<Model>) {
                 .takeIf { it.isNotEmpty() }
                 ?.let(::add)
 
-            // 5) 芭芭农场先跑：施肥会先产出庄园做美食所需食材。
+            // 5) 芭芭农场先跑：施肥时为金豆夺宝保留配置额度。
             takeBatch { it is AntOrchard }
                 .takeIf { it.isNotEmpty() }
                 ?.let(::add)
 
-            // 6) 福气鱼池放在农场之后，保持独立玩法批次。
+            // 6) 福气鱼池保持独立玩法批次。
             takeBatch { it is AntFishPond }
                 .takeIf { it.isNotEmpty() }
                 ?.let(::add)
@@ -335,6 +336,11 @@ class CoroutineTaskRunner(allModels: List<Model>) {
 
             // 8) 会员与芝麻信用放在联动行为之后。
             takeBatch { it is AntMember || it is AntSesameCredit }
+                .takeIf { it.isNotEmpty() }
+                ?.let(::add)
+
+            // 9) 金豆夺宝最后处理农场肥料和芝麻炼金已确认的最新余额。
+            takeBatch { it is GoldenBeanTreasure }
                 .takeIf { it.isNotEmpty() }
                 ?.let(::add)
 
