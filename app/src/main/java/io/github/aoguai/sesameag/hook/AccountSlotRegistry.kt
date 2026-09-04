@@ -15,7 +15,7 @@ import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.WRITE
 import java.security.MessageDigest
 
-const val MAX_EXECUTABLE_ACCOUNT_SLOTS = 2
+const val MAX_EXECUTABLE_ACCOUNT_SLOTS = Int.MAX_VALUE
 
 enum class AccountSlotMigrationState {
     READY,
@@ -106,27 +106,17 @@ object AccountSlotRegistry {
             ?: return AccountSlotAdmission.Denied("invalid_user_id")
         return withLockedRecord { loaded ->
             val record = loaded.record
-            when (record.migrationState) {
-                AccountSlotMigrationState.READY -> {
-                    when {
-                        userId in record.activeUserIds -> {
-                            LockedResult(AccountSlotAdmission.Allowed(userId, addedToSlot = false))
-                        }
-
-                        record.activeUserIds.isEmpty() && configuredUserIds().isEmpty() -> {
-                            LockedResult(
-                                AccountSlotAdmission.Allowed(userId, addedToSlot = true),
-                                record.copy(activeUserIds = listOf(userId)),
-                            )
-                        }
-
-                        else -> LockedResult(AccountSlotAdmission.Denied("account_slot_not_selected"))
-                    }
-                }
-
-                AccountSlotMigrationState.SELECTION_REQUIRED -> {
-                    LockedResult(AccountSlotAdmission.Denied("account_slot_migration_required"))
-                }
+            if (userId in record.activeUserIds && record.migrationState == AccountSlotMigrationState.READY) {
+                LockedResult(AccountSlotAdmission.Allowed(userId, addedToSlot = false))
+            } else {
+                val activeUserIds = (record.activeUserIds + userId).distinct()
+                LockedResult(
+                    AccountSlotAdmission.Allowed(userId, addedToSlot = userId !in record.activeUserIds),
+                    record.copy(
+                        migrationState = AccountSlotMigrationState.READY,
+                        activeUserIds = activeUserIds,
+                    ),
+                )
             }
         }?.also { admission ->
             if (admission is AccountSlotAdmission.Allowed && admission.addedToSlot) {
@@ -281,35 +271,20 @@ object AccountSlotRegistry {
 
     private fun bootstrapRecord(): AccountSlotRecord {
         val candidates = configuredUserIds()
-        return when {
-            candidates.size <= MAX_EXECUTABLE_ACCOUNT_SLOTS -> AccountSlotRecord(
-                migrationState = AccountSlotMigrationState.READY,
-                activeUserIds = candidates,
-            )
-
-            else -> AccountSlotRecord(
-                migrationState = AccountSlotMigrationState.SELECTION_REQUIRED,
-            )
-        }
+        return AccountSlotRecord(
+            migrationState = AccountSlotMigrationState.READY,
+            activeUserIds = candidates,
+        )
     }
 
     private fun recoverRecord(record: AccountSlotRecord): AccountSlotRecord {
         val candidates = configuredUserIds()
-        val recovered = when {
-            record.migrationState == AccountSlotMigrationState.SELECTION_REQUIRED &&
-                candidates.size <= MAX_EXECUTABLE_ACCOUNT_SLOTS -> {
-                record.copy(
-                    migrationState = AccountSlotMigrationState.READY,
-                    activeUserIds = candidates,
-                )
-            }
-
-            record.migrationState == AccountSlotMigrationState.READY -> {
-                record.copy(activeUserIds = record.activeUserIds.filter { it in candidates })
-            }
-
-            else -> record
-        }
+        val kept = record.activeUserIds.filter { it in candidates }
+        val activeUserIds = kept + candidates.filter { it !in kept }
+        val recovered = AccountSlotRecord(
+            migrationState = AccountSlotMigrationState.READY,
+            activeUserIds = activeUserIds,
+        )
         if (recovered != record) {
             Log.record(
                 TAG,
