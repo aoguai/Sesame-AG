@@ -1,0 +1,154 @@
+diff --git a/app/src/main/java/io/github/aoguai/sesameag/hook/AccountSlotRegistry.kt b/app/src/main/java/io/github/aoguai/sesameag/hook/AccountSlotRegistry.kt
+index 40b231e..bd9c9db 100644
+--- a/app/src/main/java/io/github/aoguai/sesameag/hook/AccountSlotRegistry.kt
++++ b/app/src/main/java/io/github/aoguai/sesameag/hook/AccountSlotRegistry.kt
+@@ -15,7 +15,7 @@ import java.nio.file.StandardOpenOption.CREATE
+ import java.nio.file.StandardOpenOption.WRITE
+ import java.security.MessageDigest
+ 
+-const val MAX_EXECUTABLE_ACCOUNT_SLOTS = 2
++const val MAX_EXECUTABLE_ACCOUNT_SLOTS = Int.MAX_VALUE
+ 
+ enum class AccountSlotMigrationState {
+     READY,
+@@ -106,27 +106,17 @@ object AccountSlotRegistry {
+             ?: return AccountSlotAdmission.Denied("invalid_user_id")
+         return withLockedRecord { loaded ->
+             val record = loaded.record
+-            when (record.migrationState) {
+-                AccountSlotMigrationState.READY -> {
+-                    when {
+-                        userId in record.activeUserIds -> {
+-                            LockedResult(AccountSlotAdmission.Allowed(userId, addedToSlot = false))
+-                        }
+-
+-                        record.activeUserIds.isEmpty() && configuredUserIds().isEmpty() -> {
+-                            LockedResult(
+-                                AccountSlotAdmission.Allowed(userId, addedToSlot = true),
+-                                record.copy(activeUserIds = listOf(userId)),
+-                            )
+-                        }
+-
+-                        else -> LockedResult(AccountSlotAdmission.Denied("account_slot_not_selected"))
+-                    }
+-                }
+-
+-                AccountSlotMigrationState.SELECTION_REQUIRED -> {
+-                    LockedResult(AccountSlotAdmission.Denied("account_slot_migration_required"))
+-                }
++            if (userId in record.activeUserIds && record.migrationState == AccountSlotMigrationState.READY) {
++                LockedResult(AccountSlotAdmission.Allowed(userId, addedToSlot = false))
++            } else {
++                val activeUserIds = (record.activeUserIds + userId).distinct()
++                LockedResult(
++                    AccountSlotAdmission.Allowed(userId, addedToSlot = userId !in record.activeUserIds),
++                    record.copy(
++                        migrationState = AccountSlotMigrationState.READY,
++                        activeUserIds = activeUserIds,
++                    ),
++                )
+             }
+         }?.also { admission ->
+             if (admission is AccountSlotAdmission.Allowed && admission.addedToSlot) {
+@@ -281,35 +271,20 @@ object AccountSlotRegistry {
+ 
+     private fun bootstrapRecord(): AccountSlotRecord {
+         val candidates = configuredUserIds()
+-        return when {
+-            candidates.size <= MAX_EXECUTABLE_ACCOUNT_SLOTS -> AccountSlotRecord(
+-                migrationState = AccountSlotMigrationState.READY,
+-                activeUserIds = candidates,
+-            )
+-
+-            else -> AccountSlotRecord(
+-                migrationState = AccountSlotMigrationState.SELECTION_REQUIRED,
+-            )
+-        }
++        return AccountSlotRecord(
++            migrationState = AccountSlotMigrationState.READY,
++            activeUserIds = candidates,
++        )
+     }
+ 
+     private fun recoverRecord(record: AccountSlotRecord): AccountSlotRecord {
+         val candidates = configuredUserIds()
+-        val recovered = when {
+-            record.migrationState == AccountSlotMigrationState.SELECTION_REQUIRED &&
+-                candidates.size <= MAX_EXECUTABLE_ACCOUNT_SLOTS -> {
+-                record.copy(
+-                    migrationState = AccountSlotMigrationState.READY,
+-                    activeUserIds = candidates,
+-                )
+-            }
+-
+-            record.migrationState == AccountSlotMigrationState.READY -> {
+-                record.copy(activeUserIds = record.activeUserIds.filter { it in candidates })
+-            }
+-
+-            else -> record
+-        }
++        val kept = record.activeUserIds.filter { it in candidates }
++        val activeUserIds = kept + candidates.filter { it !in kept }
++        val recovered = AccountSlotRecord(
++            migrationState = AccountSlotMigrationState.READY,
++            activeUserIds = activeUserIds,
++        )
+         if (recovered != record) {
+             Log.record(
+                 TAG,
+diff --git a/app/src/main/java/io/github/aoguai/sesameag/task/antForest/AntForest.kt b/app/src/main/java/io/github/aoguai/sesameag/task/antForest/AntForest.kt
+index 5df40b3..2c137e8 100644
+--- a/app/src/main/java/io/github/aoguai/sesameag/task/antForest/AntForest.kt
++++ b/app/src/main/java/io/github/aoguai/sesameag/task/antForest/AntForest.kt
+@@ -5562,6 +5562,15 @@ class AntForest : ModelTask(), EnergyCollectCallback {
+                 }
+                 return true
+             }
++            if (item.type == ONE_CLICK_WATERING_TASK_TYPE &&
++                phase == TaskFlowPhase.READY_TO_COMPLETE &&
++                ONE_CLICK_WATERING_ENERGY_G <= 0
++            ) {
++                if (duplicateSkipLogged.add("$taskKey|watering-energy-zero")) {
++                    Log.forest("森林任务[${item.title}] 随机赠送能量为0，跳过自动随机浇水完成")
++                }
++                return true
++            }
+             if (isGreenPracticeParentWithoutAutoAction(item)) {
+                 val logKey = item.id.ifBlank { item.title }
+                 if (greenPracticeManualOnlyLogged.add(logKey)) {
+@@ -9285,6 +9294,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
+         private const val FOREST_LEYUAN_OPEN_BOX_TARGET_COUNT = 10
+         private const val FOREST_GAME_CENTER_NEW_USER_SCENE_CODE = "ANTFOREST_GAME_CENTER_NEW_USER"
+         private const val ONE_CLICK_WATERING_TASK_TYPE = "ONE_CLICK_WATERING_V1"
++        private const val ONE_CLICK_WATERING_ENERGY_G = 0
+         private const val LEGACY_FOREST_GAME_TASK_TYPE = "mokuai_senlin_hlz"
+         private const val VITALITY_ENERGY_RAIN_RIGHTS_ID = "VITALITY_ENERGYRAIN_3DAYS"
+         private const val LIMIT_TIME_ENERGY_RAIN_CHANCE_PROP_TYPE = "LIMIT_TIME_ENERGY_RAIN_CHANCE"
+diff --git a/app/src/main/java/io/github/aoguai/sesameag/task/antForest/AntForestRpcCall.kt b/app/src/main/java/io/github/aoguai/sesameag/task/antForest/AntForestRpcCall.kt
+index 72750e7..be120ad 100644
+--- a/app/src/main/java/io/github/aoguai/sesameag/task/antForest/AntForestRpcCall.kt
++++ b/app/src/main/java/io/github/aoguai/sesameag/task/antForest/AntForestRpcCall.kt
+@@ -28,6 +28,7 @@ object AntForestRpcCall {
+     private const val VITALITY_PROP_VERSION = "20250813"
+     private const val ONE_CLICK_WATERING_SCENE_CODE = "ONE_CLICK_WATERING_V1"
+     private const val ONE_CLICK_WATERING_VERSION = "20230501"
++    private const val ONE_CLICK_WATERING_ENERGY_ID = 0
+     private const val ENERGY_RAIN_SOURCE = "forest"
+     internal const val ENERGY_RAIN_GAME_ENTRY_SOURCE = "senlinguangchuangrukou"
+     private const val ENERGY_RAIN_VERSION = "20230501"
+@@ -860,11 +861,14 @@ object AntForestRpcCall {
+         orderIndex: Int = 0,
+     ): String =
+         try {
++            if (ONE_CLICK_WATERING_ENERGY_ID <= 0) {
++                return ""
++            }
+             val context = resolveSceneContext(ForestRpcScene.ONE_CLICK_WATERING)
+             val arg =
+                 JSONObject().apply {
+                     put("bizNo", "${System.currentTimeMillis()}_${RandomUtil.getRandomInt(16)}_${orderIndex.coerceAtLeast(0)}")
+-                    put("energyId", "39")
++                    put("energyId", ONE_CLICK_WATERING_ENERGY_ID.toString())
+                     put("extInfo", JSONObject().put("sendChat", if (notifyFriend) "Y" else "N"))
+                     put("source", context.source)
+                     put("targetUser", targetUser)
