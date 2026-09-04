@@ -512,8 +512,9 @@ jobs:
       - name: 发送构建结果邮件
         uses: dawidd6/action-send-mail@v6
         with:
-          server_address: smtp.qq.com
+          server_address: smtp.163.com
           server_port: 465
+          secure: true
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
           to: ${{ secrets.EMAIL_RECEIVER }}
