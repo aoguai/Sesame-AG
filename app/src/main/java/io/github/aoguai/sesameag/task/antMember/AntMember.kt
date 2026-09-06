@@ -3584,9 +3584,6 @@ class AntMember : ModelTask() {
             taskType == "ISSUED_TASK" ||
             taskMainType == "EXPLAIN_INTELLIGENCE" ||
             taskType == "EXPLAIN_INTELLIGENCE" ||
-            taskMainType == "COMMON_TASK" ||
-            taskType == "COMMON_TASK" ||
-            operationType == "COMMON_TASK" ||
             taskCategory == "TRANSFER"
         ) {
             return false
@@ -6003,19 +6000,18 @@ class AntMember : ModelTask() {
         }
 
         private fun completeGameCenterP2eTaskWithDuration(item: TaskFlowItem): TaskFlowActionResult {
+            if (isGameCenterP2eAutoTask(item)) return completeGameCenterP2eTask(item)
             val raw = item.raw ?: JSONObject()
-            val gameTask = raw.optString("taskType").equals("GAME_TRAN_TASK", ignoreCase = true)
             val contract = gameCenterPlayContract(raw)
-            if (gameTask && contract == null) {
-                Log.member("游戏中心🎮赚现金任务[${item.title}]缺少服务端时长合同，等待列表刷新")
-                return TaskFlowActionResult.defer(
-                    deferredReason = DeferredReason.PREREQUISITE_PENDING,
-                    message = "游戏任务缺少结构化时长合同，等待服务端刷新",
-                    rpc = "GameCenterPlayRpcCall.resolveContract",
-                    detail = gameCenterTaskActionDetail(item, "playDuration") + " confirmationState=NOT_SUBMITTED",
+                ?: return TaskFlowActionResult.failure(
+                    failureType = TaskRpcFailureType.UNKNOWN_NEEDS_REVIEW,
+                    code = "GAME_EVENT_REQUIRED",
+                    message = "游戏内事件任务不能由平台浏览完成接口代办",
+                    rpc = "AntMember.completeGameCenterP2eTaskWithDuration",
+                    raw = raw.toString(),
+                    detail = gameCenterTaskActionDetail(item, "gameEvent"),
                 )
-            }
-            contract?.let {
+            contract.let {
                 val ack = GameCenterPlayRpcCall.submitForAck(it)
                 val response = ack.response
                     ?: return TaskFlowActionResult.failure(
@@ -6035,9 +6031,15 @@ class AntMember : ModelTask() {
                         detail = gameCenterTaskActionDetail(item, "playDuration"),
                     )
                 }
-                Log.member("游戏中心🎮赚现金任务[${item.title}]时长上报已接受，继续任务完成闭环")
+                Log.member("游戏中心🎮赚现金任务[${item.title}]时长上报已接受，等待游戏任务列表确认")
             }
-            return completeGameCenterP2eTask(item)
+            return TaskFlowActionResult.defer(
+                deferredReason = DeferredReason.STATE_CONFIRMATION,
+                message = "游戏时长已提交，等待任务进度和金币状态确认",
+                rpc = "GameCenterPlayRpcCall.submit",
+                detail = gameCenterTaskActionDetail(item, "playDuration"),
+                refreshAfterAction = true,
+            )
         }
 
         private fun completeGameCenterP2eTask(item: TaskFlowItem): TaskFlowActionResult {
@@ -6057,7 +6059,7 @@ class AntMember : ModelTask() {
                     rpc = "AntMemberRpcCall.gameCenterP2ePlatformTaskComplete"
                 )
             }
-            Log.member("游戏中心🎮赚现金任务[${item.title}]#完成")
+            Log.member("游戏中心🎮赚现金任务[${item.title}]#完成请求已受理，等待列表确认")
             return TaskFlowActionResult.success(
                 refreshAfterAction = true,
                 progressChanged = false,
@@ -6261,7 +6263,9 @@ class AntMember : ModelTask() {
         private fun isGameCenterP2eAutoTask(item: TaskFlowItem): Boolean {
             val raw = item.raw ?: return false
             return raw.optString("taskType").equals("PLATFORM_TRAN_TASK", ignoreCase = true) &&
-                raw.optString("actionType").equals("VIEW_TASK", ignoreCase = true)
+                raw.optString("actionType").uppercase(Locale.ROOT) in setOf(
+                    "VIEW_TASK", "SUBSCRIBE_TASK", "ADD_DESKTOP_TASK", "SWITCH_APP_TASK", "SET_HEAD_TASK",
+                )
         }
 
         private fun isGameCenterP2eCompletableTask(item: TaskFlowItem): Boolean {

@@ -5,6 +5,7 @@ import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Calendar
 
 internal fun AntMember.runBillBlockWorld() {
     BillBlockWorldWorkflow().run()
@@ -41,6 +42,7 @@ private data class BlockWorldSnapshot(
     val chapters: List<BlockWorldChapter>,
     val pendingBlocks: List<BlockWorldBlock>,
     val placedBlocks: List<BlockWorldBlock>,
+    val detailBlockConfigId: String,
     val dailyProductAmt: Int?,
     val coinBalance: Int?,
 ) {
@@ -190,6 +192,11 @@ private class BillBlockWorldWorkflow {
             chapters = parseChapters(data.optJSONArray("chapterTasks")),
             pendingBlocks = parseBlocks(data.optJSONArray("pendingBlocks"), includePosition = false),
             placedBlocks = parseBlocks(data.optJSONArray("placedBlocks"), includePosition = true),
+            detailBlockConfigId = data.optJSONObject("normalBlockRes")?.optJSONArray("blockDetailList")?.let { blocks ->
+                (0 until blocks.length()).asSequence()
+                    .mapNotNull { blocks.optJSONObject(it)?.optString("blockConfigId") }
+                    .firstOrNull { it.isNotBlank() }
+            }.orEmpty(),
             dailyProductAmt = dailyProductAmt,
             coinBalance = coinBalance,
         )
@@ -276,6 +283,10 @@ private class BillBlockWorldWorkflow {
                 performReclaim(snapshot)
             }
 
+            "VIEW_BLOCK_DETAIL" -> {
+                performViewBlockDetail(snapshot)
+            }
+
             else -> {
                 Log.member("账单拼贴世界⏭️未支持章节任务类型=${chapter.targetType.ifBlank { "UNKNOWN" }}，停止当前链路")
                 BlockWorldActionResult(performed = false)
@@ -340,6 +351,29 @@ private class BillBlockWorldWorkflow {
         append(block.posX)
         append(':')
         append(block.posY)
+    }
+
+    private fun performViewBlockDetail(snapshot: BlockWorldSnapshot): BlockWorldActionResult {
+        val blockConfigId = snapshot.detailBlockConfigId
+        if (blockConfigId.isBlank()) {
+            Log.error("AntMemberBillBlockWorld", "账单拼贴世界查看详情缺少blockConfigId，保留当前章节")
+            return BlockWorldActionResult(performed = false)
+        }
+        val calendar = Calendar.getInstance()
+        val year = calendar.get(Calendar.YEAR).toString()
+        val month = (calendar.get(Calendar.MONTH) + 1).toString().padStart(2, '0')
+        val response = runCatching {
+            JSONObject(AntMemberRpcCall.queryBillBlockWorldDetail(blockConfigId, year, month))
+        }.getOrElse {
+            Log.printStackTrace("AntMemberBillBlockWorld", "queryBlockDetail err:", it)
+            return BlockWorldActionResult(performed = false)
+        }
+        if (!isSuccess(response)) {
+            Log.error("AntMemberBillBlockWorld", "账单拼贴世界查看详情失败 blockConfigId=$blockConfigId raw=$response")
+            return BlockWorldActionResult(performed = false)
+        }
+        Log.member("账单拼贴世界[查看贴纸详情]#$blockConfigId，等待章节回查")
+        return BlockWorldActionResult(performed = true)
     }
 
     private fun performPlace(snapshot: BlockWorldSnapshot): BlockWorldActionResult {
