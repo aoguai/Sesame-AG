@@ -3,6 +3,8 @@ package io.github.aoguai.sesameag.task.antFarm
 import io.github.aoguai.sesameag.data.Status
 import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.util.Log
+import io.github.aoguai.sesameag.hook.ApplicationHookConstants
+import io.github.aoguai.sesameag.task.common.TaskFlowRunResult
 import io.github.aoguai.sesameag.util.TimeCounter
 
 internal suspend fun AntFarm.runFarmLifecycleWorkflow(tc: TimeCounter): Boolean {
@@ -10,12 +12,14 @@ internal suspend fun AntFarm.runFarmLifecycleWorkflow(tc: TimeCounter): Boolean 
         return false
     }
 
+    wakeFarmIfDue()
     if (sendBackAnimal?.value == true) {
         sendBackAnimal()
         tc.countDebug("遣返")
     }
     recallAnimal()
     tc.countDebug("召回小鸡")
+    handleAutoFeedAnimal()
 
     if (useDailySpecialFoodIfNeeded() > 0) {
         tc.countDebug("特殊食品")
@@ -37,52 +41,20 @@ internal suspend fun AntFarm.runFarmLifecycleWorkflow(tc: TimeCounter): Boolean 
 internal suspend fun AntFarm.runFarmTaskWorkflow(
     tc: TimeCounter,
     userId: String?,
-): Boolean {
-    var pendingFarmTaskFinalization = false
-
-    if (doFarmTask?.value == true && !Status.hasFlagToday(StatusFlags.FLAG_FARM_TASK_FINISHED)) {
-        pendingFarmTaskFinalization = triggerFarmTaskIfNeeded(tc)
-    }
-
-    handleAutoFeedAnimal()
-    tc.countDebug("喂食")
-
-    preloadFarmTools()
-    tc.countDebug("装载道具信息")
+): TaskFlowRunResult {
+    val result = triggerFarmTaskIfNeeded(tc)
+    if (ApplicationHookConstants.isOffline()) return result.copy(interrupted = true)
+    val resourceProgress = runFarmResourceWork()
+    tc.countDebug("照料、厨房与独立小游戏")
 
     if (rewardFriend?.value == true) {
         rewardFriend()
         tc.countDebug("打赏好友")
     }
 
-    if (receiveFarmToolReward?.value == true) {
-        receiveToolTaskReward()
-        tc.countDebug("收取道具奖励")
-    }
-    if (recordFarmGame?.value == true) {
-        tc.countDebug("游戏改分(星星球、登山赛、飞行赛、揍小鸡)")
-        if (!Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)) {
-            FarmGame.run(this)
-        }
-    }
-
-    if (chickenDiary?.value == true) {
+    if (diaryTietie?.value == true || (collectChickenDiary?.value ?: AntFarm.collectChickenDiaryType.CLOSE) != AntFarm.collectChickenDiaryType.CLOSE) {
         doChickenDiary()
         tc.countDebug("小鸡日记")
-    }
-
-    if (kitchen?.value == true) {
-        if (isOwnerAnimalSleeping()) {
-            Log.farm("小鸡厨房🐔[小鸡正在睡觉中，跳过厨房功能]")
-        } else if (!ensureOwnerAnimalAtHome("小鸡厨房")) {
-            Log.farm("小鸡厨房🐔[小鸡不在庄园，跳过厨房功能]")
-        } else {
-            collectDailyFoodMaterial()
-            collectDailyLimitedFoodMaterial()
-            cook()
-            refreshFarmStatus("厨房流程后")
-        }
-        tc.countDebug("小鸡厨房")
     }
 
     if (useNewEggCard?.value == true) {
@@ -133,21 +105,17 @@ internal suspend fun AntFarm.runFarmTaskWorkflow(
         }
     }
 
-    if (receiveFarmTaskAward?.value == true) {
-        receiveFarmAwards()
-        tc.countDebug("收取饲料奖励")
-    }
+    if (!ApplicationHookConstants.isOffline()) handleDonationCompetition()
 
-    handleDonationCompetition()
-
-    return pendingFarmTaskFinalization
+    return result.copy(progressChanged = result.progressChanged || resourceProgress)
 }
 
 internal suspend fun AntFarm.runFarmSocialWorkflow(
     tc: TimeCounter,
-    pendingFarmTaskFinalization: Boolean,
-): Boolean {
-    var pendingFinalization = pendingFarmTaskFinalization
+    pendingFarmTaskFinalization: TaskFlowRunResult,
+): TaskFlowRunResult {
+    if (ApplicationHookConstants.isOffline()) return pendingFarmTaskFinalization.copy(interrupted = true)
+    val stockBefore = AntFarm.foodStock
 
     if (visitAnimal?.value == true) {
         visitAnimal()
@@ -199,28 +167,60 @@ internal suspend fun AntFarm.runFarmSocialWorkflow(
         tc.countDebug("装扮商城")
     }
 
-    return pendingFinalization
+    return pendingFarmTaskFinalization.copy(
+        progressChanged = pendingFarmTaskFinalization.progressChanged || AntFarm.foodStock != stockBefore,
+        interrupted = ApplicationHookConstants.isOffline(),
+    )
 }
 
 internal suspend fun AntFarm.runFarmFinalizeWorkflow(
     tc: TimeCounter,
-    pendingFarmTaskFinalization: Boolean,
+    pendingFarmTaskFinalization: TaskFlowRunResult,
 ) {
+    if (pendingFarmTaskFinalization.interrupted || ApplicationHookConstants.isOffline()) {
+        tc.stop()
+        return
+    }
+    val wasSleeping = isOwnerAnimalSleeping()
+    receiveFarmAwards()
+    runDueFarmWork()
     animalSleepAndWake()
     tc.countDebug("小鸡睡觉&起床")
 
-    if (pendingFarmTaskFinalization) {
+    if (!pendingFarmTaskFinalization.completed &&
+        (pendingFarmTaskFinalization.progressChanged || wasSleeping != isOwnerAnimalSleeping())
+    ) {
         finalizeFarmTaskAfterMultiStage("抽抽乐/开宝箱/睡觉流程尾刷")
     }
 
     // 厨房与乐园动作可能刚推进大表鸽任务，收尾统一补收并回查 NPC 产出。
     runZhimaPigeonTaskFlow()
 
-    syncAnimalStatus(ownerFarmId)
+    refreshFarmFeedingSchedule()
     if (isOwnerAnimalSleeping()) {
         Log.farm("小鸡正在睡觉，领取饲料")
         receiveFarmAwards()
     }
 
+    scheduleFarmPendingWork()
     tc.stop()
+}
+
+internal suspend fun AntFarm.runFarmResourceWork(includeGames: Boolean = true): Boolean {
+    if (ApplicationHookConstants.isOffline()) return false
+    val stockBefore = AntFarm.foodStock
+    preloadFarmTools()
+    val kitchenProgress = runFarmKitchen()
+    if (ApplicationHookConstants.isOffline()) return kitchenProgress
+    if (includeGames && recordFarmGame?.value == true) FarmGame.run(this)
+    if (ApplicationHookConstants.isOffline()) return kitchenProgress
+    receiveToolTaskReward()
+    if (ApplicationHookConstants.isOffline()) return kitchenProgress
+    receiveFarmAwards()
+    handleMultiStageTasksLoop()
+    if (stockBefore < 180 && AntFarm.foodStock >= 180 && feedAnimal?.value == true) {
+        handleAutoFeedAnimal()
+        receiveFarmAwards()
+    }
+    return kitchenProgress || AntFarm.foodStock != stockBefore
 }

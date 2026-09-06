@@ -24,9 +24,7 @@ object OtherEntityProvider {
 
     @JvmStatic
     fun farmFamilyOption():List<OtherEntity> = listOf(
-        OtherEntity("familySign", "每日签到📅"),
         OtherEntity("assignRights", "使用顶梁柱特权👷‍♂️"),
-        OtherEntity("familyClaimReward", "领取奖励🏆️"),
         OtherEntity("feedFamilyAnimal", "帮喂小鸡🐔"),
         OtherEntity("sleepTogether", "去睡觉🛌"),
         OtherEntity("eatTogetherConfig", "请吃美食🍲"),

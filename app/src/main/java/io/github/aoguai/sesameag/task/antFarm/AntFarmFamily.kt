@@ -383,6 +383,12 @@ data object AntFarmFamily {
         }
     }
 
+    internal fun runMeal(farm: AntFarm) {
+        val options = farm.familyOptions ?: return
+        val shareList = farm.familyShareList ?: return
+        enterFamily(options, shareList, mealOnly = true)
+    }
+
     /**
      * 进入家庭
      */
@@ -391,6 +397,7 @@ data object AntFarmFamily {
         familyShareList: FriendSelectionModelField,
         familyShareMode: Int = FamilyShareMode.INVITE_SELECTED,
         familyAssignStrategy: Int = FamilyAssignStrategy.RANDOM,
+        mealOnly: Boolean = false,
     ) {
         try {
             groupId = ""
@@ -424,8 +431,14 @@ data object AntFarmFamily {
                     return
                 }
 
-                if (hasFamilyOption(familyOptions, "familySign") && familySignTips) {
-                    familySign()
+                if (familySignTips) familySign()
+                familyClaimRewardList()
+                if (mealOnly) {
+                    if (hasFamilyOption(familyOptions, "eatTogetherConfig")) {
+                        familyEatTogether(eatTogetherConfig, familyInteractActions, familyUserIds.toMutableList())
+                        familyClaimRewardList()
+                    }
+                    return
                 }
 
                 if (assignFamilyMemberInfo != null &&
@@ -446,16 +459,8 @@ data object AntFarmFamily {
                     }
                 }
 
-                if (hasFamilyOption(familyOptions, "familyClaimReward")) {
-                    familyClaimRewardList()
-                }
-
                 if (hasFamilyOption(familyOptions, "feedFamilyAnimal") && familyAnimals.length() > 0) {
                     familyFeedFriendAnimal(familyAnimals)
-                }
-
-                if (hasFamilyOption(familyOptions, "sleepTogether") && familyAnimals.length() > 0) {
-                    familySleepTogether(enterRes)
                 }
 
                 if (hasFamilyOption(familyOptions, "eatTogetherConfig") && eatTogetherConfig.length() > 0) {
@@ -476,6 +481,7 @@ data object AntFarmFamily {
                 if (hasFamilyOption(familyOptions, "ExchangeFamilyDecoration")) {
                     autoExchangeFamilyDecoration()
                 }
+                familyClaimRewardList()
             }
         } catch (e: Exception) {
             Log.printStackTrace(TAG, e)
@@ -667,76 +673,6 @@ data object AntFarmFamily {
     }
 
     /**
-     * 家庭任务：去睡觉（SLEEP_TOGETHER）
-     *
-     */
-    private fun familySleepTogether(enterRes: JSONObject) {
-        try {
-            if (groupId.isEmpty()) return
-            if (Status.hasFlagToday(StatusFlags.FLAG_FARM_FAMILY_SLEEP_TOGETHER)) return
-
-            // 远端任务状态校验：只在 SLEEP_TOGETHER=TODO 时触发，避免误刷
-            val taskTipsRes = JSONObject(AntFarmRpcCall.familyTaskTips(familyAnimals))
-            if (!ResChecker.checkRes(TAG, taskTipsRes)) {
-                Log.error(TAG, "家庭任务🏠去睡觉#familyTaskTips 调用失败，跳过")
-                return
-            }
-
-            val taskTips = taskTipsRes.optJSONArray("familyTaskTips")
-            if (taskTips == null || taskTips.length() == 0) {
-                Status.setFlagToday(StatusFlags.FLAG_FARM_FAMILY_SLEEP_TOGETHER)
-                return
-            }
-
-            var hasSleepTodo = false
-            for (i in 0 until taskTips.length()) {
-                val item = taskTips.getJSONObject(i)
-                val bizKey = item.optString("bizKey")
-                val taskId = item.optString("taskId")
-                val taskStatus = item.optString("taskStatus")
-                if ((bizKey == "SLEEP_TOGETHER" || taskId == "SLEEP_TOGETHER") && taskStatus == "TODO") {
-                    hasSleepTodo = true
-                    break
-                }
-            }
-
-            if (!hasSleepTodo) {
-                Status.setFlagToday(StatusFlags.FLAG_FARM_FAMILY_SLEEP_TOGETHER)
-                return
-            }
-
-            // 部分版本 enterFamily 可能缺少 sleepNotifyInfo，这里默认允许尝试（由服务端返回结果兜底）
-            val canSleep = enterRes.optJSONObject("sleepNotifyInfo")?.optBoolean("canSleep", true) ?: true
-            if (!canSleep) {
-                Log.farm("家庭任务🏠去睡觉#当前无需睡觉或不在可睡时间段，跳过")
-                return
-            }
-
-            val sleepRes = JSONObject(AntFarmRpcCall.sleep(groupId))
-            if (ResChecker.checkRes(TAG, sleepRes)) {
-                Log.farm("家庭任务🏠去睡觉🛌")
-                Status.animalSleep()
-                Status.setFlagToday(StatusFlags.FLAG_FARM_FAMILY_SLEEP_TOGETHER)
-                return
-            }
-
-            // 某些“已在睡觉”等状态属于静默失败，也视为完成，避免反复触发
-            val memo = sleepRes.optString("memo")
-            val resultDesc = sleepRes.optString("resultDesc")
-            if (memo.contains("睡觉") || resultDesc.contains("睡觉")) {
-                Log.farm("家庭任务🏠去睡觉#可能已在睡觉：${resultDesc.ifBlank { memo }}")
-                Status.animalSleep()
-                Status.setFlagToday(StatusFlags.FLAG_FARM_FAMILY_SLEEP_TOGETHER)
-                return
-            }
-
-            Log.error(TAG, "家庭任务🏠去睡觉失败: ${resultDesc.ifBlank { memo.ifBlank { sleepRes.toString() } }}")
-        } catch (t: Throwable) {
-            Log.printStackTrace(TAG, "familySleepTogether err:", t)
-        }
-    }
-
-    /**
      * 请客吃美食
      * @param eatTogetherConfig 美食配置对象
      * @param familyInteractActions 互动功能列表
@@ -754,35 +690,35 @@ data object AntFarmFamily {
                 Log.error(TAG, "美食不足,无法请客,请检查小鸡厨房")
                 return
             }
-            if (familyInteractActions.length() > 0) {
-                for (i in 0..<familyInteractActions.length()) {
-                    val familyInteractAction = familyInteractActions.getJSONObject(i)
-                    if ("EatTogether" == familyInteractAction.optString("familyInteractType")) {
-                        val endTime = familyInteractAction.optLong("interactEndTime", 0)
-                        val gaptime = endTime - System.currentTimeMillis()
-                        Log.farm("正在吃..${formatDuration(gaptime)} 吃完")
-                        return
-                    }
+            var periodName = ""
+            var periodStart = 0L
+            val now = System.currentTimeMillis()
+            var nextStart = Long.MAX_VALUE
+            for (i in 0..<periodItemList.length()) {
+                val item = periodItemList.getJSONObject(i)
+                val startHour = item.optInt("startHour", -1)
+                val startMinute = item.optInt("startMinute", -1)
+                val endHour = item.optInt("endHour", -1)
+                val endMinute = item.optInt("endMinute", -1)
+                if (startHour !in 0..23 || endHour !in 0..23 || startMinute !in 0..59 || endMinute !in 0..59) continue
+                val startTime = farmTimeToday(startHour, startMinute)
+                val endTime = farmTimeToday(endHour, endMinute)
+                if (endTime <= startTime) continue
+                nextStart = minOf(nextStart, if (startTime > now) startTime else startTime + 86400000L)
+                if (now >= startTime && now < endTime) {
+                    periodName = item.optString("periodName")
+                    periodStart = startTime
+                    isEat = true
                 }
             }
-            var periodName = ""
-            val currentTime = Calendar.getInstance()
-            for (i in 0..<periodItemList.length()) {
-                val periodItem = periodItemList.getJSONObject(i)
-                val startHour = periodItem.optInt("startHour")
-                val startMinute = periodItem.optInt("startMinute")
-                val endHour = periodItem.optInt("endHour")
-                val endMinute = periodItem.optInt("endMinute")
-                val startTime = Calendar.getInstance()
-                startTime.set(Calendar.HOUR_OF_DAY, startHour)
-                startTime.set(Calendar.MINUTE, startMinute)
-                val endTime = Calendar.getInstance()
-                endTime.set(Calendar.HOUR_OF_DAY, endHour)
-                endTime.set(Calendar.MINUTE, endMinute)
-                if (currentTime.after(startTime) && currentTime.before(endTime)) {
-                    periodName = periodItem.optString("periodName")
-                    isEat = true
-                    break
+            if (nextStart != Long.MAX_VALUE) AntFarm.instance?.deferFarmWork("meal", nextStart)
+            val mealFlag = "antFarm::familyMeal::$groupId::$periodStart"
+            if (AntFarm.instance?.farmWorkAttempted?.add("meal") == false || Status.hasFlagToday(mealFlag)) return
+            for (i in 0 until familyInteractActions.length()) {
+                val action = familyInteractActions.optJSONObject(i) ?: continue
+                if (action.optString("familyInteractType") == "EatTogether" && action.optLong("interactEndTime") > now) {
+                    Log.farm("家庭正在共同用餐，等待下一餐段")
+                    return
                 }
             }
             if (!isEat) {
@@ -803,6 +739,16 @@ data object AntFarmFamily {
                 Log.farm("家庭任务🏠请客" + periodName + "#消耗美食" + familyUserIds.size + "份（最近美食库存与特殊食品/补蛋共用）")
                 GlobalThreadPools.sleepCompat(500L)
                 syncFamilyStatusIntimacy(groupId)
+                val after = JSONObject(AntFarmRpcCall.enterFamily())
+                val actions = after.optJSONArray("familyInteractActions")
+                if (ResChecker.checkRes(TAG, after) && actions != null && (0 until actions.length()).any { index ->
+                    val action = actions.optJSONObject(index)
+                    action?.optString("familyInteractType") == "EatTogether" && action.optLong("interactEndTime") > now
+                }) {
+                    Status.setFlagToday(mealFlag)
+                } else {
+                    Log.farm("家庭请客响应成功但用餐状态未确认，保留待办")
+                }
             }
         } catch (t: Throwable) {
             Log.printStackTrace(TAG, "familyEatTogether err:", t)
