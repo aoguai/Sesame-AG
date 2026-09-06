@@ -3,8 +3,7 @@ package io.github.aoguai.sesameag.task.antFarm
 import io.github.aoguai.sesameag.data.Status
 import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.hook.AccountSessionCoordinator
-import io.github.aoguai.sesameag.model.BaseModel
-import io.github.aoguai.sesameag.task.ModelTask
+import io.github.aoguai.sesameag.hook.ApplicationHookConstants
 import io.github.aoguai.sesameag.task.antFarm.AntFarm.Companion.TAG
 import io.github.aoguai.sesameag.task.common.TaskRpcFailureType
 import io.github.aoguai.sesameag.util.Log
@@ -155,33 +154,20 @@ internal fun AntFarm.handleDonationCompetition() {
         return
     }
 
-    if (receiveDonationCompetitionAward?.value == true &&
-        !Status.hasFlagToday(StatusFlags.FLAG_FARM_DONATION_COMPETITION_AWARD_RECEIVED)
-    ) {
-        receiveCompetitionAwards()
-        if (isDonationCompetitionUnavailableToday()) return
-    }
+    receiveCompetitionAwards()
+    if (isDonationCompetitionUnavailableToday() || ApplicationHookConstants.isOffline()) return
 
-    val endTimeStr = "2000"
-    val endCal = TimeUtil.getTodayCalendarByTimeStr(endTimeStr) ?: return
     val now = System.currentTimeMillis()
-    val checkIntervalMs = BaseModel.checkInterval.value!!.toLong()
-    val creationWindowMs = 2 * checkIntervalMs
-    val creationStartTime = endCal.timeInMillis - creationWindowMs
-
-    if (now > endCal.timeInMillis) return
+    val endTimeMs = farmTimeToday(20, 0)
+    if (now >= endTimeMs) return
     if (isStableDonationCompetitionMode() && stableDonationCompetitionAnytimeCheck?.value == true) {
         if (hasCompletedStableDonationCompetition() || isDonationCompetitionUnavailableToday()) {
             return
         }
-        runStableDonationAnytimeCheck(endCal.timeInMillis)
+        runStableDonationAnytimeCheck(endTimeMs)
         if (isDonationCompetitionUnavailableToday()) return
     }
 
-    if (now < creationStartTime) {
-        Log.record(TAG, "当前不在排位赛任务调度时间内")
-        return
-    }
     if (isStableDonationCompetitionMode() && hasCompletedStableDonationCompetition()) {
         return
     }
@@ -220,13 +206,13 @@ internal fun AntFarm.handleDonationCompetition() {
                 }
                 return
             }
-            if (receiveDonationCompetitionAward?.value == true && snapshot.starsToHighest > 0) {
+            if (snapshot.starsToHighest > 0) {
                 checkAndClaimProgressAwards(jo, snapshot.starsToHighest)
                 if (isDonationCompetitionUnavailableToday()) return
             }
         }
 
-        scheduleDonationCompetitionTask(endCal.timeInMillis)
+        scheduleDonationCompetitionTask(endTimeMs)
     } catch (e: Exception) {
         Log.printStackTrace(TAG, "handleDonationCompetition err:", e)
     }
@@ -257,6 +243,15 @@ private fun AntFarm.receiveCompetitionAwards(): Int {
         val lightStars = userLevelInfo.optInt("levelLightStarNum", 0)
 
         val awardList = jo.optJSONArray("levelAwardInfoList") ?: return 0
+        val roundNow = Instant.now().atZone(DONATION_COMPETITION_ZONE)
+        val roundDay = if (roundNow.hour >= DONATION_COMPETITION_SETTLE_HOUR) roundNow.toLocalDate() else roundNow.toLocalDate().minusDays(1)
+        val season = jo.optJSONObject("donationCompetitionActivityConf")
+        val activityKey = season?.optString("activityId").orEmpty()
+        if (activityKey.isBlank()) {
+            Log.record(TAG, "排位赛奖励缺少 activityId，跳过")
+            return 0
+        }
+        val awardFlag = StatusFlags.FLAG_FARM_DONATION_COMPETITION_AWARD_RECEIVED + "::$activityKey::$roundDay"
 
         var highestLevelName = "未知"
         var starsToHighest = 0
@@ -306,6 +301,7 @@ private fun AntFarm.receiveCompetitionAwards(): Int {
                 continue
             }
 
+            if (ApplicationHookConstants.isOffline() || !farmWorkAttempted.add("rankAward:$rightsId")) continue
             Log.record(TAG, "发现可领取排位奖励：$levelName")
             val receiveRes = AntFarmRpcCall.receiveDonationLevelReward(rightsId)
             val receiveJo = JSONObject(receiveRes)
@@ -330,9 +326,18 @@ private fun AntFarm.receiveCompetitionAwards(): Int {
 
         if (claimableCount == 0) {
             Log.record(TAG, "当前没有可领取的排位赛段位奖励")
-            Status.setFlagToday(StatusFlags.FLAG_FARM_DONATION_COMPETITION_AWARD_RECEIVED)
+            Status.setFlagToday(awardFlag)
         } else if (receivedCount == claimableCount) {
-            Status.setFlagToday(StatusFlags.FLAG_FARM_DONATION_COMPETITION_AWARD_RECEIVED)
+            val after = JSONObject(AntFarmRpcCall.enterCompetitionAwardPage())
+            val afterAwards = after.optJSONArray("levelAwardInfoList")
+            if (ResChecker.checkRes(TAG, after) && afterAwards != null && (0 until afterAwards.length()).all { index ->
+                val status = afterAwards.optJSONObject(index)?.optString("status").orEmpty()
+                status.isNotBlank() && !status.equals("unreceived", ignoreCase = true)
+            }) {
+                Status.setFlagToday(awardFlag)
+            } else {
+                Log.record(TAG, "排位奖励领取后状态未确认，保留后续查询")
+            }
         } else {
             Log.record(TAG, "排位赛段位奖励仍有${claimableCount - receivedCount}个未领取，保留后续重试")
         }
@@ -661,27 +666,12 @@ private fun AntFarm.scheduleDonationCompetitionTask(endTimeMs: Long) {
 
     val modeName = if (isPollingMode) "轮询蹲点" else "单次蹲点"
 
-    val task =
-        ModelTask.ChildModelTask(
-            id = taskId,
-            group = "DR",
-            suspendRunnable = {
-                cancelPersistentChildTask(taskId)
-                runDonationCompetitionChildTask(endTimeMs, isPollingMode)
-            },
-            execTime = finalExecTime,
-        )
-
-    addChildTask(task)
-    registerPersistentChildTask(
+    deferFarmWork("rankAwards", endTimeMs)
+    scheduleFarmChildTask(
         taskId,
         "DR",
         finalExecTime,
-        JSONObject()
-            .put("end_time_ms", endTimeMs)
-            .put("polling_mode", isPollingMode)
-            .put("owner_farm_id", ownerFarmId ?: "")
-            .put("created_at_ms", now),
+        JSONObject().put("end_time_ms", endTimeMs),
     )
     if (finalExecTime == now) {
         Log.record(TAG, "✅ 已创建立即执行任务")
@@ -691,15 +681,14 @@ private fun AntFarm.scheduleDonationCompetitionTask(endTimeMs: Long) {
 }
 
 internal suspend fun AntFarm.runDonationCompetitionPersistentTask(payload: JSONObject) {
-    if (isDonationCompetitionUnavailableToday()) return
+    if (donationCompetition?.value != true || !check() || ApplicationHookConstants.isOffline() || isDonationCompetitionUnavailableToday()) return
 
-    val fallbackEndTime = TimeUtil.getTodayCalendarByTimeStr("2000")?.timeInMillis ?: 0L
-    val endTimeMs = payload.optLong("end_time_ms", fallbackEndTime)
-    if (endTimeMs <= 0L) {
+    val endTimeMs = payload.optLong("end_time_ms", 0L)
+    if (endTimeMs <= System.currentTimeMillis()) {
         Log.record(TAG, "庄园排位赛持久任务缺少有效 end_time_ms，跳过")
         return
     }
-    val isPollingMode = payload.optBoolean("polling_mode", watchDonationRank?.value == true)
+    val isPollingMode = watchDonationRank?.value == true
     runDonationCompetitionChildTask(endTimeMs, isPollingMode)
 }
 
@@ -707,8 +696,12 @@ private suspend fun AntFarm.runDonationCompetitionChildTask(
     endTimeMs: Long,
     isPollingMode: Boolean,
 ) {
-    if (isDonationCompetitionUnavailableToday()) return
+    if (donationCompetition?.value != true || !check() || ApplicationHookConstants.isOffline() ||
+        isDonationCompetitionUnavailableToday() || System.currentTimeMillis() >= endTimeMs
+    ) return
 
+    val executionOwner = AccountSessionCoordinator.currentUserId().orEmpty()
+    val executionEpoch = AccountSessionCoordinator.currentSessionEpoch()
     if (isPollingMode) {
         runDonationRankWatchLoop(endTimeMs)
     } else {
@@ -732,10 +725,16 @@ private suspend fun AntFarm.runDonationCompetitionChildTask(
     }
     if (isDonationCompetitionUnavailableToday()) return
 
+    if (!AccountSessionCoordinator.isCurrentSession(executionOwner, executionEpoch) ||
+        donationCompetition?.value != true || !check() || ApplicationHookConstants.isOffline()
+    ) return
+    receiveCompetitionAwards()
     printDonationReport()
 }
 
 private suspend fun AntFarm.runDonationRankWatchLoop(endTimeMs: Long) {
+    val executionOwner = AccountSessionCoordinator.currentUserId().orEmpty()
+    val executionEpoch = AccountSessionCoordinator.currentSessionEpoch()
     val refreshSec = watchDonationRefreshInterval?.value ?: 10
     val lastGapSec = watchDonationLastRefreshSecondsBeforeEnd?.value ?: 2
     val lastRefreshTime = endTimeMs - lastGapSec * 1000L
@@ -743,7 +742,9 @@ private suspend fun AntFarm.runDonationRankWatchLoop(endTimeMs: Long) {
     Log.record(TAG, "🚀 开始排位赛轮询蹲点，间隔 ${refreshSec}s，最后一次刷新时间点：${TimeUtil.getFormatTime(lastRefreshTime, "HH:mm:ss")}")
 
     while (true) {
-        if (isDonationCompetitionUnavailableToday()) break
+        if (!AccountSessionCoordinator.isCurrentSession(executionOwner, executionEpoch) ||
+            donationCompetition?.value != true || !check() || ApplicationHookConstants.isOffline() || isDonationCompetitionUnavailableToday()
+        ) break
 
         val now = System.currentTimeMillis()
         if (now >= endTimeMs) break
@@ -775,7 +776,10 @@ private suspend fun AntFarm.runDonationRankWatchLoop(endTimeMs: Long) {
                 Log.record(TAG, "⏳ 等待最后一次刷新 (距离结束 $lastGapSec 秒)")
                 delay(waitToFinal)
 
-                if (System.currentTimeMillis() < endTimeMs && !isDonationCompetitionUnavailableToday()) {
+                if (AccountSessionCoordinator.isCurrentSession(executionOwner, executionEpoch) &&
+                    System.currentTimeMillis() < endTimeMs && donationCompetition?.value == true &&
+                    check() && !ApplicationHookConstants.isOffline() && !isDonationCompetitionUnavailableToday()
+                ) {
                     Log.record(TAG, "⚡ 执行最后一次刷新")
                     val finalCurrentDonated = Status.getDailyDonationTotal(uid)
                     if (maxDonation < 0) {
@@ -797,7 +801,9 @@ private fun AntFarm.checkRankAndDonate(
     remainingQuota: Int,
     allowAggressiveFallback: Boolean = true,
 ): Boolean {
-    if (isDonationCompetitionUnavailableToday()) return false
+    if (donationCompetition?.value != true || !check() || ApplicationHookConstants.isOffline() ||
+        System.currentTimeMillis() >= farmTimeToday(20, 0) || isDonationCompetitionUnavailableToday()
+    ) return false
 
     try {
         val myUid = UserMap.currentUid ?: return false
@@ -1070,7 +1076,7 @@ private fun AntFarm.tryUseSpecialFoodForCompetition(requiredEggCount: Int): Bool
 
     val usedToday = Status.getIntFlagToday(usageCountFlag) ?: 0
     if (dailyLimit > 0 &&
-        (Status.hasFlagToday(usageLimitFlag) || usedToday >= dailyLimit)
+        usedToday >= dailyLimit
     ) {
         Status.setFlagToday(usageLimitFlag)
         Log.record(TAG, "排位赛特殊食品今日已使用${usedToday}个，达到上限${dailyLimit}个，停止补蛋")
@@ -1204,7 +1210,7 @@ private fun AntFarm.checkAndClaimProgressAwards(
     rankJo: JSONObject,
     starsToHighest: Int,
 ): Int {
-    if (receiveDonationCompetitionAward?.value != true) return 0
+    if (donationCompetition?.value != true || ApplicationHookConstants.isOffline()) return 0
     try {
         val progress = rankJo.optJSONObject("seasonDonationProgress") ?: return 0
         val nodes = progress.optJSONArray("nodes") ?: return 0

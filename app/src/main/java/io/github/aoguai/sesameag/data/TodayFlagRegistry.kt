@@ -109,18 +109,17 @@ object TodayFlagRegistry {
         binding("AntFishPond", "autoFish", "fishDailyLimit", patterns = listOf(exact(StatusFlags.FLAG_ANTFISHPOND_RISK_TOKEN_MISSING), exact(StatusFlags.FLAG_ANTFISHPOND_FISH_COUNT), exact(StatusFlags.FLAG_ANTFISHPOND_FISH_LIMIT_REACHED))),
         binding("AntStall", "stallThrowManure", patterns = listOf(exact(StatusFlags.FLAG_ANTSTALL_THROW_MANURE_LIMIT))),
         binding("AntStall", "stallAutoTask", patterns = listOf(exact(StatusFlags.FLAG_ANTSTALL_TASKS_DONE))),
-        binding("AntFarm", "doFarmTask", "farmTaskTrigger", patterns = listOf(exact(StatusFlags.FLAG_FARM_TASK_FINISHED), prefix(StatusFlags.FLAG_FARM_TASK_LIMIT_PREFIX))),
+        binding("AntFarm", "doFarmTask", patterns = listOf(exact(StatusFlags.FLAG_FARM_TASK_FINISHED), prefix(StatusFlags.FLAG_FARM_TASK_LIMIT_PREFIX))),
         binding("AntFarm", "paradiseCoinExchangeBenefit", "paradiseCoinExchangeBenefitList", patterns = listOf(prefix(StatusFlags.FLAG_FARM_PARADISE_COIN_EXCHANGE_LIMIT_PREFIX))),
-        binding("AntFarm", "enableChouchoule", "chouChouLeTrigger", patterns = listOf(exact(StatusFlags.FLAG_FARM_CHOUCHOULE_FINISHED), exact(StatusFlags.FLAG_FARM_MULTI_STAGE_TASK_FINISHED), prefix(StatusFlags.FLAG_FARM_CHOUCHOULE_LIMITED_ENDED_PREFIX))),
-        binding("AntFarm", "recordFarmGame", "farmGameTrigger", patterns = listOf(exact(StatusFlags.FLAG_FARM_GAME_FINISHED))),
+        binding("AntFarm", "enableChouchoule", patterns = listOf(prefix(StatusFlags.FLAG_FARM_CHOUCHOULE_FINISHED), prefix(StatusFlags.FLAG_FARM_CHOUCHOULE_LIMITED_ENDED_PREFIX))),
+        binding("AntFarm", "recordFarmGame", patterns = listOf(exact(StatusFlags.FLAG_FARM_GAME_FINISHED))),
         binding("AntFarm", "feedFriendAnimalList", patterns = listOf(prefix(StatusFlags.FLAG_FARM_FEED_FRIEND_LIMIT_PREFIX), exact(StatusFlags.FLAG_FARM_FEED_FRIEND_LIMIT))),
         binding("AntFarm", "family", "familyOptions", patterns = listOf(exact(StatusFlags.FLAG_FARM_FAMILY_SIGNED), exact(StatusFlags.FLAG_FARM_FAMILY_SLEEP_TOGETHER), exact(StatusFlags.FLAG_FARM_FAMILY_DELIVER_MSG_SEND), exact(StatusFlags.FLAG_FARM_FAMILY_SHARE_TO_FRIENDS), exact(StatusFlags.FLAG_FARM_INVITE_FRIEND_VISIT_FAMILY), prefix(StatusFlags.FLAG_FARM_FAMILY_DECORATION_CHECK_DONE_PREFIX))),
         binding("AntFarm", "useAccelerateTool", "remainingTime", "accelerateToolDailyLimit", patterns = listOf(exact(StatusFlags.FLAG_FARM_ACCELERATE_LIMIT))),
         binding("AntFarm", "useSpecialFood", "useSpecialFoodCount", patterns = listOf(exact(StatusFlags.FLAG_FARM_SPECIAL_FOOD_LIMIT), exact(StatusFlags.FLAG_FARM_SPECIAL_FOOD_DAILY_COUNT))),
         binding("AntFarm", "donationCompetitionTrySpecialFood", "donationCompetitionSpecialFoodCount", patterns = listOf(exact(StatusFlags.FLAG_FARM_SPECIAL_FOOD_DONATION_COMPETITION_LIMIT), exact(StatusFlags.FLAG_FARM_SPECIAL_FOOD_DONATION_COMPETITION_DAILY_COUNT))),
         binding("AntFarm", "donation", patterns = listOf(prefix(StatusFlags.FLAG_FARM_DAILY_DONATION_DONE_PREFIX), prefix(StatusFlags.FLAG_FARM_DONATION_COUNT))),
-        binding("AntFarm", "receiveDonationCompetitionAward", patterns = listOf(exact(StatusFlags.FLAG_FARM_DONATION_COMPETITION_AWARD_RECEIVED), exact(StatusFlags.FLAG_FARM_DONATION_COMPETITION_UNAVAILABLE))),
-        binding("AntFarm", "signRegardless", patterns = listOf(exact(StatusFlags.FLAG_FARM_SIGNED))),
+        binding("AntFarm", "donationCompetition", patterns = listOf(prefix(StatusFlags.FLAG_FARM_DONATION_COMPETITION_AWARD_RECEIVED), exact(StatusFlags.FLAG_FARM_DONATION_COMPETITION_UNAVAILABLE))),
     )
 
     private val modulePatterns = mapOf(

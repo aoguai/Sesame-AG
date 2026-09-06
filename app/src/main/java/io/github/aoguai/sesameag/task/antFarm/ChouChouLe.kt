@@ -20,7 +20,6 @@ import io.github.aoguai.sesameag.util.JsonUtil
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.ResChecker
 import io.github.aoguai.sesameag.util.TaskBlacklist
-import io.github.aoguai.sesameag.util.TimeTriggerEvaluator
 import io.github.aoguai.sesameag.util.maps.UserMap
 import org.json.JSONArray
 import org.json.JSONObject
@@ -147,46 +146,21 @@ class ChouChouLe {
     )
 
     fun run(antFarm: AntFarm) {
-        if (Status.hasFlagToday(StatusFlags.FLAG_FARM_CHOUCHOULE_FINISHED)) {
-            return
-        }
-
-        val isGameFinished = Status.hasFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)
-        val isGameEnabled = antFarm.recordFarmGame?.value == true
-        val isTimeReached =
-            antFarm.chouChouLeTrigger?.getTriggerSpec()?.let {
-                TimeTriggerEvaluator.evaluateNow(it).allowNow
-            } == true
-        val ignoreAcceLimitMode = antFarm.ignoreAcceLimit?.value == true
-        val isGamePrerequisiteReady = !isGameEnabled || isGameFinished
-
-        when {
-            ignoreAcceLimitMode -> {
-                if (isTimeReached) {
-                    executeAndSync(antFarm)
-                } else {
-                    Log.farm("当前处于按时抽抽乐模式，未到设定时间，跳过")
-                }
-            }
-
-            isGamePrerequisiteReady -> {
-                executeAndSync(antFarm)
-            }
-
-            else -> {
-                Log.farm("游戏改分还没有完成，暂不执行抽抽乐")
-            }
-        }
+        if (antFarm.enableChouchoule?.value != true || ApplicationHookConstants.isOffline()) return
+        if (!antFarm.farmWorkAttempted.add("draw")) return
+        executeAndSync(antFarm)
+        if (!antFarm.farmWorkAttempted.contains("exchange")) exchangeIpRewards()
     }
 
     private fun executeAndSync(antFarm: AntFarm) {
-        if (this.chouchoule()) {
+        if (this.chouchoule(useDailyState = true)) {
             Status.setFlagToday(StatusFlags.FLAG_FARM_CHOUCHOULE_FINISHED)
             antFarm.syncAnimalStatus(antFarm.ownerFarmId)
             Log.farm("今日抽抽乐已完成")
         } else {
             antFarm.syncAnimalStatus(antFarm.ownerFarmId)
-            Log.farm("抽抽乐尚有未完成项（请检查是否需要验证）")
+            antFarm.deferFarmWork("draw", farmTimeToday(23, 30))
+            Log.farm("抽抽乐尚有未完成项，保留原因并等待下一次自然调度")
         }
     }
 
@@ -194,7 +168,7 @@ class ChouChouLe {
      * 抽抽乐主入口
      * 返回值判断是否真的完成任务，是否全部执行完毕且无剩余（任务已做、奖励已领、抽奖已完）
      */
-    fun chouchoule(): Boolean {
+    fun chouchoule(useDailyState: Boolean = false): Boolean {
         var allFinished = true
         try {
             val response = AntFarmRpcCall.queryLoveCabin(UserMap.currentUid)
@@ -203,28 +177,33 @@ class ChouChouLe {
                 return false
             }
 
-            val drawMachineInfo = jo.optJSONObject("drawMachineInfo")
-            val hasIpDraw =
-                drawMachineInfo?.has("ipDrawMachineActivityId") == true ||
-                    jo.has("ipDrawMachineActivityId") ||
-                    jo.has("ipDrawMachine")
-            val hasDailyDraw =
-                drawMachineInfo?.has("dailyDrawMachineActivityId") == true ||
-                    jo.has("dailyDrawMachineActivityId") ||
-                    jo.has("dailyDrawMachine")
+            val drawMachineInfo = jo.optJSONObject("drawMachineInfo") ?: return false
+            val hasIpDraw = drawMachineInfo.has("ipDrawMachineActivityId")
+            val hasDailyDraw = drawMachineInfo.has("dailyDrawMachineActivityId")
             if (!hasIpDraw && !hasDailyDraw) {
                 Log.error(TAG, "抽抽乐🎁[获取抽抽乐活动信息失败]")
                 return false
             }
 
-            // 执行IP抽抽乐
-            if (hasIpDraw) {
-                allFinished = doChouchoule("ipDraw")
-            }
-
-            // 执行普通抽抽乐
-            if (hasDailyDraw) {
-                allFinished = allFinished and doChouchoule("dailyDraw")
+            for ((drawType, present, idKey) in listOf(
+                Triple("ipDraw", hasIpDraw, "ipDrawMachineActivityId"),
+                Triple("dailyDraw", hasDailyDraw, "dailyDrawMachineActivityId"),
+            )) {
+                if (!present || ApplicationHookConstants.isOffline()) continue
+                val activityId = drawMachineInfo.optString(idKey)
+                if (activityId.isBlank()) {
+                    allFinished = false
+                    continue
+                }
+                val flag = StatusFlags.FLAG_FARM_CHOUCHOULE_FINISHED + "::$drawType::$activityId::" +
+                    java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"))
+                if (useDailyState && Status.hasFlagToday(flag)) {
+                    if (drawType == "ipDraw") exchangeIpRewards()
+                    continue
+                }
+                val finished = doChouchoule(drawType)
+                if (finished && useDailyState) Status.setFlagToday(flag)
+                allFinished = allFinished && finished
             }
 
             return allFinished
@@ -244,12 +223,15 @@ class ChouChouLe {
         val noProgressActionTaskIds = mutableSetOf<String>()
         val noProgressAwardTaskIds = mutableSetOf<String>()
         var doubleCheck: Boolean
+        var rounds = 0
         try {
             runCatching {
                 AntFarmRpcCall.refinedOperation("DRAW_MACHINE", "antfarm_villa", "RPC")
             }
             do {
                 doubleCheck = false
+                if (ApplicationHookConstants.isOffline()) return false
+                rounds++
                 val tasks = queryChouchouleTasks(drawType)
                 if (tasks == null) {
                     val taskName = if (drawType == "ipDraw") "IP抽抽乐" else "日常抽抽乐"
@@ -273,6 +255,8 @@ class ChouChouLe {
                                 noProgressAwardTaskIds.add(task.taskId)
                                 Log.error(TAG, "抽抽乐奖励[${task.title}] ACK 后状态未确认，当前轮不再重复领取")
                             }
+                        } else {
+                            noProgressAwardTaskIds.add(task.taskId)
                         }
                     } else if (TaskStatus.TODO.name == task.taskStatus) {
                         if (task.taskId !in noProgressActionTaskIds &&
@@ -293,12 +277,12 @@ class ChouChouLe {
                                 }
 
                                 TaskMutationResult.BLOCKED_BY_QUOTA,
-                                TaskMutationResult.NOT_ACKNOWLEDGED -> Unit
+                                TaskMutationResult.NOT_ACKNOWLEDGED -> noProgressActionTaskIds.add(task.taskId)
                             }
                         }
                     }
                 }
-            } while (doubleCheck)
+            } while (doubleCheck && rounds < 32)
         } catch (t: Throwable) {
             val taskName = if (drawType == "ipDraw") "IP抽抽乐" else "日常抽抽乐"
             Log.printStackTrace("doChouchoule err:", t)
@@ -365,7 +349,7 @@ class ChouChouLe {
                 }
             if (!ResChecker.checkRes(TAG, drawJo)) return false
             val drawTimes = extractDrawTimes(drawJo)
-            if (drawTimes > 0) return false
+            if (drawTimes != 0) return false
 
             true
         } catch (_: Throwable) {
@@ -448,22 +432,7 @@ class ChouChouLe {
         ).firstOrNull { it.isNotBlank() }.orEmpty()
     }
 
-    private fun extractDrawTimes(jo: JSONObject): Int {
-        val userInfo = jo.optJSONObject("userInfo")
-        val drawMachineActivity = jo.optJSONObject("drawMachineActivity")
-        return listOf(
-            jo.optInt("drawTimes", -1),
-            jo.optInt("leftDrawTimes", -1),
-            jo.optInt("quotaCanUse", -1),
-            jo.optInt("canUseTimes", -1),
-            jo.optInt("drawRightsTimes", -1),
-            userInfo?.optInt("leftDrawTimes", -1) ?: -1,
-            userInfo?.optInt("drawTimes", -1) ?: -1,
-            drawMachineActivity?.optInt("quotaCanUse", -1) ?: -1,
-            drawMachineActivity?.optInt("canUseTimes", -1) ?: -1,
-            drawMachineActivity?.optInt("drawRightsTimes", -1) ?: -1,
-        ).firstOrNull { it >= 0 } ?: 0
-    }
+    private fun extractDrawTimes(jo: JSONObject): Int = jo.optInt("drawTimes", -1)
 
     private fun isTaskQuotaReachedResponse(jo: JSONObject): Boolean {
         val resultCode = jo.optString("resultCode").ifBlank { jo.optString("code") }
@@ -703,11 +672,11 @@ class ChouChouLe {
                     ),
                 )
             if (!ResChecker.checkRes(TAG, jo)) {
-                Log.farm("IP抽抽乐新版活动查询失败，切换旧版接口重试")
-                return handleIpDrawLegacy()
+                Log.farm("IP抽抽乐活动查询失败，本轮停止")
+                return false
             }
 
-            val activity = jo.optJSONObject("drawMachineActivity") ?: return handleIpDrawLegacy()
+            val activity = jo.optJSONObject("drawMachineActivity") ?: return false
             val activityId = activity.optString("activityId")
             val endTime = activity.optLong("endTime", 0)
             if (endTime > 0 && System.currentTimeMillis() > endTime) {
@@ -716,6 +685,7 @@ class ChouChouLe {
             }
 
             var remainingTimes = extractDrawTimes(jo)
+            if (remainingTimes < 0) return false
             var allSuccess = true
             if (remainingTimes <= 0) {
                 Log.farm("IP抽抽乐当前无可用次数，跳过抽奖")
@@ -729,12 +699,19 @@ class ChouChouLe {
                     val response = AntFarmRpcCall.drawMachineIP(batchCount)
                     val batchSuccess = drawPrize("IP抽抽乐", response)
                     if (!batchSuccess) {
-                        Log.farm("IP抽抽乐连抽失败，切换旧版单抽流程")
-                        return handleIpDrawLegacy()
+                        Log.farm("IP抽抽乐提交结果未确认，本轮停止抽奖，避免重复扣减")
+                        return false
                     }
                     allSuccess = allSuccess and batchSuccess
 
-                    remainingTimes -= batchCount
+                    val refreshed = JSONObject(AntFarmRpcCall.queryDrawMachineActivity_New("ipDrawMachine", "dailyDrawMachine"))
+                    if (!ResChecker.checkRes(TAG, refreshed)) return false
+                    val afterTimes = extractDrawTimes(refreshed)
+                    if (afterTimes < 0 || afterTimes >= remainingTimes) {
+                        Log.farm("IP抽抽乐响应成功但余额未确认减少，本轮停止抽奖")
+                        return false
+                    }
+                    remainingTimes = afterTimes
                     if (remainingTimes > 0) {
                         GlobalThreadPools.sleepCompat(1500L)
                     }
@@ -763,11 +740,11 @@ class ChouChouLe {
                     ),
                 )
             if (!ResChecker.checkRes(TAG, jo)) {
-                Log.farm("日常抽抽乐新版活动查询失败，切换旧版接口重试")
-                return handleDailyDrawLegacy()
+                Log.farm("日常抽抽乐活动查询失败，本轮停止")
+                return false
             }
 
-            val activity = jo.optJSONObject("drawMachineActivity") ?: return handleDailyDrawLegacy()
+            val activity = jo.optJSONObject("drawMachineActivity") ?: return false
             val endTime = activity.optLong("endTime", 0)
             if (endTime > 0 && System.currentTimeMillis() > endTime) {
                 Log.farm("该[${activity.optString("activityId")}]抽奖活动已结束")
@@ -775,8 +752,9 @@ class ChouChouLe {
             }
 
             var remainingTimes = extractDrawTimes(jo)
+            if (remainingTimes < 0) return false
             if (remainingTimes <= 0) {
-                Log.farm("日常抽抽乐当前无可用次数，跳过旧版兜底接口")
+                Log.farm("日常抽抽乐当前无可用次数，跳过抽奖")
                 return true
             }
             var allSuccess = true
@@ -790,12 +768,19 @@ class ChouChouLe {
                 val response = AntFarmRpcCall.drawMachineDaily(batchCount)
                 val batchSuccess = drawPrize("日常抽抽乐", response)
                 if (!batchSuccess) {
-                    Log.farm("日常抽抽乐连抽失败，切换旧版单抽流程")
-                    return handleDailyDrawLegacy()
+                    Log.farm("日常抽抽乐提交结果未确认，本轮停止抽奖，避免重复扣减")
+                    return false
                 }
                 allSuccess = allSuccess and batchSuccess
 
-                remainingTimes -= batchCount
+                val refreshed = JSONObject(AntFarmRpcCall.queryDrawMachineActivity_New("dailyDrawMachine", "ipDrawMachine"))
+                if (!ResChecker.checkRes(TAG, refreshed)) return false
+                val afterTimes = extractDrawTimes(refreshed)
+                if (afterTimes < 0 || afterTimes >= remainingTimes) {
+                    Log.farm("日常抽抽乐响应成功但余额未确认减少，本轮停止抽奖")
+                    return false
+                }
+                remainingTimes = afterTimes
                 if (remainingTimes > 0) {
                     GlobalThreadPools.sleepCompat(1500L)
                 }
@@ -804,82 +789,6 @@ class ChouChouLe {
         } catch (t: Throwable) {
             Log.printStackTrace("handleDailyDraw err:", t)
             return false
-        }
-    }
-
-    private fun handleIpDrawLegacy(): Boolean {
-        return try {
-            val jo = JSONObject(AntFarmRpcCall.queryDrawMachineActivity())
-            if (!ResChecker.checkRes(TAG, jo)) {
-                false
-            } else {
-                val activity = jo.optJSONObject("drawMachineActivity") ?: return true
-                val endTime = activity.optLong("endTime", 0)
-                if (endTime > 0 && System.currentTimeMillis() > endTime) {
-                    Log.farm("该[${activity.optString("activityId")}]抽奖活动已结束")
-                    return true
-                }
-
-                var remainingTimes = jo.optInt("drawTimes", 0)
-                var allSuccess = true
-                while (remainingTimes > 0) {
-                    val drawSuccess = drawPrize("IP抽抽乐", AntFarmRpcCall.drawMachine())
-                    allSuccess = allSuccess and drawSuccess
-                    if (!drawSuccess) {
-                        break
-                    }
-                    remainingTimes--
-                    if (remainingTimes > 0) {
-                        GlobalThreadPools.sleepCompat(1500L)
-                    }
-                }
-                allSuccess
-            }
-        } catch (t: Throwable) {
-            Log.printStackTrace("handleIpDrawLegacy err:", t)
-            false
-        }
-    }
-
-    private fun handleDailyDrawLegacy(): Boolean {
-        return try {
-            val jo = JSONObject(AntFarmRpcCall.enterDrawMachine())
-            if (!ResChecker.checkRes(TAG, jo)) {
-                false
-            } else {
-                val userInfo = jo.optJSONObject("userInfo") ?: return true
-                val drawActivityInfo = jo.optJSONObject("drawActivityInfo") ?: return true
-                val endTime = drawActivityInfo.optLong("endTime", 0)
-                if (endTime > 0 && System.currentTimeMillis() > endTime) {
-                    Log.farm("该[${drawActivityInfo.optString("activityId")}]抽奖活动已结束")
-                    return true
-                }
-
-                var remainingTimes = userInfo.optInt("leftDrawTimes", 0)
-                val activityId = drawActivityInfo.optString("activityId")
-                var allSuccess = true
-                while (remainingTimes > 0) {
-                    val response =
-                        if (activityId.isBlank() || activityId == "null") {
-                            AntFarmRpcCall.DrawPrize()
-                        } else {
-                            AntFarmRpcCall.DrawPrize(activityId)
-                        }
-                    val drawSuccess = drawPrize("日常抽抽乐", response)
-                    allSuccess = allSuccess and drawSuccess
-                    if (!drawSuccess) {
-                        break
-                    }
-                    remainingTimes--
-                    if (remainingTimes > 0) {
-                        GlobalThreadPools.sleepCompat(1500L)
-                    }
-                }
-                allSuccess
-            }
-        } catch (t: Throwable) {
-            Log.printStackTrace("handleDailyDrawLegacy err:", t)
-            false
         }
     }
 
@@ -901,17 +810,11 @@ class ChouChouLe {
                 if (prizeList != null && prizeList.length() > 0) {
                     for (i in 0 until prizeList.length()) {
                         val prize = prizeList.getJSONObject(i)
-                        val title = prize.optString("title", prize.optString("prizeName", "未知奖品"))
+                        val title = prize.optString("title", "未知奖品")
                         Log.farm("$prefix🎁[领取: $title]")
                     }
                 } else {
-                    val prize = jo.optJSONObject("drawMachinePrize")
-                    if (prize != null) {
-                        val title = prize.optString("title", prize.optString("prizeName", "未知奖品"))
-                        Log.farm("$prefix🎁[领取: $title]")
-                    } else {
-                        Log.farm("$prefix🎁[抽奖成功，但未解析到具体奖品名称]")
-                    }
+                    Log.farm("$prefix🎁[抽奖成功，但未解析到具体奖品名称]")
                 }
                 return true
             }
@@ -919,6 +822,20 @@ class ChouChouLe {
             Log.printStackTrace("drawPrize err:", t)
         }
         return false
+    }
+
+    internal fun exchangeIpRewards() {
+        val farm = AntFarm.instance ?: return
+        if (farm.enableChouchoule?.value != true || farm.autoExchange?.value != true || ApplicationHookConstants.isOffline()) return
+        try {
+            val response = JSONObject(AntFarmRpcCall.queryDrawMachineActivity_New("ipDrawMachine", "dailyDrawMachine"))
+            if (!ResChecker.checkRes(TAG, response)) return
+            val activity = response.optJSONObject("drawMachineActivity") ?: return
+            val activityId = activity.optString("activityId")
+            if (activityId.isNotBlank()) batchExchangeRewards(activityId, activity.optLong("endTime", 0))
+        } catch (t: Throwable) {
+            Log.printStackTrace(TAG, "IP兑换待办查询失败", t)
+        }
     }
 
     /**
@@ -930,6 +847,13 @@ class ChouChouLe {
     ) {
         try {
             val daysBefore = AntFarm.instance?.exchangeDaysBeforeEndIp?.value ?: 0
+            if (AntFarm.instance?.autoExchange?.value != true || ApplicationHookConstants.isOffline()) return
+            if (endTime > 0 && endTime <= System.currentTimeMillis()) return
+            if (daysBefore > 0 && endTime <= 0) {
+                Log.farm("IP兑换结束时间未确认，保留待办")
+                return
+            }
+            if (AntFarm.instance?.farmWorkAttempted?.add("exchange") == false) return
             if (daysBefore > 0 && endTime > 0) {
                 val now = System.currentTimeMillis()
                 val remainingMs = endTime - now
@@ -937,6 +861,7 @@ class ChouChouLe {
 
                 if (remainingMs > limitMs) {
                     val remainingDays = remainingMs / (24 * 60 * 60 * 1000L)
+                    AntFarm.instance?.deferFarmWork("exchange", endTime - limitMs)
                     Log.farm("[自动兑换]: 未到设定兑换时间：活动尚余 $remainingDays 天结束，设定为提前 $daysBefore 天兑换，跳过。")
                     return
                 }
@@ -1120,18 +1045,7 @@ class ChouChouLe {
             }
         }
 
-        val legacy = runCatching { JSONObject(AntFarmRpcCall.queryDrawMachineActivity()) }.getOrNull() ?: return null
-        if (!ResChecker.checkRes(TAG, legacy)) {
-            Log.farm("IP抽抽乐商店💸[获取活动失败: ${formatIpDrawRpcResult(legacy)}]")
-            return null
-        }
-        val activity = legacy.optJSONObject("drawMachineActivity") ?: return null
-        val activityId = activity.optString("activityId").trim()
-        if (activityId.isBlank()) {
-            return null
-        }
-        val activeActivity = IpDrawActivity(activityId, activity.optLong("endTime", 0L))
-        return activeActivity.takeIf { isIpDrawActivityActive(it) }
+        return null
     }
 
     private fun queryIpDrawMallSnapshot(
