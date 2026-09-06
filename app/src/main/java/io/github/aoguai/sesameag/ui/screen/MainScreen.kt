@@ -144,6 +144,8 @@ fun MainScreen(
     val serviceState by serviceStatus.collectAsStateWithLifecycle()
     val isOneWordLoading by viewModel.isOneWordLoading.collectAsStateWithLifecycle()
     val isLegalAccepted by viewModel.isLegalAccepted.collectAsStateWithLifecycle()
+    val isSavingLegalAcceptance by viewModel.isSavingLegalAcceptance.collectAsStateWithLifecycle()
+    val activeUser by viewModel.activeUser.collectAsStateWithLifecycle()
 
     val interceptedEvent: (MainActivity.MainUiEvent) -> Unit = { event ->
         when (event) {
@@ -169,13 +171,14 @@ fun MainScreen(
     val appEntryProvider = entryProvider {
         entry<AppRoute.Overview> {
             HomeContent(
-                hasActiveUser = hasActiveUser,
+                activeUser = activeUser,
                 moduleStatus = moduleStatus,
                 serviceStatus = serviceState,
                 permissionHealth = permissionHealth,
                 oneWord = oneWord,
                 isOneWordLoading = isOneWordLoading,
                 isLegalAccepted = isLegalAccepted,
+                isSavingLegalAcceptance = isSavingLegalAcceptance,
                 onLegalAcceptedChange = viewModel::setLegalAccepted,
                 onOneWordClick = { interceptedEvent(MainActivity.MainUiEvent.RefreshOneWord) },
                 onEvent = interceptedEvent,

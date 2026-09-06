@@ -7,5 +7,6 @@ interface ICommandService {
     void executeCommand(String command, ICallback callback);
     void registerListener(IStatusListener listener);
     void unregisterListener(IStatusListener listener);
+    boolean isExecutionAllowed(String userId);
 }
 

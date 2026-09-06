@@ -76,8 +76,8 @@ object ManualTask {
             Log.record("ManualTask", "⛔ 未检测到可用执行权限，手动任务不会执行")
             return
         }
-        if (!Config.isLegalAcceptedForCurrentVersion()) {
-            Log.record("ManualTask", "⛔ 未勾选已阅读 LICENSE 与 LEGAL 说明，手动任务不会执行")
+        if (!Config.isLegalAcceptedForCurrentVersion() || !WorkflowRootGuard.isExecutionAllowed()) {
+            Log.record("ManualTask", "⛔ 必需权限或使用协议未就绪，手动任务不会执行")
             return
         }
 
@@ -92,6 +92,10 @@ object ManualTask {
                 Log.record("ManualTask", "🚀 开始执行手动任务序列...")
 
                 for (task in tasks) {
+                    if (!WorkflowRootGuard.isExecutionAllowed()) {
+                        Log.record("ManualTask", "必需权限或使用协议未就绪，已停止后续手动任务")
+                        return@withContext
+                    }
                     try {
                         Log.record("ManualTask", "⏳ 正在执行: ${task.displayName}...")
                         when (task) {

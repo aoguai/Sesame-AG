@@ -61,6 +61,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val apiVersion: Int,
             val reason: UnsupportedReason
         ) : ModuleStatus()
+        data class PrerequisitesMissing(
+            val frameworkName: String,
+            val frameworkVersion: String,
+            val apiVersion: Int,
+        ) : ModuleStatus()
         data class Activated(
             val frameworkName: String,     // 仅支持维护的框架名称 (LSPosed)
             val frameworkVersion: String,  // 版本号
@@ -96,6 +101,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLegalAccepted = MutableStateFlow(false)
     val isLegalAccepted: StateFlow<Boolean> = _isLegalAccepted.asStateFlow()
 
+    private val _isSavingLegalAcceptance = MutableStateFlow(false)
+    val isSavingLegalAcceptance = _isSavingLegalAcceptance.asStateFlow()
+
     private val _permissionHealth = MutableStateFlow(PermissionHealthSnapshot.EMPTY)
     val permissionHealth: StateFlow<PermissionHealthSnapshot> = _permissionHealth.asStateFlow()
 
@@ -120,6 +128,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var isInitialized = false
     private var accountContextReceiverRegistered = false
 
+    init {
+        LsposedServiceManager.init()
+        LsposedServiceManager.addConnectionListener(serviceListener)
+    }
+
     fun initAppLogic(): Boolean {
         if (isInitialized) return false
         isInitialized = true
@@ -135,8 +148,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             refreshModuleFrameworkStatus()
             refreshActiveUser()
             refreshLegalAcceptanceState()
-            // 注册监听
-            LsposedServiceManager.addConnectionListener(serviceListener)
             startConfigDirectoryObserver()
         }
         return true
@@ -153,7 +164,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 刷新模块框架激活状态
      */
-    private fun refreshModuleFrameworkStatus() {
+    fun refreshModuleFrameworkStatus() {
         val lspState = LsposedServiceManager.connectionState
         if (lspState !is ConnectionState.Connected) {
             _moduleStatus.value = ModuleStatus.NotActivated
@@ -167,11 +178,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         _moduleStatus.value = if (frameworkStatus.isSupportedLsposed) {
-            ModuleStatus.Activated(
-                frameworkName = frameworkStatus.frameworkName,
-                frameworkVersion = frameworkStatus.frameworkVersion,
-                apiVersion = frameworkStatus.apiVersion
-            )
+            if (_permissionHealth.value.areRequiredPermissionsGranted &&
+                _isLegalAccepted.value && !_isSavingLegalAcceptance.value
+            ) {
+                ModuleStatus.Activated(
+                    frameworkName = frameworkStatus.frameworkName,
+                    frameworkVersion = frameworkStatus.frameworkVersion,
+                    apiVersion = frameworkStatus.apiVersion
+                )
+            } else {
+                ModuleStatus.PrerequisitesMissing(
+                    frameworkName = frameworkStatus.frameworkName,
+                    frameworkVersion = frameworkStatus.frameworkVersion,
+                    apiVersion = frameworkStatus.apiVersion,
+                )
+            }
         } else {
             ModuleStatus.Unsupported(
                 frameworkName = frameworkStatus.frameworkName,
@@ -288,6 +309,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 _userList.value = newList
                 _accountSlots.value = AccountSlotRegistry.snapshot()
+                refreshActiveUser()
+                refreshLegalAcceptanceState()
             } catch (e: Exception) {
                 Log.e(TAG, "Error reloading user configs", e)
             }
@@ -374,6 +397,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setLegalAccepted(accepted: Boolean) {
+        if (!_isSavingLegalAcceptance.compareAndSet(false, true)) return
+        refreshModuleFrameworkStatus()
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val targetUserId = resolveActiveUserId()
@@ -389,6 +414,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (!saveSuccess) {
                     Log.e(TAG, "Save legal acceptance failed")
+                    ToastUtil.showUiToast(getApplication(), "保存失败，请重试")
                     refreshLegalAcceptanceState()
                     return@launch
                 }
@@ -403,7 +429,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Update legal acceptance failed", e)
+                ToastUtil.showUiToast(getApplication(), "保存失败，请重试")
                 refreshLegalAcceptanceState()
+            } finally {
+                _isSavingLegalAcceptance.value = false
+                refreshModuleFrameworkStatus()
             }
         }
     }
@@ -416,6 +446,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Log.e(TAG, "Read legal acceptance failed", e)
                 _isLegalAccepted.value = false
+            } finally {
+                refreshModuleFrameworkStatus()
             }
         }
     }
@@ -440,6 +472,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updatePermissionHealth(snapshot: PermissionHealthSnapshot) {
         _permissionHealth.value = snapshot
+        refreshModuleFrameworkStatus()
     }
 
     fun clearAllLogs(context: Context) {

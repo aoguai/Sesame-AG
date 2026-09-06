@@ -1,7 +1,10 @@
 package io.github.aoguai.sesameag.util
 
+import io.github.aoguai.sesameag.hook.AccountSlotRegistry
 import io.github.aoguai.sesameag.hook.ApplicationHook
+import io.github.aoguai.sesameag.hook.RuntimeIdentityGuard
 import io.github.aoguai.sesameag.service.patch.SafeRootShell
+import io.github.aoguai.sesameag.util.maps.UserMap
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -9,7 +12,7 @@ import kotlinx.coroutines.sync.withLock
  * 统一工作流执行权限门禁。
  *
  * `hasRoot/hasGrantedRoot` 表示“当前进程已由受支持的 libxposed 运行时注入或实时 Root 可用”。
- * 配置文件可以存在，但未通过此门禁时不允许进入运行态。
+ * 实际业务执行还必须通过 `isExecutionAllowed` 检查必需权限、协议和运行账号。
  */
 object WorkflowRootGuard {
     private const val TAG = "WorkflowRootGuard"
@@ -25,6 +28,12 @@ object WorkflowRootGuard {
 
     @Volatile
     private var lastLoggedState: Boolean? = null
+
+    fun isExecutionAllowed(): Boolean {
+        if (!RuntimeIdentityGuard.isTrustedForExecution() || resolveHookAccessSource() == null) return false
+        val userId = UserMap.currentUid?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        return AccountSlotRegistry.isExecutableUser(userId) && CommandUtil.isExecutionAllowed(userId)
+    }
 
     fun hasGrantedRoot(): Boolean = resolveHookAccessSource() != null || lastGranted
 

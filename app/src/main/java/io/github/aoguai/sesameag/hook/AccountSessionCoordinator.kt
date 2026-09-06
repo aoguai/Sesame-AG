@@ -204,6 +204,7 @@ object AccountSessionCoordinator {
         val sessionIsCurrent = UserMap.currentUid?.trim().orEmpty() == current.userId
         val workflowAllowed =
             WorkflowRootGuard.hasGrantedRoot() &&
+                WorkflowRootGuard.isExecutionAllowed() &&
                 accepted &&
                 !ApplicationHookConstants.isOffline() &&
                 sessionIsCurrent &&

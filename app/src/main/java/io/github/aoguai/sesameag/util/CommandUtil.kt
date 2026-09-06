@@ -48,6 +48,7 @@ object CommandUtil {
     val serviceStatus = _serviceStatus.asStateFlow()
 
     // AIDL 接口实例
+    @Volatile
     private var commandService: ICommandService? = null
 
     // 连接状态管理
@@ -263,6 +264,19 @@ object CommandUtil {
         } catch (e: Exception) {
             Log.e(TAG, "Cmd Exception", e)
             null
+        }
+    }
+
+    fun isExecutionAllowed(userId: String): Boolean {
+        val service = commandService ?: return false
+        return try {
+            service.isExecutionAllowed(userId)
+        } catch (e: RemoteException) {
+            handleServiceLost()
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "执行条件查询失败", e)
+            false
         }
     }
 

@@ -17,6 +17,7 @@ import io.github.aoguai.sesameag.task.antStall.AntStall
 import io.github.aoguai.sesameag.util.DataStore
 import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.TimeUtil
+import io.github.aoguai.sesameag.util.WorkflowRootGuard
 import io.github.aoguai.sesameag.util.maps.UserMap
 import org.json.JSONObject
 
@@ -144,6 +145,10 @@ object ScheduledTaskRouter {
                 "持久任务会话不匹配，丢弃调度[${schedule.name}] owner=${schedule.ownerUserId} session=${schedule.sessionEpoch} current=$currentSession",
             )
             return RouteResult.SKIPPED
+        }
+        if (targetProcess && !WorkflowRootGuard.isExecutionAllowed()) {
+            Log.record(TAG, "必需权限或使用协议未就绪，延后持久任务[${schedule.name}] source=$source")
+            return RouteResult.DEFERRED
         }
         if (targetProcess && ApplicationHookConstants.isOffline()) {
             Log.record(TAG, "离线状态中，延后持久任务[${schedule.name}] source=$source")

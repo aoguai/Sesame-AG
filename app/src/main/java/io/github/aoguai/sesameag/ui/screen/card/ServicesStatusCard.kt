@@ -1,27 +1,34 @@
 package io.github.aoguai.sesameag.ui.screen.card
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Warning
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,152 +37,95 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import io.github.aoguai.sesameag.hook.keepalive.PersistentLaunchPolicy
 import io.github.aoguai.sesameag.ui.permissions.PermissionHealthItem
 import io.github.aoguai.sesameag.ui.permissions.PermissionHealthSnapshot
-import io.github.aoguai.sesameag.ui.permissions.PermissionPolicy
+import io.github.aoguai.sesameag.ui.permissions.PermissionRequirement
 import io.github.aoguai.sesameag.ui.permissions.PermissionStatus
 import io.github.aoguai.sesameag.ui.screen.components.DelayedLoadingIndicator
 import io.github.aoguai.sesameag.util.CommandUtil.ServiceStatus
-import io.github.aoguai.sesameag.util.maps.UserMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ServicesStatusCard(
-    status: ServiceStatus, // 使用新定义的状态
+    status: ServiceStatus,
     permissionHealth: PermissionHealthSnapshot,
+    ownerUserId: String?,
     expanded: Boolean,
     onClick: () -> Unit,
+    onRefresh: () -> Unit,
+    onRequest: (PermissionRequirement) -> Unit,
 ) {
-    val hasPermissionIssue = permissionHealth.attentionCount > 0 || permissionHealth.hasCriticalIssue
-    val shellReady = status is ServiceStatus.Active
-    val loading = status is ServiceStatus.Loading || permissionHealth.totalCount == 0
-    val ownerUserId = UserMap.currentUid
+    val requiredItems = permissionHealth.items.filter { it.isRequired }
+    val busy = permissionHealth.items.any { it.status == PermissionStatus.REQUESTING }
+    val fileGranted = permissionHealth.item(PermissionRequirement.MODULE_FILE)?.isGranted == true
     var persistentForegroundLaunchEnabled by remember(ownerUserId) { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(ownerUserId) {
-        persistentForegroundLaunchEnabled = withContext(Dispatchers.IO) {
-            PersistentLaunchPolicy.isForegroundLaunchEnabled(ownerUserId)
+    LaunchedEffect(ownerUserId, expanded, fileGranted) {
+        persistentForegroundLaunchEnabled = if (expanded && fileGranted && ownerUserId != null) {
+            withContext(Dispatchers.IO) { PersistentLaunchPolicy.isForegroundLaunchEnabled(ownerUserId) }
+        } else {
+            null
         }
     }
-    ElevatedCard(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-                .clickable(onClick = onClick),
-        colors =
-            CardDefaults.elevatedCardColors(
-                containerColor =
-                    when (status) {
-                        is ServiceStatus.Loading -> {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        }
 
-                        else -> {
-                            when {
-                                hasPermissionIssue -> MaterialTheme.colorScheme.errorContainer
-                                shellReady -> MaterialTheme.colorScheme.primary
-                                else -> MaterialTheme.colorScheme.surfaceVariant
-                            }
-                        }
-                    },
-            ),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+    Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (loading) {
-                    DelayedLoadingIndicator(modifier = Modifier.size(24.dp))
-                } else if (hasPermissionIssue || !shellReady) {
-                    Icon(Icons.Outlined.Warning, "权限待处理")
-                } else {
-                    Icon(Icons.Outlined.CheckCircle, "权限正常")
-                }
-                Column(Modifier.padding(start = 20.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("权限设置", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                     Text(
-                        text =
-                            when {
-                                loading -> "正在检查运行环境..."
-                                hasPermissionIssue -> "仍有运行前置条件未完成"
-                                shellReady -> "运行前置条件已就绪"
-                                else -> "运行环境部分就绪"
-                            },
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = "权限 ${permissionHealth.grantedCount}/${permissionHealth.totalCount} · ${shellStatusText(status)}",
+                        text = when {
+                            requiredItems.isEmpty() -> "正在检查"
+                            requiredItems.all { it.isGranted } -> "必需权限已就绪"
+                            requiredItems.any { it.status == PermissionStatus.REQUESTING } -> "正在处理必需权限"
+                            else -> "必需项目待处理"
+                        },
                         style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text =
-                            when {
-                                permissionHealth.hasRequestableIssue -> {
-                                    "点击卡片按顺序检查并申请可处理项"
-                                }
-
-                                hasPermissionIssue -> {
-                                    "点击卡片查看需要手动处理的项目"
-                                }
-
-                                !shellReady -> {
-                                    "Root/Shizuku 仅影响诊断类能力，点击可查看详细状态"
-                                }
-
-                                else -> {
-                                    "权限状态已同步"
-                                }
-                            },
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                }
+                IconButton(onClick = onRefresh, enabled = !busy) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = "重新检查权限")
                 }
             }
-            if (!loading && persistentForegroundLaunchEnabled == false) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = "系统持久调度前台拉起已关闭：轮询、定时唤醒、预唤醒和森林/庄园/新村/运动持久任务到点后不再主动弹出目标应用；强时效任务改为仅进程存活时等待，或需手动打开目标应用后恢复。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color =
-                        when {
-                            hasPermissionIssue -> MaterialTheme.colorScheme.onErrorContainer
-                            shellReady -> MaterialTheme.colorScheme.onPrimary
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+            requiredItems.forEach { item ->
+                PermissionHealthRow(item, status, !busy, onRequest)
+            }
+            TextButton(
+                onClick = onClick,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 8.dp)
+                    .semantics { stateDescription = if (expanded) "已展开" else "已收起" },
+            ) {
+                Text("可选增强", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                Icon(
+                    if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription = null,
                 )
             }
-
-            // 展开内容：故障排查
             AnimatedVisibility(
                 visible = expanded,
-                enter = expandVertically(animationSpec = tween(300)),
-                exit = shrinkVertically(animationSpec = tween(300)),
+                enter = expandVertically(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec()),
+                exit = shrinkVertically(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec()),
             ) {
-                Column(modifier = Modifier.padding(top = 16.dp)) {
-                    Text(text = "运行权限", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (permissionHealth.items.isEmpty()) {
-                        Text(
-                            text = "权限快照尚未生成。请先完成文件权限授权，稍等片刻后再次点击检查。",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            permissionHealth.items.forEach { item ->
-                                PermissionHealthRow(item)
-                            }
-                        }
+                Column {
+                    permissionHealth.items.filterNot { it.isRequired }.forEach { item ->
+                        PermissionHealthRow(item, status, !busy, onRequest)
                     }
                     if (persistentForegroundLaunchEnabled == false) {
-                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "说明：这里只禁止系统持久调度主动前台拉起目标应用，不影响你手动打开目标应用后的主流程闭环；若系统仍偶发弹出，优先检查厂商自启动、后台弹出或后台活动启动权限。",
+                            "打开目标应用后继续任务",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -185,59 +135,74 @@ fun ServicesStatusCard(
 }
 
 @Composable
-private fun PermissionHealthRow(item: PermissionHealthItem) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (item.policy == PermissionPolicy.AUTO_CRITICAL) FontWeight.Bold else FontWeight.Normal,
-            )
-            Text(
-                text = permissionStatusText(item.status),
-                style = MaterialTheme.typography.labelMedium,
-            )
+private fun PermissionHealthRow(
+    item: PermissionHealthItem,
+    serviceStatus: ServiceStatus,
+    actionEnabled: Boolean,
+    onRequest: (PermissionRequirement) -> Unit,
+) {
+    val requesting = item.status == PermissionStatus.REQUESTING
+    val canOpenSettings = item.actionLabel != null && when (item.requirement) {
+        PermissionRequirement.MODULE_FILE,
+        PermissionRequirement.MODULE_NOTIFICATION,
+        PermissionRequirement.MODULE_BATTERY,
+        PermissionRequirement.TARGET_BATTERY -> true
+        PermissionRequirement.MODULE_EXACT_ALARM,
+        PermissionRequirement.TARGET_EXACT_ALARM -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+        else -> false
+    }
+    val blocking = item.isRequired && !item.isGranted && !requesting
+    val statusColor = when {
+        blocking -> MaterialTheme.colorScheme.error
+        item.isGranted -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val statusText = when {
+        requesting -> "处理中"
+        item.requirement == PermissionRequirement.SHELL_EXECUTOR -> {
+            if (item.isGranted && serviceStatus is ServiceStatus.Active) "${serviceStatus.type} 已连接" else "未连接"
         }
-        Text(
-            text = item.description,
-            style = MaterialTheme.typography.bodySmall,
-        )
+        item.isGranted -> if (item.requirement == PermissionRequirement.LSPOSED_TARGET_SCOPE) "已添加" else "已授权"
+        item.status == PermissionStatus.UNAVAILABLE -> "待确认"
+        item.status == PermissionStatus.UNSUPPORTED -> "当前不可用"
+        item.isRequired -> "待授权"
+        else -> "未开启"
+    }
+    ListItem(
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        leadingContent = {
+            if (requesting) {
+                DelayedLoadingIndicator(modifier = Modifier.size(24.dp).semantics { stateDescription = "处理中" })
+            } else {
+                Icon(
+                    imageVector = when {
+                        item.isGranted -> Icons.Outlined.CheckCircle
+                        blocking -> Icons.Outlined.Warning
+                        else -> Icons.Outlined.Info
+                    },
+                    contentDescription = null,
+                    tint = statusColor,
+                )
+            }
+        },
+        supportingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(statusText, color = statusColor, style = MaterialTheme.typography.labelLarge)
+                Text(item.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (canOpenSettings || item.canRequest) {
+                    TextButton(
+                        onClick = { onRequest(item.requirement) },
+                        enabled = if (canOpenSettings) !requesting else actionEnabled,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) {
+                        Text(if (canOpenSettings) "打开设置" else item.actionLabel.orEmpty())
+                    }
+                } else if (requesting) {
+                    Spacer(Modifier.height(48.dp))
+                }
+            }
+        },
+    ) {
+        Text(item.title)
     }
 }
-
-private fun shellStatusText(status: ServiceStatus): String =
-    when (status) {
-        is ServiceStatus.Active -> {
-            if (status.type == "Root") {
-                "Root Shell 已连接"
-            } else {
-                "Shizuku Shell 已连接"
-            }
-        }
-
-        is ServiceStatus.Inactive -> {
-            "Root/Shizuku 未连接"
-        }
-
-        is ServiceStatus.Loading -> {
-            "Root/Shizuku 检查中"
-        }
-
-        is ServiceStatus.Error -> {
-            "Root/Shizuku 连接异常"
-        }
-    }
-
-private fun permissionStatusText(status: PermissionStatus): String =
-    when (status) {
-        PermissionStatus.GRANTED -> "已授权"
-        PermissionStatus.MISSING -> "缺失"
-        PermissionStatus.REQUESTING -> "请求中"
-        PermissionStatus.DENIED -> "已拒绝"
-        PermissionStatus.UNAVAILABLE -> "不可用"
-        PermissionStatus.UNSUPPORTED -> "不支持"
-    }

@@ -58,6 +58,14 @@ internal object ApplicationBroadcastDispatcher {
             return
         }
 
+        if (action !in nonBusinessActions &&
+            action != ApplicationHookConstants.BroadcastActions.RESTART &&
+            !WorkflowRootGuard.isExecutionAllowed()
+        ) {
+            record(TAG, "必需权限或使用协议未就绪，已拒绝执行: $action")
+            return
+        }
+
         when (action) {
             ApplicationHookConstants.BroadcastActions.RESTART -> handleRestartBroadcast(safeIntent)
             ApplicationHookConstants.BroadcastActions.EXECUTE -> handleExecuteBroadcast(context, safeIntent)
@@ -714,7 +722,7 @@ internal object ApplicationBroadcastDispatcher {
                         return@execute
                     }
                     if (!ApplicationHook.ensureLegalAcceptedForWorkflow()) {
-                        record(TAG, "⛔ 未勾选 LEGAL 说明确认，忽略手动任务指令: $taskName")
+                        record(TAG, "⛔ 必需权限或使用协议未就绪，忽略手动任务指令: $taskName")
                         return@execute
                     }
                     ManualTask.runSingle(task, extraParams)
@@ -727,7 +735,7 @@ internal object ApplicationBroadcastDispatcher {
                     return@execute
                 }
                 if (!ApplicationHook.ensureLegalAcceptedForWorkflow()) {
-                    record(TAG, "⛔ 未勾选 LEGAL 说明确认，忽略手动模型任务指令")
+                    record(TAG, "⛔ 必需权限或使用协议未就绪，忽略手动模型任务指令")
                     return@execute
                 }
                 for (model in Model.modelArray) {

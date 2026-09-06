@@ -15,8 +15,11 @@ import io.github.aoguai.sesameag.ICallback
 import io.github.aoguai.sesameag.ICommandService
 import io.github.aoguai.sesameag.IStatusListener
 import io.github.aoguai.sesameag.R
+import io.github.aoguai.sesameag.data.Config
+import io.github.aoguai.sesameag.data.General
 import io.github.aoguai.sesameag.ui.MainActivity
 import io.github.aoguai.sesameag.util.Log
+import io.github.aoguai.sesameag.util.PermissionUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -58,6 +61,7 @@ class CommandService : Service() {
     private val pendingCommandCount = AtomicInteger(0)
 
     // ShellManager 实例
+    @Volatile
     private var shellManager: ShellManager? = null
 
     @Volatile
@@ -147,6 +151,18 @@ class CommandService : Service() {
         override fun unregisterListener(listener: IStatusListener?) {
             listeners.unregister(listener)
         }
+
+        override fun isExecutionAllowed(userId: String?): Boolean {
+            val activeUserId = userId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+            val manager = shellManager ?: return false
+            if (manager.selectedName == "no_executor") return false
+            return runCatching {
+                LsposedServiceManager.refreshScope()
+                PermissionUtil.checkFilePermissions(this@CommandService) &&
+                    LsposedServiceManager.hasTargetScope(General.PACKAGE_NAME) &&
+                    Config.readLegalAcceptedForCurrentVersion(activeUserId)
+            }.getOrDefault(false)
+        }
     }
 
     @SuppressLint("ForegroundServiceType")
@@ -157,6 +173,7 @@ class CommandService : Service() {
         // 立即启动前台服务，避免超时
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
+        LsposedServiceManager.init()
         // 延迟初始化 ShellManager（不阻塞前台服务启动）
         serviceScope.launch {
             try {

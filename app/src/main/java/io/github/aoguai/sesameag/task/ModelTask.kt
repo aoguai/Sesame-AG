@@ -12,6 +12,7 @@ import io.github.aoguai.sesameag.util.Log
 import io.github.aoguai.sesameag.util.Notify.finishTaskRunning
 import io.github.aoguai.sesameag.util.Notify.startTaskRunning
 import io.github.aoguai.sesameag.util.Notify.updateRunningNextExec
+import io.github.aoguai.sesameag.util.WorkflowRootGuard
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -193,6 +194,9 @@ abstract class ModelTask : Model() {
      * 子类不应该直接覆盖此方法
      */
     suspend fun run() {
+        if (!WorkflowRootGuard.isExecutionAllowed()) {
+            throw CancellationException("必需权限或使用协议未就绪，任务已取消")
+        }
         runSuspend()
     }
 
@@ -326,6 +330,10 @@ abstract class ModelTask : Model() {
             } else {
                 taskScope!!.launch(start = CoroutineStart.LAZY) {
                     executionMutex.withLock {
+                        if (!WorkflowRootGuard.isExecutionAllowed()) {
+                            Log.record(TAG, "必需权限或使用协议未就绪，拒绝启动任务 ${getName()}")
+                            return@withLock
+                        }
                         if (isRunning && !force) {
                             Log.record(TAG, "任务 ${getName()} 正在运行，跳过启动")
                             return@withLock
@@ -589,6 +597,9 @@ abstract class ModelTask : Model() {
                 }
 
                 if (isCancelled) return
+                if (!WorkflowRootGuard.isExecutionAllowed()) {
+                    throw CancellationException("必需权限或使用协议未就绪，子任务已取消")
+                }
 
                 // 执行任务逻辑
                 suspendRunnable?.invoke() ?: defaultRun()

@@ -22,6 +22,7 @@ enum class PermissionStatus {
 
 enum class PermissionPolicy {
     AUTO_CRITICAL,
+    MANUAL_CRITICAL,
     MANUAL_CARD,
     OBSERVE_ONLY
 }
@@ -35,6 +36,9 @@ data class PermissionHealthItem(
     val actionLabel: String? = null,
     val requestWhenUnavailable: Boolean = false
 ) {
+    val isRequired: Boolean
+        get() = policy == PermissionPolicy.AUTO_CRITICAL || policy == PermissionPolicy.MANUAL_CRITICAL
+
     val isGranted: Boolean
         get() = status == PermissionStatus.GRANTED
 
@@ -56,6 +60,9 @@ data class PermissionHealthSnapshot(
     val items: List<PermissionHealthItem> = emptyList(),
     val refreshedAtMs: Long = System.currentTimeMillis()
 ) {
+    val areRequiredPermissionsGranted: Boolean
+        get() = items.any { it.isRequired } && items.all { !it.isRequired || it.isGranted }
+
     val totalCount: Int
         get() = items.size
 
@@ -73,7 +80,7 @@ data class PermissionHealthSnapshot(
 
     val hasCriticalIssue: Boolean
         get() = items.any {
-            it.policy == PermissionPolicy.AUTO_CRITICAL && it.status != PermissionStatus.GRANTED
+            it.isRequired && !it.isGranted && it.status != PermissionStatus.REQUESTING
         }
 
     fun item(requirement: PermissionRequirement): PermissionHealthItem? {
