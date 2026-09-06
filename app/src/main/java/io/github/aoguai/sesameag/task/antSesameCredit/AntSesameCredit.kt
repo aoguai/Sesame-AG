@@ -1693,6 +1693,14 @@ class AntSesameCredit : ModelTask() {
         if (items.isEmpty()) {
             return 0
         }
+        val antFarm = Model.getModel(AntFarm::class.java)
+        if (antFarm != null && antFarm.pendingZhimaPigeonRewardFeedbackId()?.isBlank() == true) {
+            val pigeonReward = items.firstOrNull { it.cateId == zhimaPigeonFeedbackCategory }
+            if (pigeonReward != null && !antFarm.bindZhimaPigeonRewardFeedbackId(pigeonReward.creditFeedbackId)) {
+                Log.error(TAG, "$logPrefix[无法绑定大表鸽待收反馈，保留本次反馈等待后续收取]")
+                return 0
+            }
+        }
         var collectedCount = 0
         var needFallbackCollect = true
 
@@ -5145,7 +5153,7 @@ class AntSesameCredit : ModelTask() {
                     TaskRpcFailureType.UNSUPPORTED_NO_CLOSURE
                 }
 
-                code in setOf("TASK_ID_INVALID", "PROMISE_TEMPLATE_NOT_EXIST") ||
+                code in setOf("TASK_ID_INVALID", "PROMISE_TEMPLATE_NOT_EXIST", "ILLEGAL_ARGUMENT") ||
                     (code == "20020012" && explicitSesameTaskRetryable(response) == false) ||
                     (isExplicitSesameTaskFailure(response) &&
                         explicitSesameTaskRetryable(response) == false) -> {
@@ -5501,9 +5509,9 @@ class AntSesameCredit : ModelTask() {
         GameCenterPlayRpcCall.resolveContract(task)
 
     private fun sesameFloatingBallContract(task: JSONObject): SesameFloatingBallContract? {
-        if (!isSesameP2eFloatingBallTask(task)) return null
-        val objects = sesameGameContractObjects(task)
         val parameters = sesameActionUrlParameters(task)
+        if (!isSesameP2eFloatingBallTask(task) && parameters["taskType"] != "durationTask") return null
+        val objects = sesameGameContractObjects(task)
         val sceneId = firstNonBlank(objects, parameters, "sceneId")
         val taskId = firstNonBlank(objects, parameters, "taskId")
         val moduleId = firstNonBlank(objects, parameters, "moduleId")
@@ -5764,27 +5772,14 @@ class AntSesameCredit : ModelTask() {
             )
         }
 
-        val directGameContract = sesameDirectGamePlayContract(task)
-        directGameContract?.let { contract ->
-            val durationResult = submitSesameGameDuration(contract, taskTitle, spec, actionDetail)
-            if (durationResult != null) {
-                return durationResult
-            }
+        val directGameContract = if (task.optString("gameTaskType") == "shichang") {
+            sesameDirectGamePlayContract(task)
+        } else {
+            null
         }
-
         val templateId = task.optString("templateId").trim()
         val recordId = task.optString("recordId").trim()
-        val pushActivityRequired =
-            task.takeIf { it.has("jumpToPushModel") && !it.isNull("jumpToPushModel") }
-                ?.optBoolean("jumpToPushModel", false)
-                ?: return TaskFlowActionResult.failure(
-                    failureType = TaskRpcFailureType.UNKNOWN_NEEDS_REVIEW,
-                    code = "PUSH_MODEL_FLAG_MISSING",
-                    message = "LIFE_RECORD缺少jumpToPushModel，保留人工确认",
-                    rpc = "AntSesameCredit.completeSesameLifeRecord",
-                    detail = "$actionDetail templateId=$templateId recordId=$recordId completionMode=UNKNOWN confirmationState=NOT_SUBMITTED",
-                )
-        if (pushActivityRequired && recordId.isBlank()) {
+        if (recordId.isBlank()) {
             return TaskFlowActionResult.failure(
                 failureType = TaskRpcFailureType.UNKNOWN_NEEDS_REVIEW,
                 code = "RECORD_ID_EMPTY",
@@ -5808,23 +5803,13 @@ class AntSesameCredit : ModelTask() {
             return feedbackResult
         }
 
-        val feedbackCode = feedbackResult.code.ifBlank { "SUCCESS" }
-        if (!pushActivityRequired) {
-            Log.sesame(
-                "${spec.logPrefix}[生活记录反馈已接受，等待列表确认]#$taskTitle " +
-                    "templateId=$templateId recordId=$recordId completionMode=FEEDBACK_ONLY " +
-                    "feedbackCode=$feedbackCode confirmationState=PENDING",
-            )
-            return TaskFlowActionResult.defer(
-                deferredReason = DeferredReason.STATE_CONFIRMATION,
-                message = "生活记录反馈已提交，等待任务列表确认",
-                rpc = "AntSesameCreditRpcCall.feedBackSesameTask",
-                raw = feedbackResult.raw,
-                detail = "$actionDetail templateId=$templateId recordId=$recordId completionMode=FEEDBACK_ONLY feedbackCode=$feedbackCode finishCode=NOT_REQUIRED confirmationState=PENDING",
-                refreshAfterAction = true,
-            )
+        if (directGameContract != null) {
+            Thread.sleep(directGameContract.playTime * 1000L)
+            submitSesameGameDuration(directGameContract, taskTitle, spec, actionDetail)?.let { return it }
+            // 游戏时长上报不完成生活记录，仍需用本次 recordId 推送并回查。
         }
 
+        val feedbackCode = feedbackResult.code.ifBlank { "SUCCESS" }
         val finishRes = AntSesameCreditRpcCall.finishSesameTask(recordId)
         val finishJo = parseJSONObjectOrNull(finishRes)
             ?: return TaskFlowActionResult.failure(
@@ -6024,6 +6009,86 @@ class AntSesameCredit : ModelTask() {
             feedbackPendingKey = feedbackPendingKey,
             taskIdentity = floatingBall.taskId,
         )?.let { return it }
+        if (!isSesameP2eFloatingBallTask(task)) {
+            val passThrough = JSONObject()
+                .put("sceneId", floatingBall.sceneId)
+                .put("taskId", floatingBall.taskId)
+                .toString()
+            val home = GameCenterPlayRpcCall.queryExternalGameCenter(
+                floatingBall.sceneId, floatingBall.moduleId, floatingBall.guideType,
+                floatingBall.source, passThrough,
+            )
+            if (!home.accepted) {
+                return TaskFlowActionResult.failure(
+                    failureType = home.failureType,
+                    message = "频道游戏中心初始化失败",
+                    rpc = "GameCenterPlayRpcCall.queryExternalGameCenter",
+                    raw = home.raw,
+                    detail = actionDetail,
+                )
+            }
+            val games = GameCenterPlayRpcCall.queryExternalRecommendGames(floatingBall.sceneId, floatingBall.source)
+            if (!games.accepted) {
+                return TaskFlowActionResult.failure(
+                    failureType = games.failureType,
+                    message = "频道游戏列表查询失败",
+                    rpc = "GameCenterPlayRpcCall.queryExternalRecommendGames",
+                    raw = games.raw,
+                    detail = actionDetail,
+                )
+            }
+            val data = games.response?.optJSONObject("data")
+            val gameAppId = sequenceOf("recentPlayGameVO", "todayRecommendVO")
+                .mapNotNull { data?.optJSONObject(it)?.optJSONArray("gameList") }
+                .flatMap { list -> (0 until list.length()).asSequence().mapNotNull { list.optJSONObject(it) } }
+                .mapNotNull { it.opt("appId") as? String }
+                .firstOrNull { it.isNotBlank() }
+                ?: return TaskFlowActionResult.failure(
+                    failureType = TaskRpcFailureType.UNKNOWN_NEEDS_REVIEW,
+                    message = "频道游戏列表未返回可用的游戏appId",
+                    rpc = "GameCenterPlayRpcCall.queryExternalRecommendGames",
+                    raw = games.raw,
+                    detail = actionDetail,
+                )
+            val consult = GameCenterPlayRpcCall.consultFloatingBall(passThrough, floatingBall.source)
+            val seconds = consult.timeSeconds
+            if (!consult.accepted || seconds == null) {
+                return TaskFlowActionResult.failure(
+                    failureType = consult.failureType,
+                    message = "频道浮球时长查询失败",
+                    rpc = "GameCenterPlayRpcCall.consultFloatingBall",
+                    raw = consult.raw,
+                    detail = actionDetail,
+                )
+            }
+            val playTime = (seconds.toLong() + 1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            Thread.sleep(playTime * 1000L)
+            val durationResult = submitSesameGameDuration(
+                GameCenterPlayRpcCall.Contract(gameAppId, playTime, floatingBall.source),
+                taskTitle, spec, actionDetail,
+            )
+            if (durationResult != null) return durationResult
+            val complete = GameCenterPlayRpcCall.completeFloatingBall(passThrough, floatingBall.sceneId)
+            if (!complete.accepted) {
+                return TaskFlowActionResult.failure(
+                    failureType = complete.response?.let { sesameGameActionFailureType(it, complete.failureType) }
+                        ?: complete.failureType,
+                    message = "频道浮球完成请求失败",
+                    rpc = "GameCenterPlayRpcCall.completeFloatingBall",
+                    raw = complete.raw,
+                    detail = actionDetail,
+                )
+            }
+            clearSesameFloatingBallFeedbackPending(feedbackPendingKey)
+            return TaskFlowActionResult.defer(
+                deferredReason = DeferredReason.STATE_CONFIRMATION,
+                message = "频道浮球完成已提交，等待生活记录和奖励确认",
+                rpc = "GameCenterPlayRpcCall.completeFloatingBall",
+                raw = complete.raw,
+                detail = "$actionDetail completionMode=CHANNEL_FLOATING_BALL gameAppId=$gameAppId confirmationState=PENDING",
+                refreshAfterAction = true,
+            )
+        }
         val entranceContract = GameCenterPlayRpcCall.P2eFloatingBallContract(
             sceneId = floatingBall.sceneId,
             taskId = floatingBall.taskId,

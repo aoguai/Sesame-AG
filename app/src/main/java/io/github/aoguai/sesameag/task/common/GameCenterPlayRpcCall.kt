@@ -315,7 +315,7 @@ object GameCenterPlayRpcCall {
         val urlQueue = mutableListOf<String>()
         objects.forEach { value ->
             listOf("targetUrl", "actionUrl", "jumpUrl", "pageUrl", "taskJumpUrl")
-                .map { key -> value.optString(key) }
+                .mapNotNull { key -> value.opt(key) as? String }
                 .filterTo(urlQueue) { it.isNotBlank() }
         }
         val visitedUrls = linkedSetOf<String>()
@@ -339,18 +339,17 @@ object GameCenterPlayRpcCall {
             .mapNotNull { it.optJSONObject("taskCategorization") }
             .firstOrNull { it.optString("categorizationSecondLevel").equals("Game", ignoreCase = true) }
         val gameAppId = sequenceOf(
-            categorization?.optJSONObject("categorizationParamModel")?.optString("game_id"),
-            *objects.map { it.optString("game_id") }.toTypedArray(),
-            *objects.map { it.optString("gameAppId") }.toTypedArray(),
-            *objects.map { it.optString("appId") }.toTypedArray(),
+            categorization?.optJSONObject("categorizationParamModel")?.opt("game_id") as? String,
             *nestedFirstUris.map { it.getQueryParameter("gameAppId") }.toTypedArray(),
             *nestedFirstUris.map { it.getQueryParameter("appId") }.toTypedArray(),
+            *objects.map { it.opt("game_id") as? String }.toTypedArray(),
+            *objects.map { it.opt("gameAppId") as? String }.toTypedArray(),
         ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
         val source = sequenceOf(
-            *objects.map { it.optString("chInfo") }.toTypedArray(),
-            *objects.map { it.optString("source") }.toTypedArray(),
-            *objects.map { it.optString("oriChInfo") }.toTypedArray(),
-            *objects.map { it.optString("alipayFarmSource") }.toTypedArray(),
+            *objects.map { it.opt("chInfo") as? String }.toTypedArray(),
+            *objects.map { it.opt("source") as? String }.toTypedArray(),
+            *objects.map { it.opt("oriChInfo") as? String }.toTypedArray(),
+            *objects.map { it.opt("alipayFarmSource") as? String }.toTypedArray(),
             *nestedFirstUris.map { it.getQueryParameter("chInfo") }.toTypedArray(),
             *nestedFirstUris.map { it.getQueryParameter("source") }.toTypedArray(),
             *nestedFirstUris.map { it.getQueryParameter("oriChInfo") }.toTypedArray(),
@@ -837,6 +836,37 @@ object GameCenterPlayRpcCall {
                 .put("unityDeviceLevel", "high")
                 .put("virtualActivity", false),
         )
+
+    fun queryExternalGameCenter(
+        sceneId: String,
+        moduleId: String,
+        guideType: String,
+        source: String,
+        passThrough: String,
+    ): FloatingBallAck = requestAck(
+        "com.alipay.gamecenteruprod.biz.rpc.external.gamecenter.queryHomePage",
+        JSONObject()
+            .put("__git", GAME_CENTER_GIT)
+            .put("channelTaskPassThrough", passThrough)
+            .put("sceneId", sceneId)
+            .put("moduleId", moduleId)
+            .put("guideType", guideType)
+            .put("source", source)
+            .put("deviceLevel", "high")
+            .put("unityDeviceLevel", "high"),
+    )
+
+    fun queryExternalRecommendGames(sceneId: String, source: String): FloatingBallAck = requestAck(
+        "com.alipay.gamecenteruprod.biz.rpc.external.gamecenter.queryRecommendGames",
+        JSONObject()
+            .put("__git", GAME_CENTER_GIT)
+            .put("sceneId", sceneId)
+            .put("source", source)
+            .put("creativeId", "")
+            .put("topGameId", "")
+            .put("deviceLevel", "high")
+            .put("unityDeviceLevel", "high"),
+    )
 
     fun consultFloatingBall(
         passThrough: String,
