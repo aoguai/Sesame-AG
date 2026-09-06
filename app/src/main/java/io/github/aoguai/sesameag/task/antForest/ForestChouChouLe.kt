@@ -440,21 +440,29 @@ class ForestChouChouLe {
 
         Log.forest("${s.name} 剩余抽奖次数: $balance / $total")
 
-        if (balance > 0 && batchDrawEnabled) {
-            val batchResp = AntForestRpcCall.batchDrawopengreen(s.id, s.code, SOURCE, balance, currentUid).toJson()
-            if (batchResp == null) {
-                Log.error(TAG, "${s.name} 批量抽奖响应为空或非法")
-                return false
+        if (batchDrawEnabled) {
+            while (balance > 0) {
+                val times = minOf(balance, 10)
+                val batchResp = AntForestRpcCall.batchDrawopengreen(s.id, s.code, SOURCE, times, currentUid).toJson()
+                if (batchResp == null) {
+                    Log.error(TAG, "${s.name} 批量抽奖响应为空或非法")
+                    return false
+                }
+                if (!batchResp.check()) {
+                    Log.error(TAG, "${s.name} 批量抽奖响应失败")
+                    return false
+                }
+                val remainingBalance = drawBalance(batchResp) ?: run {
+                    Log.error(TAG, "${s.name} 批量抽奖响应缺少 drawAsset.blance")
+                    return false
+                }
+                logBatchDrawResults(s, batchResp.optJSONArray("drawResultList"), remainingBalance)
+                if (remainingBalance >= balance) {
+                    Log.error(TAG, "${s.name} 批量抽奖余额未减少，停止重复提交: $batchResp")
+                    return false
+                }
+                balance = remainingBalance
             }
-            if (!batchResp.check()) {
-                Log.error(TAG, "${s.name} 批量抽奖响应失败")
-                return false
-            }
-            balance = drawBalance(batchResp) ?: run {
-                Log.error(TAG, "${s.name} 批量抽奖响应缺少 drawAsset.blance")
-                return false
-            }
-            logBatchDrawResults(s, batchResp.optJSONArray("drawResultList"), balance)
         } else {
             var retry = 0
             // 未声明批量能力的场景保留既有逐次抽奖闭环。

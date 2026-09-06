@@ -5053,8 +5053,7 @@ class AntSports : ModelTask() {
             }
 
             if (joinedGame == null) {
-                Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_WALK_CHALLENGE_SIGNUP_BLOCKED_TODAY)
-                Log.sports("走路挑战赛线上赛[报名状态未确认，跳过今日运动提交]")
+                Log.error(TAG, "走路挑战赛线上赛[报名状态未确认，保留后续查询和运动提交]")
                 return
             }
 
@@ -5081,8 +5080,15 @@ class AntSports : ModelTask() {
             if (!isWalkChallengeOnlineGame(onlineGame)) continue
             val userOnlineGame = detail.optJSONObject("userOnlineGame") ?: continue
             val status = userOnlineGame.optString("status", "")
-            if (!status.equals("JOIN", ignoreCase = true)) continue
+            if (!status.equals("JOIN", ignoreCase = true) &&
+                !status.equals("COMPLETED", ignoreCase = true)
+            ) continue
             val game = parseWalkChallengeGameFromUserOnlineGame(onlineGame, userOnlineGame) ?: continue
+            if (status.equals("COMPLETED", ignoreCase = true)) {
+                Status.setFlagToday(StatusFlags.FLAG_ANTSPORTS_WALK_CHALLENGE_PROGRESS_DONE)
+                Log.sports("走路挑战赛线上赛[已完成][${game.name}]")
+                return WalkChallengeJoinQuery(success = true, game = game)
+            }
             Log.sports(
                 "走路挑战赛线上赛🚶🏻‍♂️[已报名][${game.name}]#" +
                     formatWalkChallengeTarget(game.totalProgressValue, game.progressUnit)

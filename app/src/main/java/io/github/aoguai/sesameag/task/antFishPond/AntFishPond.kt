@@ -1065,12 +1065,12 @@ class AntFishPond : ModelTask() {
         val response = AntFishPondRpcCall.fishpondExchangeReward()
         val exchange = parseObject(response)
         if (exchange == null) {
-            Log.fishpond("鱼池红包兑换失败：返回空或无法解析，停止当前链路 source=$sourceLabel")
+            Log.error(TAG, "鱼池红包兑换失败：返回空或无法解析，停止当前链路 source=$sourceLabel raw=$response")
             return null
         }
         if (exchange.optBoolean("success", true) == false && exchange.optString("resultCode") == "C15") {
             rewardExchangeStoppedForCurrentRun = true
-            Log.fishpond("鱼池红包兑换被服务端拒绝，本轮停止兑换并保留后续流程：${formatFailure(exchange)} source=$sourceLabel")
+            Log.error(TAG, "鱼池红包兑换被服务端拒绝，本轮停止兑换并保留后续流程：${formatFailure(exchange)} source=$sourceLabel rpc=fishpondExchangeReward raw=$exchange")
             return queryIndex(logProgress = true) ?: jo
         }
         val failureType = classifyFishPondTaskFailure(exchange)
@@ -1084,7 +1084,7 @@ class AntFishPond : ModelTask() {
             }
 
             else -> {
-                Log.fishpond("鱼池红包兑换失败，停止当前链路：${formatFailure(exchange)} source=$sourceLabel")
+                Log.error(TAG, "鱼池红包兑换失败，停止当前链路：${formatFailure(exchange)} source=$sourceLabel rpc=fishpondExchangeReward raw=$exchange")
                 return null
             }
         }

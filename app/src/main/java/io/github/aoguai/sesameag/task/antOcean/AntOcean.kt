@@ -2640,7 +2640,8 @@ class AntOcean : ModelTask() {
             }
 
             code == "400000040" -> {
-                TaskRpcFailureType.UNSUPPORTED_NO_CLOSURE
+                // 当前方法被拒绝，不能据此禁用任务的其他业务步骤。
+                TaskRpcFailureType.UNKNOWN_NEEDS_REVIEW
             }
 
             code in setOf("20020012", "TASK_ID_INVALID", "ILLEGAL_ARGUMENT", "PROMISE_TEMPLATE_NOT_EXIST") -> {

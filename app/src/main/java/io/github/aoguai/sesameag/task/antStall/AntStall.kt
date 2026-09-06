@@ -1494,8 +1494,7 @@ class AntStall : ModelTask() {
             return when {
                 isStallRewardReadyStatus(item.status) -> TaskFlowPhase.REWARD_READY
                 isStallTerminalStatus(item.status) -> TaskFlowPhase.TERMINAL
-                isStallTodoStatus(item.status) && isCompletableStallTask(item) -> TaskFlowPhase.READY_TO_COMPLETE
-                isStallTodoStatus(item.status) -> TaskFlowPhase.UNSUPPORTED
+                isStallTodoStatus(item.status) -> TaskFlowPhase.READY_TO_COMPLETE
                 else -> TaskFlowPhase.UNKNOWN
             }
         }
@@ -1515,13 +1514,6 @@ class AntStall : ModelTask() {
                 stallInviteRegister.value != true
             ) {
                 logStallTaskOnce("新村任务⛪[${item.title}]未开启邀请好友开通，跳过")
-                return true
-            }
-            if (phase == TaskFlowPhase.UNSUPPORTED) {
-                logStallTaskOnce(
-                    "新村任务⛪[${item.title}]缺少已验证闭环，保留服务端待办状态 " +
-                        "taskType=${item.type} actionType=${item.actionType.ifBlank { "UNKNOWN" }} status=${item.status}",
-                )
                 return true
             }
             return false
@@ -1569,14 +1561,6 @@ class AntStall : ModelTask() {
                             finishTask(item)
                         }
 
-                        null -> {
-                            TaskFlowActionResult.failure(
-                                failureType = TaskRpcFailureType.UNSUPPORTED_NO_CLOSURE,
-                                message = "未找到任务完成闭环",
-                                rpc = "StallTaskFlowAdapter.complete",
-                                detail = stallTaskActionDetail(item, "complete"),
-                            )
-                        }
                     }
                 }
             }
@@ -2407,18 +2391,14 @@ class AntStall : ModelTask() {
             taskType,
         ).firstOrNull { it.isNotBlank() } ?: taskType
 
-    private fun isCompletableStallTask(item: TaskFlowItem): Boolean = resolveStallTaskCompleteRoute(item) != null
-
-    private fun resolveStallTaskCompleteRoute(item: TaskFlowItem): StallTaskCompleteRoute? =
+    private fun resolveStallTaskCompleteRoute(item: TaskFlowItem): StallTaskCompleteRoute =
         when {
             isDynamicXLightTask(item) -> StallTaskCompleteRoute.XLIGHT
             item.type == STALL_DAILY_QA_TASK_TYPE -> StallTaskCompleteRoute.DAILY_QA
             item.type == STALL_INVITE_REGISTER_TASK_TYPE -> StallTaskCompleteRoute.INVITE_REGISTER
             item.type == STALL_ELEME_VISIT_TASK_TYPE -> StallTaskCompleteRoute.ELEME_TOKEN
             stallGamePlayContract(item) != null -> StallTaskCompleteRoute.GAME_PLAY_DURATION
-            item.actionType == "VISIT_AUTO_FINISH" -> StallTaskCompleteRoute.FINISH
-            item.type in STALL_FINISH_TASK_TYPES -> StallTaskCompleteRoute.FINISH
-            else -> null
+            else -> StallTaskCompleteRoute.FINISH
         }
 
     private fun isDynamicXLightTask(item: TaskFlowItem): Boolean {
@@ -3301,12 +3281,5 @@ class AntStall : ModelTask() {
         private const val STALL_TASK_REFRESH_DELAY_MS = 600L
         const val PERSISTENT_CHILD_KIND = "stall_child_task"
 
-        private val STALL_FINISH_TASK_TYPES =
-            setOf(
-                "ANTSTALL_NORMAL_OPEN_NOTICE", // 开启摊新村收益提醒
-                "tianjiashouye", // 添加首页
-                "ANTSTALL_TASK_diantao202311", // 去点淘赚元宝提现
-                "ANTSTALL_TASK_nongchangleyuan", // 农场乐园
-            )
     }
 }
