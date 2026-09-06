@@ -44,6 +44,7 @@ object FarmGame {
 
     private enum class FarmGameCompletion {
         CONFIRMED_TERMINAL,
+        BUSINESS_LIMIT,
         UNCONFIRMED,
     }
 
@@ -73,22 +74,21 @@ object FarmGame {
     }
 
     suspend fun playAllFarmGames() {
-        var allGamesConfirmed = true
-        for (gameType in
-            listOf(
-                GameType.flyGame,
-                GameType.hitGame,
-                GameType.starGame,
-                GameType.jumpGame,
-            )
-        ) {
+        val results = listOf(
+            GameType.flyGame,
+            GameType.hitGame,
+            GameType.starGame,
+            GameType.jumpGame,
+        ).map { gameType ->
             if (ApplicationHookConstants.isOffline()) return
-            if (recordFarmGame(gameType) != FarmGameCompletion.CONFIRMED_TERMINAL) {
-                allGamesConfirmed = false
-            }
+            recordFarmGame(gameType)
         }
-        if (!allGamesConfirmed) {
+        if (FarmGameCompletion.UNCONFIRMED in results) {
             Log.error(TAG, "庄园游戏本轮未形成完整确认状态，保留下一轮重试")
+            return
+        }
+        if (FarmGameCompletion.BUSINESS_LIMIT in results) {
+            Log.farm("庄园游戏受饲料容量限制，等待正常消费后继续")
             return
         }
         Status.setFlagToday(StatusFlags.FLAG_FARM_GAME_FINISHED)
@@ -121,7 +121,7 @@ object FarmGame {
                     // 飞行赛的请求分数为4500..7450，按score / 50发放饲料。
                     if (gameType == GameType.flyGame && AntFarm.instance?.prepareFarmAwardCapacity(149) != true) {
                         Log.farm("飞行赛待办：不足149g单局空间，其他小游戏继续执行")
-                        return FarmGameCompletion.UNCONFIRMED
+                        return FarmGameCompletion.BUSINESS_LIMIT
                     }
                     val recordResult = AntFarmRpcCall.recordFarmGame(gameType.name)
                     val joRecord = JSONObject(recordResult)

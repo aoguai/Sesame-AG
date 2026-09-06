@@ -2851,16 +2851,10 @@ class AntFarm : ModelTask() {
                     donationFailed = true
                     break
                 }
-                val targetDonateAmount = donationTarget?.let { findDonationTargetAmount(activity, it.targetId) }
-                if (!confirmDonationProgress(activityId, donationTotal, result.confirmedDonationTotal, donationTarget, targetDonateAmount)) {
-                    donationFailed = true
-                    Log.error(TAG, "公益捐蛋活动[$activityName] ACK成功但服务端状态未确认，保留后续复核")
-                    break
-                }
-
                 hasDonationSuccess = true
                 donatedActivityIds.add(activityId)
                 Status.updateDailyDonationTotal(uid, result.actualAmount, incremental = true)
+                refreshDonationState(activityId)
 
                 if (mode == DonationMode.ONE_AVAILABLE_PROJECT) {
                     break
@@ -2899,7 +2893,6 @@ class AntFarm : ModelTask() {
     internal data class DonationPerformResult(
         val success: Boolean,
         val actualAmount: Int = 0,
-        val confirmedDonationTotal: Double? = null,
         val classification: TaskRpcFailureType? = null,
         val code: String = "",
         val message: String = "",
@@ -2936,66 +2929,15 @@ class AntFarm : ModelTask() {
         return null
     }
 
-    internal fun findDonationTargetAmount(activity: JSONObject, targetId: String): Double? {
-        val batches = activity.optJSONArray("batchInfo") ?: return null
-        for (batchIndex in 0 until batches.length()) {
-            val targets = batches.optJSONObject(batchIndex)?.optJSONArray("targetList") ?: continue
-            for (targetIndex in 0 until targets.length()) {
-                val target = targets.optJSONObject(targetIndex) ?: continue
-                if (target.optString("targetId") == targetId && target.has("donateAmount")) {
-                    return target.optDouble("donateAmount")
-                }
-            }
-        }
-        return null
-    }
-
-    internal fun confirmDonationProgress(
-        activityId: String,
-        previousDonationTotal: Double,
-        confirmedDonationTotal: Double?,
-        donationTarget: DonationTarget?,
-        previousTargetAmount: Double?,
-    ): Boolean {
-        return try {
+    internal fun refreshDonationState(activityId: String) {
+        try {
+            syncAnimalStatus(ownerFarmId)
             val response = JSONObject(AntFarmRpcCall.listActivityInfo())
-            if (!ResChecker.checkRes(TAG, response)) {
-                Log.error(TAG, "公益捐蛋回查失败: $response")
-                false
-            } else {
-                val activityInfos = response.optJSONArray("activityInfos")
-                var refreshedActivity: JSONObject? = null
-                if (activityInfos != null) {
-                    for (index in 0 until activityInfos.length()) {
-                        val candidate = activityInfos.optJSONObject(index) ?: continue
-                        if (candidate.optString("activityId") == activityId) {
-                            refreshedActivity = candidate
-                            break
-                        }
-                    }
-                }
-                val confirmedActivity = refreshedActivity
-                if (confirmedActivity == null) {
-                    Log.error(TAG, "公益捐蛋回查未找到活动 activityId=$activityId")
-                    false
-                } else {
-                    val totalConfirmed =
-                        confirmedDonationTotal != null &&
-                            confirmedDonationTotal > previousDonationTotal &&
-                            confirmedActivity.optDouble("donationTotal", previousDonationTotal) >= confirmedDonationTotal
-                    val targetConfirmed =
-                        if (donationTarget != null && previousTargetAmount != null) {
-                            val refreshedTargetAmount = findDonationTargetAmount(confirmedActivity, donationTarget.targetId)
-                            refreshedTargetAmount != null && refreshedTargetAmount > previousTargetAmount
-                        } else {
-                            false
-                        }
-                    totalConfirmed || targetConfirmed
-                }
+            if (!ResChecker.checkRes(TAG, response) || response.optJSONArray("activityInfos") == null) {
+                Log.error(TAG, "公益捐蛋已确认，项目状态回查失败 activityId=$activityId raw=$response")
             }
         } catch (t: Throwable) {
-            Log.printStackTrace(TAG, "confirmDonationProgress err:", t)
-            false
+            Log.printStackTrace(TAG, "refreshDonationState err:", t)
         }
     }
 
@@ -3033,11 +2975,20 @@ class AntFarm : ModelTask() {
             val donationResponse = JSONObject(s)
             if (ResChecker.checkRes(TAG, donationResponse)) {
                 val donationDetails = donationResponse.optJSONObject("donation")
-                val responseAmount = donationDetails?.optInt("donationAmount", count) ?: count
-                val actualAmount = if (responseAmount > 0) responseAmount else count
-                val confirmedDonationTotal = donationDetails
-                    ?.takeIf { it.has("donationTotal") }
-                    ?.optDouble("donationTotal")
+                val actualAmount = donationDetails?.optInt("donationAmount", 0) ?: 0
+                if (donationDetails == null ||
+                    donationResponse.optString("activityId") != activityId ||
+                    donationResponse.optString("donationUserRecordId").isBlank() ||
+                    actualAmount <= 0
+                ) {
+                    Log.error(TAG, "公益捐蛋响应未确认个人捐赠凭据 activityId=$activityId raw=$s")
+                    return DonationPerformResult(
+                        success = false,
+                        classification = TaskRpcFailureType.UNKNOWN_NEEDS_REVIEW,
+                        message = "个人捐赠凭据或实际数量未确认",
+                        raw = s,
+                    )
+                }
                 syncHarvestBenevolenceScoreAfterDonation(donationDetails, actualAmount)
 
                 if (historyCount == 0) {
@@ -3048,11 +2999,12 @@ class AntFarm : ModelTask() {
                 return DonationPerformResult(
                     success = true,
                     actualAmount = actualAmount,
-                    confirmedDonationTotal = confirmedDonationTotal,
+                    raw = s,
                 )
             }
             val classification = classifyFarmRpcFailure(donationResponse)
-            Log.farm(
+            Log.error(
+                TAG,
                 "捐赠失败: ${formatFarmHighRiskFailure("donation", donationResponse, classification)}"
             )
             return DonationPerformResult(

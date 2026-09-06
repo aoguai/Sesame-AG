@@ -956,9 +956,7 @@ private fun AntFarm.checkRankAndDonate(
                             "精明捐赠：当前奖励${myStars}星，目标排名${target.rank}(奖励${target.stars}星)，需反超${target.eggsNeeded}个蛋",
                         )
                     }
-                    if (donateForCompetition(target.eggsNeeded)) {
-                        // 捐赠成功后立即手动更新一次本地计数
-                        Status.updateDailyDonationTotal(myUid, target.eggsNeeded, incremental = true)
+                    if (donateForCompetition(target.eggsNeeded, myUid)) {
                         return true
                     }
                 } else {
@@ -978,7 +976,7 @@ private fun AntFarm.checkRankAndDonate(
     return false
 }
 
-private fun AntFarm.donateForCompetition(count: Int): Boolean {
+private fun AntFarm.donateForCompetition(count: Int, uid: String): Boolean {
     try {
         if (harvestBenevolenceScore < count) {
             if (benevolenceScore >= 1.0) {
@@ -1028,21 +1026,16 @@ private fun AntFarm.donateForCompetition(count: Int): Boolean {
                 Log.record(TAG, "排位赛捐赠中止：自营项目[$activityName]缺少可用捐赠标的")
                 continue
             }
-            val previousTargetAmount = donationTarget?.let { findDonationTargetAmount(projectJo, it.targetId) }
-
             val donationResult = performDonationDetailed(
                 activityId = activityId,
                 activityName = activityName,
                 count = count,
                 donationTarget = donationTarget,
             )
-            return donationResult.success && confirmDonationProgress(
-                activityId = activityId,
-                previousDonationTotal = donationTotal,
-                confirmedDonationTotal = donationResult.confirmedDonationTotal,
-                donationTarget = donationTarget,
-                previousTargetAmount = previousTargetAmount,
-            )
+            if (!donationResult.success) return false
+            Status.updateDailyDonationTotal(uid, donationResult.actualAmount, incremental = true)
+            refreshDonationState(activityId)
+            return true
         }
     } catch (e: Exception) {
         Log.printStackTrace(TAG, "donateForCompetition err:", e)
