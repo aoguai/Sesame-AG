@@ -1464,8 +1464,13 @@ class ApplicationHook {
             execute {
                 try {
                     val context = appContext ?: return@execute
-                    CommandUtil.connect(context)
                     val executorStatus = CommandUtil.awaitServiceStatus(context)
+                    if (executorStatus is CommandUtil.ServiceStatus.Loading ||
+                        executorStatus is CommandUtil.ServiceStatus.Error
+                    ) {
+                        record(TAG, "⏳ 执行权限服务尚未就绪，保留待初始化状态: $reason")
+                        return@execute
+                    }
                     val granted = WorkflowRootGuard.hasRoot(forceRefresh = true, reason = reason) &&
                         executorStatus is CommandUtil.ServiceStatus.Active &&
                         WorkflowRootGuard.isExecutionAllowed()
@@ -1476,12 +1481,13 @@ class ApplicationHook {
                         return@execute
                     }
 
-                    val retryReason = pendingInitReason ?: reason
-                    rootCheckInProgress = false
-                    if (service != null && !init) {
-                        record(TAG, "✅ 执行权限检查通过，继续初始化: $retryReason")
-                        if (initHandler(retryReason)) {
-                            init = true
+                    ApplicationHookConstants.submitEntry("execution_permission_ready") {
+                        val retryReason = pendingInitReason ?: reason
+                        if (service != null && (!init || pendingInit)) {
+                            record(TAG, "✅ 执行权限检查通过，继续初始化: $retryReason")
+                            if (initHandler(retryReason)) {
+                                init = true
+                            }
                         }
                     }
                 } catch (th: Throwable) {

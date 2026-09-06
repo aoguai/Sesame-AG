@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.os.RemoteException
+import io.github.aoguai.sesameag.BuildConfig
 import io.github.aoguai.sesameag.ICallback
 import io.github.aoguai.sesameag.ICommandService
 import io.github.aoguai.sesameag.IStatusListener
@@ -133,8 +134,9 @@ object CommandUtil {
         }
     }
 
-    private fun buildServiceIntent(context: Context): Intent {
-        return Intent(context.applicationContext, CommandService::class.java).apply {
+    private fun buildServiceIntent(): Intent {
+        return Intent().apply {
+            component = ComponentName(BuildConfig.APPLICATION_ID, CommandService::class.java.name)
             action = ACTION_BIND
         }
     }
@@ -182,7 +184,7 @@ object CommandUtil {
             connectionDeferred = CompletableDeferred()
             val appContext = context.applicationContext
             boundContext = appContext
-            val intent = buildServiceIntent(appContext)
+            val intent = buildServiceIntent()
 
             try {
                 repeat(BIND_RETRY_COUNT) { attempt ->
@@ -287,6 +289,7 @@ object CommandUtil {
         context: Context,
         timeoutMs: Long = BIND_TIMEOUT_MS + 1500L
     ): ServiceStatus = withContext(Dispatchers.IO) {
+        bindRequested = true
         if (!ensureServiceBound(context)) {
             return@withContext _serviceStatus.value
         }
