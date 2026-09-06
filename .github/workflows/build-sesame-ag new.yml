@@ -111,7 +111,7 @@ jobs:
             exit 0
           fi
           
-          for patch_file in "$PATCH_DIR"/*.patch; do
+          for patch_file in "$PATCH_DIR"/unlimited-account.patch; do
             [ -f "$patch_file" ] || continue
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 📄 补丁: $(basename "$patch_file")" >> $GITHUB_STEP_SUMMARY
