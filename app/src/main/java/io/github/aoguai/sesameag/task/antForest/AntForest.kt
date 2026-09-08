@@ -8818,20 +8818,19 @@ class AntForest : ModelTask(), EnergyCollectCallback {
 
     private fun forestGameCenterDecision(
         candidate: ForestGameCenterProgressCandidate,
-    ): GameCenterPlayRpcCall.TaskActionDecision =
-        when (GameTask.fromAppId(candidate.appId.orEmpty())) {
-            GameTask.Forest_sljyd ->
-                GameCenterPlayRpcCall.ownerBusinessDecision("energy-rain candidate is owned by EnergyRainCoroutine")
-
-            null -> GameCenterPlayRpcCall.decideDurationAction(
-                false,
+    ): GameCenterPlayRpcCall.TaskActionDecision {
+        val decision =
+            GameCenterPlayRpcCall.resolveTaskAction(
                 candidate.rawTask,
                 candidate.rawBenefit,
                 candidate.rawGame,
             )
-
-            else -> GameCenterPlayRpcCall.legacyExternalReportDecision("verified GameTask mapping")
+        return if (decision.mappedTask == GameTask.Forest_sljyd) {
+            GameCenterPlayRpcCall.ownerBusinessDecision("energy-rain candidate is owned by EnergyRainCoroutine")
+        } else {
+            decision
         }
+    }
 
     private suspend fun advanceForestGameCenterCandidate(
         candidates: List<ForestGameCenterProgressCandidate>,
@@ -8868,7 +8867,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         )
         return when (decision.action) {
             GameCenterPlayRpcCall.TaskAction.LEGACY_EXTERNAL_REPORT -> {
-                val gameTask = GameTask.fromAppId(candidate.appId.orEmpty()) ?: return false
+                val gameTask = decision.mappedTask ?: return false
                 val remaining = (candidate.rightTimesLimit - candidate.rightTimes).coerceAtLeast(remainingDraws)
                 val result =
                     gameTask.reportDetailed(

@@ -6004,7 +6004,7 @@ class AntMember : ModelTask() {
             val raw = item.raw ?: JSONObject()
             val contract = gameCenterPlayContract(raw)
                 ?: return TaskFlowActionResult.failure(
-                    failureType = TaskRpcFailureType.UNKNOWN_NEEDS_REVIEW,
+                    failureType = TaskRpcFailureType.UNSUPPORTED_NO_CLOSURE,
                     code = "GAME_EVENT_REQUIRED",
                     message = "游戏内事件任务不能由平台浏览完成接口代办",
                     rpc = "AntMember.completeGameCenterP2eTaskWithDuration",
@@ -6271,8 +6271,11 @@ class AntMember : ModelTask() {
         private fun isGameCenterP2eCompletableTask(item: TaskFlowItem): Boolean {
             if (isGameCenterP2eAutoTask(item)) return true
             val raw = item.raw ?: return false
-            return raw.optString("taskType").equals("GAME_TRAN_TASK", ignoreCase = true) &&
-                raw.optString("taskToken").isNotBlank()
+            if (!raw.optString("taskType").equals("GAME_TRAN_TASK", ignoreCase = true)) {
+                return false
+            }
+            return GameCenterPlayRpcCall.decideDurationAction(false, raw).action ==
+                GameCenterPlayRpcCall.TaskAction.DURATION_ONLY
         }
 
         private fun handleUnsupportedP2eTask(item: TaskFlowItem) {

@@ -420,12 +420,6 @@ object AccountSlotRegistry {
                 )
             }
 
-            recordWithoutExpiredPending.migrationState == AccountSlotMigrationState.READY -> {
-                recordWithoutExpiredPending.copy(
-                    activeUserIds = recordWithoutExpiredPending.activeUserIds.filter { it in candidates },
-                )
-            }
-
             else -> recordWithoutExpiredPending
         }
         if (expiredPendingUserId != null) {

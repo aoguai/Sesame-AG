@@ -21,6 +21,7 @@ private val sesameCreditDefaultBlacklist =
         "zml_cainiao_guojiang_sanfang", // pushActivity 返回 ILLEGAL_ARGUMENT，需真实菜鸟行为
         "zml_tbqd_qiandao_sanfang", // 需要淘宝签到结果
         "zml_xiangjiangshikaipao_renwu", // 需要游戏内任务事件
+        "zml_longjizhicheng_renwu", // pushActivity 返回 promiseActivityExtCheck 非法，需游戏内任务事件
         "zml_zcylt_chongzhi", // 需要真实充值
         "zml_baoweixiangrikui_renwu", // 需要游戏内任务事件
         "zml_jihewangguo_renwu", // 需要游戏内任务事件
@@ -124,6 +125,7 @@ private val farmDefaultBlacklist =
 private val oceanDefaultBlacklist =
     setOf(
         "BWXRK_QDRW_HAIYANG",
+        "AIFISH_ZHUANHUA_MHXCZ", // aiFishFinishTask 返回 400000040，当前任务类型不支持
     )
 
 private val forestDefaultBlacklist =
@@ -188,6 +190,7 @@ private val forestDefaultBlacklist =
         "CNXDY_TASK_QUDONG", // 玩下蛋鸭击败20只怪：不支持rpc调用
         "FOREST_NORMAL_DRAW_YYDWLXQ_ZH", // finishTaskopengreen 返回 400000040
         "FOREST_ACTIVITY_DRAW_ZHXF_ZHWUFU", // finishTaskopengreen 返回 400000040
+        "FOREST_ACTIVITY_DRAW_LMCT_ZHWUFU", // finishTaskopengreen 返回 400000040
         "FOREST_NORMAL_DRAW_SHARE", // 森林抽抽乐分享任务
         "FOREST_ACTIVITY_DRAW_SHARE", // 森林抽抽乐活动分享任务
         "ZHRW_HUIYUANjiaoshui_202608", // 每日浇水免费拿绿植：finishTask 返回 400000040
@@ -242,6 +245,8 @@ private val stallDefaultBlacklist =
         "ANTSTALL_TASK_taojinbihuanduan|进入淘宝芭芭农场领免费水果",
         "ANTSTALL_P2P_DAILY_SHARER|邀请好友助力",
         "ANTSTALL_TASK_XCXYX_langmancanting", // 需要完成游戏订单，普通finishTask返回400000040
+        "ANTSTALL_TASK_XCXYX_qingyunjue", // 需要游戏内闯关事件，普通finishTask返回400000040
+        "ANTSTALL_TASK_XCXYX_sijiwuyu", // 需要游戏内合成事件，普通finishTask返回400000040
     )
 
 private val yuebaoDefaultBlacklist =
@@ -334,6 +339,10 @@ private val memberDefaultBlacklist =
         "2021005124694002#xgtsjrwj_game_denghuo_task_1#1",
         "2021003193629997#cyddmx_game_pass_level_1#6",
         "2021006109602033#tznzy_game_pass_every_1#3",
+        "2060170000216502#gkyyn_game_pass_every_1#5", // 需要游戏内通关事件
+        "2060170000363633#wbgwy_game_pass_every_1#2", // 需要游戏内通关事件
+        "2021006135621066#qyxx_game_zhuxian_every_1#10", // 需要游戏内主线事件
+        "2021004144418207#yqsl_game_pass_every_1#3", // 需要游戏内通关事件
     )
 
 private val insuredDefaultBlacklist =

@@ -24,6 +24,7 @@ import io.github.aoguai.sesameag.task.common.TaskFlowActionResult
 import io.github.aoguai.sesameag.task.common.TaskFlowAdapter
 import io.github.aoguai.sesameag.task.common.TaskFlowDecision
 import io.github.aoguai.sesameag.task.common.TaskFlowEngine
+import io.github.aoguai.sesameag.task.common.TaskFlowExecutionState
 import io.github.aoguai.sesameag.task.common.TaskFlowItem
 import io.github.aoguai.sesameag.task.common.TaskFlowPhase
 import io.github.aoguai.sesameag.task.common.TaskFlowRunResult
@@ -166,6 +167,7 @@ class AntOcean : ModelTask() {
      * 海洋任务
      */
     private var dailyOceanTask: BooleanModelField? = null
+    private var oceanTaskExecutionState = TaskFlowExecutionState()
 
     /**
      * 清理 | 开启
@@ -326,6 +328,7 @@ class AntOcean : ModelTask() {
             selfOceanCleanRetried = false
             noticeLinkedRefreshNeeded = false
             oceanHomeRefreshNeeded = false
+            oceanTaskExecutionState = TaskFlowExecutionState()
             if (!queryOceanStatus()) {
                 return
             }
@@ -1075,7 +1078,12 @@ class AntOcean : ModelTask() {
         rpc: String,
         detail: String,
     ): TaskFlowActionResult {
-        val failureType = classifyOceanTaskFailure(response)
+        val failureType =
+            if (rpc == "AntOceanRpcCall.aiFishFinishTask" && extractOceanTaskFailureCode(response) == "400000040") {
+                TaskRpcFailureType.UNSUPPORTED_NO_CLOSURE
+            } else {
+                classifyOceanTaskFailure(response)
+            }
         return TaskFlowActionResult.failure(
             failureType = failureType,
             code = extractOceanTaskFailureCode(response),
@@ -1973,7 +1981,11 @@ class AntOcean : ModelTask() {
     private suspend fun receiveTaskAward(): TaskFlowRunResult? {
         try {
             val adapter = OceanTaskFlowAdapter()
-            val result = TaskFlowEngine(adapter, roundSleepMs = 500L).run()
+            val result = TaskFlowEngine(
+                adapter = adapter,
+                roundSleepMs = 500L,
+                executionState = oceanTaskExecutionState,
+            ).run()
             if (!result.stopped && !result.interrupted && adapter.canMarkTasksDoneForToday()) {
                 Status.setFlagToday(StatusFlags.FLAG_ANTOCEAN_TASKS_DONE)
                 Log.ocean("海洋任务🌊今日已确认完成")
@@ -2023,6 +2035,7 @@ class AntOcean : ModelTask() {
                 val task = taskList.optJSONObject(i) ?: continue
                 val bizInfo = parseJSONObject(task.opt("bizInfo")) ?: JSONObject()
                 val extendInfo = parseJSONObject(task.opt("extend")) ?: JSONObject()
+                val prodPlayParam = parseJSONObject(task.opt("prodPlayParam")) ?: JSONObject()
                 val taskType = task.optString("taskType").trim()
                 if (taskType.isBlank()) {
                     continue
@@ -2043,7 +2056,7 @@ class AntOcean : ModelTask() {
                         .put("bizInfo", bizInfo)
                         .put("awardCount", awardCount)
                         .put("extend", extendInfo)
-                        .put("prodPlayParam", task.opt("prodPlayParam"))
+                        .put("prodPlayParam", prodPlayParam)
                         .put("rightsTimes", task.opt("rightsTimes"))
                         .put("rightsTimesLimit", task.opt("rightsTimesLimit"))
                         .put("alreadyReceiveAwardCount", extendInfo.opt("alreadyReceiveAwardCount"))
@@ -2218,8 +2231,32 @@ class AntOcean : ModelTask() {
                 }
             }
 
-            oceanGamePlayContract(item)?.let { contract ->
+            val gameDecision = GameCenterPlayRpcCall.resolveTaskAction(item.raw)
+            if (gameDecision.action == GameCenterPlayRpcCall.TaskAction.DURATION_ONLY) {
+                val contract = gameDecision.contract ?: return TaskFlowActionResult.defer(
+                    deferredReason = DeferredReason.PREREQUISITE_PENDING,
+                    message = "海洋游戏缺少完整时长上报合同",
+                    rpc = "GameCenterPlayRpcCall.resolveTaskAction",
+                    detail = oceanTaskActionDetail(item, "playDuration", "missingFields=${gameDecision.missingFields.joinToString(",")}"),
+                )
                 return finishOceanGameTask(item, contract)
+            }
+            if (GameCenterPlayRpcCall.describeTask(item.raw).isGameTask) {
+                Log.ocean(
+                    "海洋任务🌊[${item.title}]游戏完成合同待确认 action=${gameDecision.action} " +
+                        "reason=${gameDecision.reason} missingFields=${gameDecision.missingFields.joinToString(",")}",
+                )
+                return TaskFlowActionResult.defer(
+                    deferredReason = DeferredReason.PREREQUISITE_PENDING,
+                    message = "游戏任务缺少可执行的完成合同",
+                    rpc = "GameCenterPlayRpcCall.resolveTaskAction",
+                    detail = oceanTaskActionDetail(
+                        item,
+                        "gameDeferred",
+                        "action=${gameDecision.action} reason=${gameDecision.reason} " +
+                            "missingFields=${gameDecision.missingFields.joinToString(",")}",
+                    ),
+                )
             }
             return finishOceanTask(item)
         }
@@ -2518,20 +2555,6 @@ class AntOcean : ModelTask() {
         )
     }
 
-    private fun oceanGamePlayContract(item: TaskFlowItem): GameCenterPlayRpcCall.Contract? {
-        val raw = item.raw ?: return null
-        val task = raw.optJSONObject("task") ?: return null
-        val contract =
-            GameCenterPlayRpcCall.resolveContract(task, raw, raw.optJSONObject("bizInfo"))
-                ?: return null
-        val reportTime = contract.playTime.toLong() + 1L
-        if (reportTime > Int.MAX_VALUE) {
-            Log.error(TAG, "海洋任务🌊[${item.title}]时长超出上报范围：${contract.playTime}")
-            return null
-        }
-        return contract.copy(playTime = reportTime.toInt())
-    }
-
     private fun oceanTaskActionFailureResult(
         item: TaskFlowItem,
         response: JSONObject,
@@ -2640,7 +2663,7 @@ class AntOcean : ModelTask() {
             }
 
             code == "400000040" -> {
-                // 当前方法被拒绝，不能据此禁用任务的其他业务步骤。
+                // 完成方法被拒绝，不能据此禁用其他业务或领奖步骤。
                 TaskRpcFailureType.UNKNOWN_NEEDS_REVIEW
             }
 

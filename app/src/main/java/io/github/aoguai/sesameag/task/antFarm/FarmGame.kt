@@ -519,11 +519,7 @@ object FarmGame {
     private fun farmGameCenterDecision(
         candidate: GameCenterPlayRpcCall.DeliveryBenefitCandidate,
     ): GameCenterPlayRpcCall.TaskActionDecision =
-        if (GameTask.fromAppId(candidate.appId) != null) {
-            GameCenterPlayRpcCall.legacyExternalReportDecision("verified GameTask mapping")
-        } else {
-            GameCenterPlayRpcCall.decideDurationAction(false, candidate.rawBenefit, candidate.rawGame)
-        }
+        GameCenterPlayRpcCall.resolveTaskAction(candidate.rawBenefit, candidate.rawGame)
 
     private suspend fun advanceFarmGameCenterCandidate(
         candidates: List<GameCenterPlayRpcCall.DeliveryBenefitCandidate>,
@@ -549,7 +545,7 @@ object FarmGame {
         )
         return when (decision.action) {
             GameCenterPlayRpcCall.TaskAction.LEGACY_EXTERNAL_REPORT -> {
-                val gameTask = GameTask.fromAppId(candidate.appId) ?: return false
+                val gameTask = decision.mappedTask ?: return false
                 val remaining = candidate.remainingRewards.coerceAtLeast(remainingDraws)
                 val result =
                     gameTask.reportDetailed(

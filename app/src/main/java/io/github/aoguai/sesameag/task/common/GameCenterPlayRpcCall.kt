@@ -2,6 +2,7 @@ package io.github.aoguai.sesameag.task.common
 
 import android.net.Uri
 import io.github.aoguai.sesameag.hook.RequestManager
+import io.github.aoguai.sesameag.util.GameTask
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -82,27 +83,128 @@ object GameCenterPlayRpcCall {
     data class TaskActionDecision(
         val action: TaskAction,
         val contract: Contract? = null,
+        val mappedTask: GameTask? = null,
         val reason: String,
+        val missingFields: List<String> = emptyList(),
     )
+
+    data class GameTaskDescriptor(
+        val roots: List<JSONObject>,
+        val objects: List<JSONObject>,
+        val urlParameters: Map<String, String>,
+        val gameAppId: String,
+        val source: String,
+        val gameTaskType: String,
+        val contract: Contract?,
+        val mappedTask: GameTask?,
+        val isGameTask: Boolean,
+    ) {
+        val missingDurationFields: List<String>
+            get() = buildList {
+                if (gameAppId.isBlank()) add("gameAppId")
+                if (contract == null || contract.playTime <= 0) add("playTime")
+                if (source.isBlank()) add("source")
+            }.distinct()
+    }
+
+    fun describeTask(vararg roots: JSONObject?): GameTaskDescriptor {
+        val rootObjects = roots.filterNotNull()
+        val objects = collectTaskObjects(rootObjects)
+        val urlParameters = collectTaskUrlParameters(objects)
+        val gameAppId = firstNonBlank(
+            objects.map { it.optString("gameAppId") },
+            objects.map { it.optString("appId") },
+            objects.map { it.optString("game_id") },
+            urlParameters.valuesFor("gameAppId", "appId", "game_id"),
+        )
+        val source = firstNonBlank(
+            objects.map { it.optString("source") },
+            objects.map { it.optString("chInfo") },
+            objects.map { it.optString("oriChInfo") },
+            objects.map { it.optString("alipayFarmSource") },
+            urlParameters.valuesFor("source", "chInfo", "oriChInfo", "alipayFarmSource"),
+        )
+        val gameTaskType = firstNonBlank(
+            objects.map { it.optString("gameTaskType") },
+            urlParameters.valuesFor("gameTaskType"),
+        )
+        val contract = resolveContractFrom(objects, urlParameters, gameAppId, source)
+        val mappedTask = GameTask.fromAppId(gameAppId)
+        val isGameTask = mappedTask != null ||
+            contract != null ||
+            gameTaskType.equals("shichang", ignoreCase = true) ||
+            hasP2eFloatingBallProtocol(objects) ||
+            objects.any { objectValue ->
+                objectValue.optString("categorizationSecondLevel")
+                    .equals("Game", ignoreCase = true) ||
+                    objectValue.optJSONObject("taskCategorization")
+                        ?.optString("categorizationSecondLevel")
+                        ?.equals("Game", ignoreCase = true) == true
+            }
+        return GameTaskDescriptor(
+            roots = rootObjects,
+            objects = objects,
+            urlParameters = urlParameters,
+            gameAppId = gameAppId,
+            source = source,
+            gameTaskType = gameTaskType,
+            contract = contract,
+            mappedTask = mappedTask,
+            isGameTask = isGameTask,
+        )
+    }
+
+    fun resolveTaskAction(
+        vararg roots: JSONObject?,
+        clickBeforeDuration: Boolean = false,
+        directFinishSupported: Boolean = false,
+    ): TaskActionDecision {
+        val descriptor = describeTask(*roots)
+        descriptor.mappedTask?.let { mappedTask ->
+            return TaskActionDecision(
+                action = TaskAction.LEGACY_EXTERNAL_REPORT,
+                mappedTask = mappedTask,
+                reason = "verified GameTask mapping",
+            )
+        }
+        if (!descriptor.isGameTask) {
+            return TaskActionDecision(
+                action = TaskAction.DIRECT_FINISH.takeIf { directFinishSupported } ?: TaskAction.DEFERRED,
+                reason = if (directFinishSupported) "module-provided direct completion contract" else "not a structured game task",
+            )
+        }
+        val objects = descriptor.objects
+        if (hasP2eFloatingBallProtocol(objects)) {
+            return TaskActionDecision(
+                action = TaskAction.DEFERRED,
+                contract = descriptor.contract,
+                reason = "structured P2E/floating-ball contract is owned by its module adapter",
+            )
+        }
+        descriptor.contract?.let { contract ->
+            return TaskActionDecision(
+                action = if (clickBeforeDuration) TaskAction.CLICK_THEN_DURATION else TaskAction.DURATION_ONLY,
+                contract = contract,
+                reason = "structured duration protocol",
+            )
+        }
+        if (descriptor.gameTaskType.equals("shichang", ignoreCase = true)) {
+            return TaskActionDecision(
+                action = TaskAction.DEFERRED,
+                reason = "duration protocol is present but its contract is incomplete",
+                missingFields = descriptor.missingDurationFields,
+            )
+        }
+        return TaskActionDecision(
+            action = TaskAction.DEFERRED,
+            reason = "game task has no verified completion contract",
+        )
+    }
 
     fun decideDurationAction(
         clickBeforeDuration: Boolean = false,
         vararg roots: JSONObject?,
-    ): TaskActionDecision {
-        val contract = resolveContract(*roots)
-        return if (contract == null) {
-            TaskActionDecision(
-                action = TaskAction.DEFERRED,
-                reason = "missing structured gameAppId/playTime/source contract",
-            )
-        } else {
-            TaskActionDecision(
-                action = if (clickBeforeDuration) TaskAction.CLICK_THEN_DURATION else TaskAction.DURATION_ONLY,
-                contract = contract,
-                reason = "structured gameAppId/playTime/source contract",
-            )
-        }
-    }
+    ): TaskActionDecision = resolveTaskAction(*roots, clickBeforeDuration = clickBeforeDuration)
 
     fun directFinishDecision(reason: String): TaskActionDecision =
         TaskActionDecision(TaskAction.DIRECT_FINISH, reason = reason)
@@ -278,15 +380,15 @@ object GameCenterPlayRpcCall {
     )
 
     /**
-     * Resolves the captured duration-report contract from server task objects.
-     * Module adapters remain responsible for deciding the action after the ACK.
+     * Resolves a duration-report contract from the structured task payload. The descriptor
+     * intentionally keeps the protocol classification separate from module-owned completion.
      */
-    fun resolveContract(vararg roots: JSONObject?): Contract? {
+    fun resolveContract(vararg roots: JSONObject?): Contract? = describeTask(*roots).contract
+
+    private fun collectTaskObjects(roots: List<JSONObject>): List<JSONObject> {
         val objects = mutableListOf<JSONObject>()
         fun addObject(value: JSONObject?) {
-            if (value != null && objects.none { it === value }) {
-                objects.add(value)
-            }
+            if (value != null && objects.none { it === value }) objects.add(value)
         }
         fun parseObject(value: Any?): JSONObject? =
             when (value) {
@@ -296,10 +398,11 @@ object GameCenterPlayRpcCall {
             }
 
         roots.forEach(::addObject)
-        var currentIndex = 0
-        while (currentIndex < objects.size) {
-            val current = objects[currentIndex++]
+        var index = 0
+        while (index < objects.size) {
+            val current = objects[index++]
             listOf(
+                "extend",
                 "prodPlayParam",
                 "taskDisplayConfig",
                 "floatBallConfig",
@@ -307,54 +410,59 @@ object GameCenterPlayRpcCall {
                 "bizInfo",
                 "taskCategorization",
                 "categorizationParamModel",
-            ).forEach { key ->
-                addObject(parseObject(current.opt(key)))
-            }
+                "p2ePageRequests",
+                "p2ePageSession",
+                "p2eHomePageRequest",
+                "p2eTaskListRequest",
+                "p2eFeedsGameListRequest",
+            ).forEach { key -> addObject(parseObject(current.opt(key))) }
         }
+        return objects
+    }
 
-        val urlQueue = mutableListOf<String>()
-        objects.forEach { value ->
+    private fun collectTaskUrlParameters(objects: List<JSONObject>): Map<String, String> {
+        val parameters = linkedMapOf<String, String>()
+        val queue = ArrayDeque<String>()
+        objects.forEach { objectValue ->
             listOf("targetUrl", "actionUrl", "jumpUrl", "pageUrl", "taskJumpUrl")
-                .mapNotNull { key -> value.opt(key) as? String }
-                .filterTo(urlQueue) { it.isNotBlank() }
+                .map(objectValue::optString)
+                .filterTo(queue) { it.isNotBlank() }
         }
-        val visitedUrls = linkedSetOf<String>()
-        val uris = mutableListOf<Uri>()
-        var urlIndex = 0
-        while (urlIndex < urlQueue.size) {
-            val url = urlQueue[urlIndex++]
-            if (!visitedUrls.add(url)) continue
+        val visited = linkedSetOf<String>()
+        while (queue.isNotEmpty()) {
+            val url = queue.removeFirst()
+            if (!visited.add(url)) continue
             val uri = runCatching { Uri.parse(url) }.getOrNull() ?: continue
-            uris.add(uri)
+            uri.queryParameterNames.forEach { key ->
+                uri.getQueryParameter(key)?.takeIf { it.isNotBlank() }?.let { parameters[key] = it }
+            }
             listOf("url", "sourceUrl", "schema").forEach { key ->
-                runCatching { uri.getQueryParameter(key) }
-                    .getOrNull()
-                    ?.takeIf { it.isNotBlank() && it !in visitedUrls }
-                    ?.let(urlQueue::add)
+                uri.getQueryParameter(key)?.takeIf { it.isNotBlank() }?.let(queue::add)
             }
         }
+        return parameters
+    }
 
-        val nestedFirstUris = uris.asReversed()
-        val categorization = objects.asSequence()
-            .mapNotNull { it.optJSONObject("taskCategorization") }
-            .firstOrNull { it.optString("categorizationSecondLevel").equals("Game", ignoreCase = true) }
-        val gameAppId = sequenceOf(
-            categorization?.optJSONObject("categorizationParamModel")?.opt("game_id") as? String,
-            *nestedFirstUris.map { it.getQueryParameter("gameAppId") }.toTypedArray(),
-            *nestedFirstUris.map { it.getQueryParameter("appId") }.toTypedArray(),
-            *objects.map { it.opt("game_id") as? String }.toTypedArray(),
-            *objects.map { it.opt("gameAppId") as? String }.toTypedArray(),
-        ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
-        val source = sequenceOf(
-            *objects.map { it.opt("chInfo") as? String }.toTypedArray(),
-            *objects.map { it.opt("source") as? String }.toTypedArray(),
-            *objects.map { it.opt("oriChInfo") as? String }.toTypedArray(),
-            *objects.map { it.opt("alipayFarmSource") as? String }.toTypedArray(),
-            *nestedFirstUris.map { it.getQueryParameter("chInfo") }.toTypedArray(),
-            *nestedFirstUris.map { it.getQueryParameter("source") }.toTypedArray(),
-            *nestedFirstUris.map { it.getQueryParameter("oriChInfo") }.toTypedArray(),
-            *nestedFirstUris.map { it.getQueryParameter("alipayFarmSource") }.toTypedArray(),
-        ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
+    private fun hasP2eFloatingBallProtocol(objects: List<JSONObject>): Boolean =
+        objects.any { value ->
+            value.optString("floatingBallTypeList").contains("P2E_GAME_BROWSE_TASK_FLOATING_BALL", ignoreCase = true) ||
+                value.optJSONArray("floatingBallTypeList")?.let { list ->
+                    (0 until list.length()).any { index ->
+                        list.optString(index).equals("P2E_GAME_BROWSE_TASK_FLOATING_BALL", ignoreCase = true)
+                    }
+                } == true ||
+                value.has("p2ePageRequests") ||
+                value.has("p2eHomePageRequest") ||
+                value.has("p2eTaskListRequest") ||
+                value.has("p2eFeedsGameListRequest")
+        }
+
+    private fun resolveContractFrom(
+        objects: List<JSONObject>,
+        urlParameters: Map<String, String>,
+        gameAppId: String,
+        source: String,
+    ): Contract? {
         val seconds = objects.asSequence().flatMap { value ->
             sequenceOf(
                 value.optInt("playTime", 0),
@@ -372,12 +480,22 @@ object GameCenterPlayRpcCall {
                     .takeIf { it <= Int.MAX_VALUE.toLong() }
                     ?.toInt()
             }
+            ?: urlParameters.valuesFor("playTime", "timeCount", "floatBallDuration", "requiredDuration", "duration")
+                .mapNotNull { it.toIntOrNull()?.takeIf { seconds -> seconds > 0 } }
+                .firstOrNull()
             ?: return null
-        if (gameAppId.isBlank() || source.isBlank()) {
-            return null
-        }
+        if (gameAppId.isBlank() || source.isBlank()) return null
         return Contract(gameAppId, playTime, source)
     }
+
+    private fun Map<String, String>.valuesFor(vararg keys: String): List<String> =
+        keys.mapNotNull { key -> get(key)?.trim()?.takeIf { it.isNotBlank() } }
+
+    private fun firstNonBlank(vararg candidates: Iterable<String>): String =
+        candidates.asSequence()
+            .flatMap { values -> values.asSequence().map(String::trim) }
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
 
     fun submit(contract: Contract): String =
         RequestManager.requestString(
